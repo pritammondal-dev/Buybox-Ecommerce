@@ -7,6 +7,9 @@ const PERMISSIONS = Object.freeze({
   INVENTORY_READ: "inventory:read",
   INVENTORY_MANAGE: "inventory:manage",
 
+  WAREHOUSES_READ: "warehouses:read",
+  WAREHOUSES_MANAGE: "warehouses:manage",
+
   ORDERS_READ: "orders:read",
   ORDERS_MANAGE: "orders:manage",
 

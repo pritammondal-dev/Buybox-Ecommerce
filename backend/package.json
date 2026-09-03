@@ -11,6 +11,11 @@
     "start": "node src/server.js",
     "test": "jest --runInBand"
   },
+
+  "jest": {
+  "setupFiles": ["<rootDir>/tests/setup.js"]
+},
+
   "keywords": [],
   "author": "",
   "license": "ISC",
