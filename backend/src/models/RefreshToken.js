@@ -19,7 +19,6 @@ const refreshTokenSchema = new mongoose.Schema(
     expiresAt: {
       type: Date,
       required: true,
-      index: true,
     },
 
     revokedAt: {
@@ -52,13 +51,10 @@ const refreshTokenSchema = new mongoose.Schema(
   {
     timestamps: true,
     versionKey: false,
-  }
+  },
 );
 
 // Automatically remove expired refresh-token records.
-refreshTokenSchema.index(
-  { expiresAt: 1 },
-  { expireAfterSeconds: 0 }
-);
+refreshTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model("RefreshToken", refreshTokenSchema);
