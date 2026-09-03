@@ -1,5 +1,7 @@
 const express = require("express");
 
+const authRoutes = require("./auth.routes");
+
 const router = express.Router();
 
 router.get("/", (req, res) => {
@@ -8,5 +10,7 @@ router.get("/", (req, res) => {
     message: "Buybox API v1",
   });
 });
+
+router.use("/auth", authRoutes);
 
 module.exports = router;
