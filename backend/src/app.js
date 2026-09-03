@@ -6,8 +6,10 @@ const cookieParser = require("cookie-parser");
 const rateLimit = require("express-rate-limit");
 
 const routes = require("./routes");
+const requestIdMiddleware = require("./middlewares/request-id.middleware");
 
 const app = express();
+app.use(requestIdMiddleware);
 
 app.use(helmet());
 app.use(cors());
