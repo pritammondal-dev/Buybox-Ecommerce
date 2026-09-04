@@ -207,6 +207,102 @@ const adjustStock = async (
   });
 };
 
+const reserveStockInTransaction = async (
+  inventoryId,
+  quantity,
+  transactionContext = {},
+  session
+) => {
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    throw new AppError(
+      "Reservation quantity must be a positive integer",
+      400,
+      "INVALID_RESERVATION_QUANTITY"
+    );
+  }
+
+  if (!session) {
+    throw new AppError(
+      "MongoDB session is required for transactional reservation",
+      500,
+      "TRANSACTION_SESSION_REQUIRED"
+    );
+  }
+
+  const inventory =
+    await inventoryRepository.findById(
+      inventoryId,
+      { session }
+    );
+
+  if (!inventory) {
+    throw new AppError(
+      "Inventory record not found",
+      404,
+      "INVENTORY_NOT_FOUND"
+    );
+  }
+
+  const onHandBefore = inventory.onHand;
+  const reservedBefore = inventory.reserved;
+
+  const reservedInventory =
+    await inventoryRepository.reserveAvailableStock(
+      inventoryId,
+      quantity,
+      { session }
+    );
+
+  if (!reservedInventory) {
+    throw new AppError(
+      "Insufficient available stock",
+      409,
+      "INSUFFICIENT_STOCK"
+    );
+  }
+
+  await inventoryTransactionService.createTransaction({
+    productVariantId:
+      reservedInventory.productVariantId,
+
+    warehouseId:
+      reservedInventory.warehouseId,
+
+    type: "reservation",
+
+    quantity,
+
+    onHandBefore,
+
+    onHandAfter:
+      reservedInventory.onHand,
+
+    reservedBefore,
+
+    reservedAfter:
+      reservedInventory.reserved,
+
+    referenceType:
+      transactionContext.referenceType || null,
+
+    referenceId:
+      transactionContext.referenceId || null,
+
+    idempotencyKey:
+      transactionContext.idempotencyKey || null,
+
+    actorUserId:
+      transactionContext.actorUserId || null,
+
+    notes:
+      transactionContext.notes || null,
+
+    session,
+  });
+
+  return reservedInventory;
+};
+
 const reserveStock = async (
   inventoryId,
   quantity,
@@ -436,6 +532,7 @@ module.exports = {
   getWarehouseInventory,
   adjustStock,
   reserveStock,
+  reserveStockInTransaction,
   releaseStock,
   deductReservedStock,
 };

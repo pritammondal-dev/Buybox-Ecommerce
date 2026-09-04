@@ -38,6 +38,29 @@ const updateById = async (id, data, options = {}) => {
   });
 };
 
+const convertActiveCart = async (
+  id,
+  options = {}
+) => {
+  return Cart.findOneAndUpdate(
+    {
+      _id: id,
+      status: "active",
+    },
+    {
+      $set: {
+        status: "converted",
+        lastActivityAt: new Date(),
+      },
+    },
+    {
+      new: true,
+      runValidators: true,
+      session: options.session,
+    }
+  );
+};
+
 const deleteById = async (id, options = {}) => {
   return Cart.findByIdAndDelete(id, {
     session: options.session,
@@ -50,5 +73,6 @@ module.exports = {
   findActiveByCustomer,
   findByCustomer,
   updateById,
+  convertActiveCart,
   deleteById,
 };
