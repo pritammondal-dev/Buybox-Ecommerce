@@ -10,6 +10,7 @@ const addressRoutes = require("./address.routes");
 const vendorRoutes = require("./vendor.routes");
 const warehouseRoutes = require("./warehouse.routes");
 const inventoryRoutes = require("./inventory.routes");
+const cartRoutes = require("./cart.routes");
 
 const router = express.Router();
 
@@ -30,5 +31,6 @@ router.use("/addresses", addressRoutes);
 router.use("/vendors", vendorRoutes);
 router.use("/warehouses", warehouseRoutes);
 router.use("/inventory", inventoryRoutes);
+router.use("/cart", cartRoutes);
 
 module.exports = router;
