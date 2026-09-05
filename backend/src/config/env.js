@@ -30,6 +30,12 @@ JWT_REFRESH_SECRET: z
 JWT_REFRESH_EXPIRES_IN: z
   .string()
   .default("7d"),
+
+LOG_LEVEL: z.string().default("info"),
+
+  RAZORPAY_KEY_ID: z.string().min(1),
+RAZORPAY_KEY_SECRET: z.string().min(1),
+RAZORPAY_WEBHOOK_SECRET: z.string().min(1),
 });
 
 const env = envSchema.parse(process.env);
