@@ -9,6 +9,10 @@ const {
   canTransitionPaymentStatus,
 } = require("../constants/payment.constants");
 
+const {
+  processRefundWebhook,
+} = require("./refund-webhook.service");
+
 const PAYMENT_GATEWAY = "razorpay";
 
 const PAYMENT_EVENT_MAP = Object.freeze({
@@ -17,6 +21,12 @@ const PAYMENT_EVENT_MAP = Object.freeze({
   "payment.failed": "failed",
   "order.paid": "captured",
 });
+
+const REFUND_EVENTS = new Set([
+  "refund.created",
+  "refund.processed",
+  "refund.failed",
+]);
 
 const getPaymentEntity = (payload) => {
   return payload?.payload?.payment?.entity || null;
@@ -160,6 +170,22 @@ const processPaymentWebhookEvent = async (
     const eventType = webhookEvent.eventType;
     const nextStatus =
       PAYMENT_EVENT_MAP[eventType];
+      if (REFUND_EVENTS.has(eventType)) {
+  const result =
+    await processRefundWebhook({
+      eventType,
+      payload: webhookEvent.payload,
+    });
+
+  return await markEventProcessed({
+    eventId,
+    session,
+    result: {
+      ...result,
+      eventId,
+    },
+  });
+}
 
     if (!nextStatus) {
       return await markEventProcessed({

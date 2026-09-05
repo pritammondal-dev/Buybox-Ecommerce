@@ -14,6 +14,12 @@ const {
   verifyPaymentSchema,
 } = require("../validators/payment/verify-payment.validator");
 
+const refundController = require("../controllers/refund.controller");
+
+const {
+  createRefundSchema,
+} = require("../validators/refund/create-refund.validator");
+
 const router = express.Router();
 
 // Public Razorpay webhook.
@@ -42,6 +48,13 @@ router.post(
   "/orders/:orderId/capture",
   validate(createPaymentSchema, "params"),
   paymentController.capturePayment
+);
+
+router.post(
+  "/orders/:orderId/refunds",
+  validate(createPaymentSchema, "params"),
+  validate(createRefundSchema),
+  refundController.createRefund
 );
 
 module.exports = router;

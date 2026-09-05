@@ -24,13 +24,41 @@ const PAYMENT_METHODS = Object.freeze([
 ]);
 
 const PAYMENT_STATUS_TRANSITIONS = Object.freeze({
-  created: ["pending", "authorized", "captured", "failed", "cancelled"],
-  pending: ["authorized", "captured", "failed", "cancelled"],
-  authorized: ["captured", "failed", "cancelled"],
-  captured: ["partially_refunded", "refunded"],
+  created: [
+    "pending",
+    "authorized",
+    "captured",
+    "failed",
+    "cancelled",
+  ],
+
+  pending: [
+    "authorized",
+    "captured",
+    "failed",
+    "cancelled",
+  ],
+
+  authorized: [
+    "captured",
+    "failed",
+    "cancelled",
+  ],
+
+  captured: [
+    "partially_refunded",
+    "refunded",
+  ],
+
+  partially_refunded: [
+    "partially_refunded",
+    "refunded",
+  ],
+
   failed: [],
+
   cancelled: [],
-  partially_refunded: ["partially_refunded", "refunded"],
+
   refunded: [],
 });
 

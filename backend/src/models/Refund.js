@@ -1,7 +1,14 @@
 const mongoose = require("mongoose");
 
-const paymentSchema = new mongoose.Schema(
+const refundSchema = new mongoose.Schema(
   {
+    paymentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Payment",
+      required: true,
+      index: true,
+    },
+
     orderId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Order",
@@ -18,20 +25,13 @@ const paymentSchema = new mongoose.Schema(
 
     gateway: {
       type: String,
-      enum: ["razorpay"],
       required: true,
+      enum: ["razorpay"],
       default: "razorpay",
       index: true,
     },
 
-    gatewayOrderId: {
-      type: String,
-      default: null,
-      trim: true,
-      index: true,
-    },
-
-    gatewayPaymentId: {
+    gatewayRefundId: {
       type: String,
       default: null,
       trim: true,
@@ -41,7 +41,7 @@ const paymentSchema = new mongoose.Schema(
     amount: {
       type: mongoose.Schema.Types.Decimal128,
       required: true,
-      min: 0,
+      min: 0.01,
     },
 
     currency: {
@@ -55,40 +55,23 @@ const paymentSchema = new mongoose.Schema(
 
     status: {
       type: String,
+      required: true,
       enum: [
         "created",
         "pending",
-        "authorized",
-        "captured",
+        "processed",
         "failed",
         "cancelled",
-        "partially_refunded",
-        "refunded",
       ],
-      required: true,
       default: "created",
       index: true,
     },
 
-    method: {
-      type: String,
-      enum: [
-        "card",
-        "netbanking",
-        "upi",
-        "wallet",
-        "emi",
-        "bank_transfer",
-        "other",
-      ],
-      default: null,
-    },
-
-    receipt: {
+    reason: {
       type: String,
       default: null,
       trim: true,
-      maxlength: 100,
+      maxlength: 500,
     },
 
     failureReason: {
@@ -98,22 +81,12 @@ const paymentSchema = new mongoose.Schema(
       maxlength: 1000,
     },
 
-    refundedAmount: {
-      type: mongoose.Schema.Types.Decimal128,
-      required: true,
-      min: 0,
-      default: 0,
-    },
-
-    refundReservedAmount: {
-      type: mongoose.Schema.Types.Decimal128,
-      default: "0.00",
-      min: 0,
-    },
-
-    capturedAt: {
-      type: Date,
+    idempotencyKey: {
+      type: String,
       default: null,
+      trim: true,
+      minlength: 8,
+      maxlength: 128,
     },
 
     metadata: {
@@ -122,11 +95,9 @@ const paymentSchema = new mongoose.Schema(
       default: {},
     },
 
-    idempotencyKey: {
-      type: String,
+    processedAt: {
+      type: Date,
       default: null,
-      trim: true,
-      index: true,
     },
   },
   {
@@ -135,27 +106,9 @@ const paymentSchema = new mongoose.Schema(
   }
 );
 
-paymentSchema.index({
-  orderId: 1,
-  createdAt: -1,
-});
-
-paymentSchema.index({
-  customerId: 1,
-  createdAt: -1,
-});
-
-paymentSchema.index({
-  gateway: 1,
-  gatewayOrderId: 1,
-});
-
-paymentSchema.index({
-  gateway: 1,
-  gatewayPaymentId: 1,
-});
-
-paymentSchema.index(
+// Prevent duplicate refund requests when the same
+// idempotency key is used for the same gateway.
+refundSchema.index(
   {
     gateway: 1,
     idempotencyKey: 1,
@@ -170,7 +123,33 @@ paymentSchema.index(
   }
 );
 
-module.exports = mongoose.model(
-  "Payment",
-  paymentSchema
+// A Razorpay refund ID must identify only one local refund.
+refundSchema.index(
+  {
+    gateway: 1,
+    gatewayRefundId: 1,
+  },
+  {
+    unique: true,
+    partialFilterExpression: {
+      gatewayRefundId: {
+        $type: "string",
+      },
+    },
+  }
 );
+
+// Useful for refund history and reconciliation.
+refundSchema.index({
+  paymentId: 1,
+  status: 1,
+  createdAt: -1,
+});
+
+refundSchema.index({
+  orderId: 1,
+  status: 1,
+  createdAt: -1,
+});
+
+module.exports = mongoose.model("Refund", refundSchema);

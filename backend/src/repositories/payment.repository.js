@@ -89,6 +89,83 @@ const updateById = async (
   );
 };
 
+const reserveRefundAmount = async (
+  paymentId,
+  amount,
+  options = {}
+) => {
+  return Payment.findOneAndUpdate(
+    {
+      _id: paymentId,
+      $expr: {
+        $lte: [
+          {
+            $add: [
+              { $ifNull: ["$refundedAmount", 0] },
+              { $ifNull: ["$refundReservedAmount", 0] },
+              amount,
+            ],
+          },
+          "$amount",
+        ],
+      },
+    },
+    {
+      $inc: {
+        refundReservedAmount: amount,
+      },
+    },
+    {
+      new: true,
+      runValidators: true,
+      session: options.session,
+    }
+  );
+};
+
+const releaseRefundReservation = async (
+  paymentId,
+  amount,
+  options = {}
+) => {
+  return Payment.findOneAndUpdate(
+    {
+      _id: paymentId,
+      $expr: {
+        $gte: [
+          {
+            $ifNull: [
+              "$refundReservedAmount",
+              0,
+            ],
+          },
+          amount,
+        ],
+      },
+    },
+    {
+      $set: {
+        refundReservedAmount: {
+          $subtract: [
+            {
+              $ifNull: [
+                "$refundReservedAmount",
+                0,
+              ],
+            },
+            amount,
+          ],
+        },
+      },
+    },
+    {
+      new: true,
+      runValidators: true,
+      session: options.session,
+    }
+  );
+};
+
 module.exports = {
   create,
   findById,
@@ -98,4 +175,6 @@ module.exports = {
   findByGatewayPaymentId,
   findByIdempotencyKey,
   updateById,
+  reserveRefundAmount,
+  releaseRefundReservation,
 };
