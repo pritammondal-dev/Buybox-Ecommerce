@@ -46,6 +46,12 @@ router.patch(
 );
 
 router.patch(
+  "/:campaignId/schedule",
+  requirePermissions(PERMISSIONS.CAMPAIGNS_MANAGE),
+  campaignController.scheduleCampaign
+);
+
+router.patch(
   "/:campaignId/activate",
   requirePermissions(PERMISSIONS.CAMPAIGNS_MANAGE),
   campaignController.activateCampaign
@@ -65,3 +71,4 @@ router.patch(
 );
 
 module.exports = router;
+

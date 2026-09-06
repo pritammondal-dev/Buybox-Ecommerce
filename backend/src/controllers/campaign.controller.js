@@ -1,6 +1,7 @@
 const campaignService = require("../services/campaign.service");
 const campaignAutomationService = require("../services/campaign-automation.service");
 const apiResponse = require("../utils/apiResponse");
+const campaignSchedulingService = require("../services/campaign-scheduling.service");
 
 const createCampaign = async (req, res, next) => {
   try {
@@ -107,6 +108,21 @@ const transitionCampaignStatus = async (req, res, next) => {
   }
 };
 
+const scheduleCampaign = async (req, res, next) => {
+  try {
+    const result = await campaignSchedulingService.scheduleCampaign(
+      req.params.campaignId
+    );
+
+    return apiResponse.sendSuccess(res, {
+      message: "Campaign scheduled successfully",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createCampaign,
   getCampaignById,
@@ -115,4 +131,5 @@ module.exports = {
   activateCampaign,
   deactivateCampaign,
   transitionCampaignStatus,
+  scheduleCampaign,
 };
