@@ -20,6 +20,7 @@ const couponRoutes = require("./coupon.routes");
 const couponRedemptionRoutes = require("./coupon-redemption.routes");
 const campaignRoutes = require("./campaign.routes");
 const campaignPerformanceRoutes = require("./campaign-performance.routes");
+const reviewRoutes = require("./review.routes");
 
 const router = express.Router();
 
@@ -50,6 +51,6 @@ router.use("/coupons", couponRoutes);
 router.use("/coupon-redemptions", couponRedemptionRoutes);
 router.use("/campaigns", campaignRoutes);
 router.use("/campaign-performance", campaignPerformanceRoutes);
-
+router.use("/reviews", reviewRoutes);
 
 module.exports = router;
