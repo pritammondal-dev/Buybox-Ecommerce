@@ -35,7 +35,9 @@ const decimalToMinorUnits = (value) => {
     );
   }
 
-  const normalizedValue = value.toString().trim();
+  const normalizedValue = value
+    .toString()
+    .trim();
 
   if (!/^\d+(\.\d+)?$/.test(normalizedValue)) {
     throw new AppError(
@@ -162,7 +164,8 @@ const synchronizePaymentRefundState = async ({
     orderPaymentStatus = "paid";
   } else if (refundedTotal < paymentAmount) {
     paymentStatus = "partially_refunded";
-    orderPaymentStatus = "partially_refunded";
+    orderPaymentStatus =
+      "partially_refunded";
   } else {
     paymentStatus = "refunded";
     orderPaymentStatus = "refunded";
@@ -204,7 +207,8 @@ const synchronizePaymentRefundState = async ({
     await orderRepository.updateById(
       order._id,
       {
-        paymentStatus: orderPaymentStatus,
+        paymentStatus:
+          orderPaymentStatus,
       },
       options
     );
@@ -230,6 +234,7 @@ const synchronizePaymentRefundState = async ({
 const processRefundWebhook = async ({
   eventType,
   payload,
+  session: providedSession = null,
 }) => {
   const nextStatus =
     REFUND_EVENT_MAP[eventType];
@@ -256,11 +261,15 @@ const processRefundWebhook = async ({
     );
   }
 
+  const ownsSession = !providedSession;
   const session =
-    await mongoose.startSession();
+    providedSession ||
+    (await mongoose.startSession());
 
   try {
-    session.startTransaction();
+    if (ownsSession) {
+      session.startTransaction();
+    }
 
     const refund =
       await refundRepository.findByGatewayRefundId(
@@ -306,7 +315,8 @@ const processRefundWebhook = async ({
     }
 
     if (
-      payment.gateway !== REFUND_GATEWAY
+      payment.gateway !==
+      REFUND_GATEWAY
     ) {
       throw new AppError(
         "Unsupported payment gateway",
@@ -331,7 +341,9 @@ const processRefundWebhook = async ({
       razorpayRefund.amount !== null
     ) {
       const localRefundAmount =
-        decimalToMinorUnits(refund.amount);
+        decimalToMinorUnits(
+          refund.amount
+        );
 
       if (
         Number(razorpayRefund.amount) !==
@@ -347,16 +359,19 @@ const processRefundWebhook = async ({
 
     /*
      * Duplicate webhook for the same refund state.
-     * The state was already applied successfully,
-     * so nothing else needs to be changed.
      */
-    if (refund.status === nextStatus) {
-      await session.commitTransaction();
+    if (
+      refund.status === nextStatus
+    ) {
+      if (ownsSession) {
+        await session.commitTransaction();
+      }
 
       return {
         processed: true,
         ignored: true,
-        reason: "REFUND_ALREADY_IN_TARGET_STATE",
+        reason:
+          "REFUND_ALREADY_IN_TARGET_STATE",
         refundId: refund._id,
         refundStatus: refund.status,
       };
@@ -371,7 +386,9 @@ const processRefundWebhook = async ({
         nextStatus
       )
     ) {
-      await session.commitTransaction();
+      if (ownsSession) {
+        await session.commitTransaction();
+      }
 
       return {
         processed: true,
@@ -433,10 +450,8 @@ const processRefundWebhook = async ({
     }
 
     /*
-     * A processed refund consumes the reserved amount.
-     *
-     * A failed refund releases the reservation
-     * because the gateway will not settle that refund.
+     * Both processed and failed refund states
+     * release the temporary refund reservation.
      */
     if (
       nextStatus === "processed" ||
@@ -456,31 +471,40 @@ const processRefundWebhook = async ({
         options: { session },
       });
 
-    await session.commitTransaction();
+    if (ownsSession) {
+      await session.commitTransaction();
+    }
 
     return {
       processed: true,
       eventType,
       refundId: updatedRefund._id,
-      refundStatus: updatedRefund.status,
-      paymentId: syncResult.updatedPayment._id,
+      refundStatus:
+        updatedRefund.status,
+      paymentId:
+        syncResult.updatedPayment._id,
       paymentStatus:
         syncResult.updatedPayment.status,
       orderPaymentStatus:
         syncResult.updatedOrder.paymentStatus,
       refundedAmount:
-        syncResult.updatedPayment.refundedAmount,
+        syncResult.updatedPayment
+          .refundedAmount,
     };
   } catch (error) {
-    try {
-      await session.abortTransaction();
-    } catch (abortError) {
-      // Preserve original error.
+    if (ownsSession) {
+      try {
+        await session.abortTransaction();
+      } catch (abortError) {
+        // Preserve original error.
+      }
     }
 
     throw error;
   } finally {
-    await session.endSession();
+    if (ownsSession) {
+      await session.endSession();
+    }
   }
 };
 

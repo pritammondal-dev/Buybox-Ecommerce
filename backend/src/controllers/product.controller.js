@@ -1,11 +1,13 @@
 const asyncHandler = require("../utils/asyncHandler");
+
 const { sendSuccess } = require("../utils/apiResponse");
+
 const productService = require("../services/product.service");
 
 const createProduct = asyncHandler(async (req, res) => {
   const product = await productService.createProduct({
     data: req.body,
-    vendorId: req.user.id,
+    userId: req.user.id,
   });
 
   return sendSuccess(res, {
@@ -51,10 +53,10 @@ const listProducts = asyncHandler(async (req, res) => {
 
 const updateProduct = asyncHandler(async (req, res) => {
   const product = await productService.updateProduct({
-  id: req.params.id,
-  data: req.body,
-  actor: req.user,
-});
+    id: req.params.id,
+    data: req.body,
+    actor: req.user,
+  });
 
   return sendSuccess(res, {
     message: "Product updated successfully",
@@ -64,9 +66,9 @@ const updateProduct = asyncHandler(async (req, res) => {
 
 const deleteProduct = asyncHandler(async (req, res) => {
   await productService.deleteProduct({
-  id: req.params.id,
-  actor: req.user,
-});
+    id: req.params.id,
+    actor: req.user,
+  });
 
   return sendSuccess(res, {
     message: "Product deleted successfully",
@@ -82,3 +84,4 @@ module.exports = {
   updateProduct,
   deleteProduct,
 };
+

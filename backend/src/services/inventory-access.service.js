@@ -1,5 +1,6 @@
 const ProductVariant = require("../models/ProductVariant");
 const Product = require("../models/Product");
+const Vendor = require("../models/Vendor");
 const AppError = require("../errors/AppError");
 const { ROLES } = require("../constants/auth.constants");
 
@@ -55,9 +56,24 @@ const ensureInventoryAccess = async ({
     );
   }
 
+  const vendor = await Vendor.findOne({
+    userId: user.id,
+    isActive: true,
+    deletedAt: null,
+  });
+
+  if (!vendor) {
+    throw new AppError(
+      "Vendor profile not found",
+      404,
+      "VENDOR_NOT_FOUND"
+    );
+  }
+
   if (
     !product.vendorId ||
-    product.vendorId.toString() !== user.id.toString()
+    product.vendorId.toString() !==
+      vendor._id.toString()
   ) {
     throw new AppError(
       "You do not have access to this inventory",

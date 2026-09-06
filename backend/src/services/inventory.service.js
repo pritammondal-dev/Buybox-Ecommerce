@@ -451,6 +451,89 @@ const releaseStock = async (
   });
 };
 
+const releaseStockInTransaction = async (
+  inventoryId,
+  quantity,
+  transactionContext = {},
+  session
+) => {
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    throw new AppError(
+      "Release quantity must be a positive integer",
+      400,
+      "INVALID_RELEASE_QUANTITY"
+    );
+  }
+
+  if (!session) {
+    throw new AppError(
+      "MongoDB session is required for transactional release",
+      500,
+      "TRANSACTION_SESSION_REQUIRED"
+    );
+  }
+
+  const inventory =
+    await inventoryRepository.findById(
+      inventoryId,
+      { session }
+    );
+
+  if (!inventory) {
+    throw new AppError(
+      "Inventory record not found",
+      404,
+      "INVENTORY_NOT_FOUND"
+    );
+  }
+
+  const onHandBefore = inventory.onHand;
+  const reservedBefore = inventory.reserved;
+
+  const releasedInventory =
+    await inventoryRepository.releaseStock(
+      inventoryId,
+      quantity,
+      { session }
+    );
+
+  if (!releasedInventory) {
+    throw new AppError(
+      "Cannot release more stock than currently reserved",
+      409,
+      "INVALID_STOCK_RELEASE"
+    );
+  }
+
+  await inventoryTransactionService.createTransaction({
+    productVariantId:
+      releasedInventory.productVariantId,
+    warehouseId:
+      releasedInventory.warehouseId,
+    type: "release",
+    quantity: -quantity,
+    onHandBefore,
+    onHandAfter:
+      releasedInventory.onHand,
+    reservedBefore,
+    reservedAfter:
+      releasedInventory.reserved,
+    referenceType:
+      transactionContext.referenceType || null,
+    referenceId:
+      transactionContext.referenceId || null,
+    idempotencyKey:
+      transactionContext.idempotencyKey || null,
+    actorUserId:
+      transactionContext.actorUserId || null,
+    notes:
+      transactionContext.notes || null,
+    session,
+  });
+
+  return releasedInventory;
+};
+
 const deductReservedStock = async (
   inventoryId,
   quantity,
@@ -525,6 +608,102 @@ const deductReservedStock = async (
   });
 };
 
+const deductReservedStockInTransaction = async (
+  inventoryId,
+  quantity,
+  transactionContext = {},
+  session
+) => {
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    throw new AppError(
+      "Deduction quantity must be a positive integer",
+      400,
+      "INVALID_DEDUCTION_QUANTITY"
+    );
+  }
+
+  if (!session) {
+    throw new AppError(
+      "MongoDB session is required for transactional deduction",
+      500,
+      "TRANSACTION_SESSION_REQUIRED"
+    );
+  }
+
+  const inventory =
+    await inventoryRepository.findById(
+      inventoryId,
+      { session }
+    );
+
+  if (!inventory) {
+    throw new AppError(
+      "Inventory record not found",
+      404,
+      "INVENTORY_NOT_FOUND"
+    );
+  }
+
+  const onHandBefore = inventory.onHand;
+  const reservedBefore = inventory.reserved;
+
+  const deductedInventory =
+    await inventoryRepository.deductReservedStock(
+      inventoryId,
+      quantity,
+      { session }
+    );
+
+  if (!deductedInventory) {
+    throw new AppError(
+      "Cannot deduct more stock than currently reserved",
+      409,
+      "INVALID_STOCK_DEDUCTION"
+    );
+  }
+
+  await inventoryTransactionService.createTransaction({
+    productVariantId:
+      deductedInventory.productVariantId,
+
+    warehouseId:
+      deductedInventory.warehouseId,
+
+    type: "sale",
+
+    quantity: -quantity,
+
+    onHandBefore,
+
+    onHandAfter:
+      deductedInventory.onHand,
+
+    reservedBefore,
+
+    reservedAfter:
+      deductedInventory.reserved,
+
+    referenceType:
+      transactionContext.referenceType || null,
+
+    referenceId:
+      transactionContext.referenceId || null,
+
+    idempotencyKey:
+      transactionContext.idempotencyKey || null,
+
+    actorUserId:
+      transactionContext.actorUserId || null,
+
+    notes:
+      transactionContext.notes || null,
+
+    session,
+  });
+
+  return deductedInventory;
+};
+
 module.exports = {
   createInventory,
   getInventoryById,
@@ -534,5 +713,7 @@ module.exports = {
   reserveStock,
   reserveStockInTransaction,
   releaseStock,
+  releaseStockInTransaction,
   deductReservedStock,
+  deductReservedStockInTransaction,
 };

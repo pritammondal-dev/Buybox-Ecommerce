@@ -56,7 +56,7 @@ const productSchema = new mongoose.Schema(
 
     vendorId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Vendor",
       required: true,
       index: true,
     },
@@ -184,7 +184,7 @@ const productSchema = new mongoose.Schema(
   {
     timestamps: true,
     versionKey: false,
-  }
+  },
 );
 
 productSchema.index({

@@ -16,6 +16,11 @@ const ROLE_PERMISSIONS = Object.freeze({
     PERMISSIONS.INVENTORY_MANAGE,
 
     PERMISSIONS.ORDERS_READ,
+
+    // Vendor-scoped shipment permissions.
+    // Ownership must still be enforced by the shipment service.
+    PERMISSIONS.SHIPMENTS_READ_OWN,
+    PERMISSIONS.SHIPMENTS_MANAGE_OWN,
   ],
 
   [ROLES.SUPPORT]: [
@@ -35,6 +40,10 @@ const ROLE_PERMISSIONS = Object.freeze({
 
     PERMISSIONS.WAREHOUSES_READ,
     PERMISSIONS.WAREHOUSES_MANAGE,
+
+    // Operational shipment access.
+    PERMISSIONS.SHIPMENTS_READ,
+    PERMISSIONS.SHIPMENTS_MANAGE,
 
     PERMISSIONS.ORDERS_READ,
     PERMISSIONS.ORDERS_MANAGE,

@@ -6,12 +6,12 @@ const cookieParser = require("cookie-parser");
 const rateLimit = require("express-rate-limit");
 const pinoHttp = require("pino-http");
 const logger = require("./config/logger");
-
 const routes = require("./routes");
 const requestIdMiddleware = require("./middlewares/request-id.middleware");
 const AppError = require("./errors/AppError");
 const errorMiddleware = require("./middlewares/error.middleware");
 const { sendSuccess } = require("./utils/apiResponse");
+const shipmentRoutes = require("./routes/shipment.routes");
 
 const app = express();
 app.use(requestIdMiddleware);
@@ -67,6 +67,11 @@ app.get("/health", (req, res) => {
 
 app.use("/api/v1", routes);
 
+app.use(
+  "/api/v1/shipments",
+  shipmentRoutes
+);
+
 app.use((req, res, next) => {
   next(
     new AppError(
@@ -76,6 +81,8 @@ app.use((req, res, next) => {
     )
   );
 });
+
+
 
 app.use(errorMiddleware);
 

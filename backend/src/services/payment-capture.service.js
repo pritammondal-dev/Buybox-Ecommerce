@@ -1,6 +1,8 @@
 const paymentRepository = require("../repositories/payment.repository");
 const orderRepository = require("../repositories/order.repository");
 
+const orderService = require("./order.service");
+
 const razorpayProvider = require(
   "../integrations/payments/razorpay.provider"
 );
@@ -16,8 +18,17 @@ const {
 const MINOR_UNIT_SCALE = 100;
 const PAYMENT_GATEWAY = "razorpay";
 
+/**
+ * Convert a monetary value into integer minor units.
+ *
+ * Example:
+ * "2799.00" -> 279900
+ */
 const decimalToMinorUnits = (value) => {
-  if (value === null || value === undefined) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
     throw new AppError(
       "Invalid payment amount",
       500,
@@ -28,7 +39,11 @@ const decimalToMinorUnits = (value) => {
   const normalizedValue =
     value.toString().trim();
 
-  if (!/^\d+(\.\d+)?$/.test(normalizedValue)) {
+  if (
+    !/^\d+(\.\d+)?$/.test(
+      normalizedValue
+    )
+  ) {
     throw new AppError(
       "Invalid payment amount",
       500,
@@ -36,10 +51,14 @@ const decimalToMinorUnits = (value) => {
     );
   }
 
-  const [wholePart, decimalPart = ""] =
-    normalizedValue.split(".");
+  const [
+    wholePart,
+    decimalPart = "",
+  ] = normalizedValue.split(".");
 
-  if (decimalPart.length > 2) {
+  if (
+    decimalPart.length > 2
+  ) {
     throw new AppError(
       "Payment amount must use at most two decimal places",
       500,
@@ -55,7 +74,11 @@ const decimalToMinorUnits = (value) => {
       MINOR_UNIT_SCALE +
     Number(paddedDecimalPart);
 
-  if (!Number.isSafeInteger(minorUnits)) {
+  if (
+    !Number.isSafeInteger(
+      minorUnits
+    )
+  ) {
     throw new AppError(
       "Payment amount exceeds supported range",
       500,
@@ -66,6 +89,10 @@ const decimalToMinorUnits = (value) => {
   return minorUnits;
 };
 
+/**
+ * Ensure the authenticated customer owns
+ * the order whose payment is being captured.
+ */
 const validateCustomerOrderAccess = async (
   userId,
   order
@@ -99,7 +126,12 @@ const validateCustomerOrderAccess = async (
   return customer;
 };
 
-const validateOrderPayable = (order) => {
+/**
+ * Ensure the order can still receive payment.
+ */
+const validateOrderPayable = (
+  order
+) => {
   if (
     ["cancelled", "completed"].includes(
       order.status
@@ -113,6 +145,10 @@ const validateOrderPayable = (order) => {
   }
 };
 
+/**
+ * Ensure local payment amount and order
+ * grand total are identical.
+ */
 const validatePaymentAmount = (
   payment,
   order
@@ -127,7 +163,10 @@ const validatePaymentAmount = (
       order.grandTotal
     );
 
-  if (paymentAmount !== orderAmount) {
+  if (
+    paymentAmount !==
+    orderAmount
+  ) {
     throw new AppError(
       "Payment amount does not match order amount",
       409,
@@ -138,13 +177,19 @@ const validatePaymentAmount = (
   return orderAmount;
 };
 
+/**
+ * Ensure local payment currency and
+ * order currency are identical.
+ */
 const validatePaymentCurrency = (
   payment,
   order
 ) => {
   if (
-    payment.currency.toUpperCase() !==
-    order.currency.toUpperCase()
+    String(payment.currency)
+      .toUpperCase() !==
+    String(order.currency)
+      .toUpperCase()
   ) {
     throw new AppError(
       "Payment currency does not match order currency",
@@ -154,6 +199,10 @@ const validatePaymentCurrency = (
   }
 };
 
+/**
+ * Validate the payment returned by Razorpay
+ * against our local payment and order.
+ */
 const validateRazorpayPayment = ({
   razorpayPayment,
   payment,
@@ -217,6 +266,15 @@ const validateRazorpayPayment = ({
   }
 };
 
+/**
+ * Persist a successfully captured payment
+ * and synchronize the corresponding order.
+ *
+ * Order synchronization is delegated to the
+ * canonical order service helper so that payment
+ * verification, manual capture, and webhooks
+ * follow the same business rule.
+ */
 const updateCapturedPayment = async ({
   payment,
   order,
@@ -225,36 +283,53 @@ const updateCapturedPayment = async ({
   const capturedAt =
     razorpayPayment.captured_at
       ? new Date(
-          razorpayPayment.captured_at * 1000
+          razorpayPayment.captured_at *
+            1000
         )
-      : payment.capturedAt || new Date();
+      : payment.capturedAt ||
+        new Date();
 
   const updatedPayment =
     await paymentRepository.updateById(
       payment._id,
       {
         status: "captured",
+
         gatewayPaymentId:
           razorpayPayment.id,
+
         method:
           razorpayPayment.method ||
           payment.method ||
           null,
+
         capturedAt,
+
         failureReason: null,
       }
     );
 
-  await orderRepository.updateById(
-    order._id,
-    {
-      paymentStatus: "paid",
-    }
+  await orderService.markOrderPaymentCaptured(
+    order._id
   );
 
   return updatedPayment;
 };
 
+/**
+ * Capture an authorized Razorpay payment.
+ *
+ * Flow:
+ *
+ * 1. Validate order ownership
+ * 2. Validate local payment
+ * 3. Fetch current Razorpay state
+ * 4. If already captured, synchronize locally
+ * 5. Otherwise capture authorized payment
+ * 6. Validate capture response
+ * 7. Persist captured payment
+ * 8. Confirm the order
+ */
 const captureRazorpayPayment = async ({
   orderId,
   userId,
@@ -330,9 +405,9 @@ const captureRazorpayPayment = async ({
       order
     );
 
-  /*
-   * Always ask Razorpay for the current
-   * payment state before attempting capture.
+  /**
+   * Always retrieve the current gateway
+   * state before attempting capture.
    */
   const razorpayPayment =
     await razorpayProvider.fetchPayment(
@@ -346,9 +421,12 @@ const captureRazorpayPayment = async ({
     expectedAmount,
   });
 
-  /*
-   * Idempotent case:
+  /**
+   * Idempotent case.
+   *
    * Razorpay already captured the payment.
+   * We synchronize our local state instead
+   * of attempting another capture.
    */
   if (
     razorpayPayment.status ===
@@ -361,9 +439,9 @@ const captureRazorpayPayment = async ({
     });
   }
 
-  /*
-   * The payment must currently be
-   * authorized before we request capture.
+  /**
+   * Razorpay must report authorized before
+   * we request capture.
    */
   if (
     razorpayPayment.status !==
@@ -376,12 +454,12 @@ const captureRazorpayPayment = async ({
     );
   }
 
-  /*
-   * Local state must also agree with the
-   * expected authorized → captured flow.
+  /**
+   * Local payment must also be authorized.
    */
   if (
-    payment.status !== "authorized"
+    payment.status !==
+    "authorized"
   ) {
     throw new AppError(
       `Local payment cannot be captured from status ${payment.status}`,
@@ -403,11 +481,17 @@ const captureRazorpayPayment = async ({
     );
   }
 
+  /**
+   * Request capture from Razorpay.
+   */
   const capturedPayment =
     await razorpayProvider.capturePayment({
       paymentId:
         payment.gatewayPaymentId,
-      amount: expectedAmount,
+
+      amount:
+        expectedAmount,
+
       currency:
         order.currency,
     });
@@ -427,8 +511,8 @@ const captureRazorpayPayment = async ({
     );
   }
 
-  /*
-   * Validate the capture response again
+  /**
+   * Validate the gateway capture response
    * before changing our database state.
    */
   validateRazorpayPayment({

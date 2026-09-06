@@ -3,6 +3,8 @@ const crypto = require("crypto");
 const paymentRepository = require("../repositories/payment.repository");
 const orderRepository = require("../repositories/order.repository");
 
+const orderService = require("./order.service");
+
 const Customer = require("../models/Customer");
 
 const razorpayProvider = require(
@@ -19,6 +21,12 @@ const {
 const PAYMENT_GATEWAY = "razorpay";
 const MINOR_UNIT_SCALE = 100;
 
+/**
+ * Verify the Razorpay payment signature.
+ *
+ * Razorpay signature payload:
+ * razorpayOrderId|razorpayPaymentId
+ */
 const verifyRazorpaySignature = ({
   razorpayOrderId,
   razorpayPaymentId,
@@ -52,7 +60,10 @@ const verifyRazorpaySignature = ({
       .digest("hex");
 
   const expectedBuffer =
-    Buffer.from(expectedSignature, "utf8");
+    Buffer.from(
+      expectedSignature,
+      "utf8"
+    );
 
   const receivedBuffer =
     Buffer.from(
@@ -87,6 +98,9 @@ const verifyRazorpaySignature = ({
   return true;
 };
 
+/**
+ * Ensure the authenticated user owns the order.
+ */
 const validateCustomerOrderAccess = async (
   userId,
   order
@@ -120,14 +134,25 @@ const validateCustomerOrderAccess = async (
   return customer;
 };
 
+/**
+ * Convert Decimal128/string monetary value
+ * into integer minor units.
+ *
+ * Example:
+ * "2799.00" -> 279900
+ */
 const decimalToMinorUnits = (value) => {
-  const numericValue = Number(
-    value.toString()
-  );
+  const decimalString =
+    value?.toString?.() ??
+    String(value ?? "0");
+
+  const normalizedValue =
+    decimalString.trim();
 
   if (
-    !Number.isFinite(numericValue) ||
-    numericValue < 0
+    !/^\d+(\.\d+)?$/.test(
+      normalizedValue
+    )
   ) {
     throw new AppError(
       "Invalid payment amount",
@@ -136,11 +161,34 @@ const decimalToMinorUnits = (value) => {
     );
   }
 
-  const minorUnits = Math.round(
-    numericValue * MINOR_UNIT_SCALE
-  );
+  const [
+    wholePart = "0",
+    fractionalPart = "",
+  ] = normalizedValue.split(".");
 
-  if (!Number.isSafeInteger(minorUnits)) {
+  if (
+    fractionalPart.length > 2
+  ) {
+    throw new AppError(
+      "Payment amount must use at most two decimal places",
+      500,
+      "INVALID_PAYMENT_AMOUNT"
+    );
+  }
+
+  const normalizedFraction =
+    fractionalPart.padEnd(2, "0");
+
+  const minorUnits =
+    Number(wholePart) *
+      MINOR_UNIT_SCALE +
+    Number(normalizedFraction);
+
+  if (
+    !Number.isSafeInteger(
+      minorUnits
+    )
+  ) {
     throw new AppError(
       "Payment amount exceeds supported range",
       500,
@@ -151,6 +199,10 @@ const decimalToMinorUnits = (value) => {
   return minorUnits;
 };
 
+/**
+ * Validate Razorpay payment against
+ * our local payment and order.
+ */
 const validateRazorpayPayment = ({
   razorpayPayment,
   payment,
@@ -176,7 +228,9 @@ const validateRazorpayPayment = ({
   }
 
   const expectedAmount =
-    decimalToMinorUnits(order.grandTotal);
+    decimalToMinorUnits(
+      order.grandTotal
+    );
 
   if (
     razorpayPayment.amount !==
@@ -190,10 +244,12 @@ const validateRazorpayPayment = ({
   }
 
   if (
-    String(razorpayPayment.currency)
-      .toUpperCase() !==
-    String(order.currency)
-      .toUpperCase()
+    String(
+      razorpayPayment.currency
+    ).toUpperCase() !==
+    String(
+      order.currency
+    ).toUpperCase()
   ) {
     throw new AppError(
       "Razorpay payment currency does not match the order currency",
@@ -217,6 +273,10 @@ const validateRazorpayPayment = ({
   return true;
 };
 
+/**
+ * Map Razorpay payment status
+ * to our internal payment status.
+ */
 const mapRazorpayStatus = (
   razorpayStatus
 ) => {
@@ -242,6 +302,10 @@ const mapRazorpayStatus = (
   }
 };
 
+/**
+ * Map internal payment status
+ * to order payment status.
+ */
 const mapOrderPaymentStatus = (
   paymentStatus
 ) => {
@@ -260,12 +324,33 @@ const mapOrderPaymentStatus = (
   }
 };
 
+/**
+ * Synchronize payment state with order state.
+ *
+ * Captured payment has a special canonical flow:
+ *
+ * payment captured
+ *       ↓
+ * order.paymentStatus = paid
+ *       ↓
+ * pending → confirmed
+ */
 const updateOrderPaymentStatus = async (
   order,
   paymentStatus
 ) => {
+  if (
+    paymentStatus === "captured"
+  ) {
+    return orderService.markOrderPaymentCaptured(
+      order._id
+    );
+  }
+
   const nextOrderPaymentStatus =
-    mapOrderPaymentStatus(paymentStatus);
+    mapOrderPaymentStatus(
+      paymentStatus
+    );
 
   if (!nextOrderPaymentStatus) {
     return order;
@@ -287,6 +372,22 @@ const updateOrderPaymentStatus = async (
   );
 };
 
+/**
+ * Verify a Razorpay payment after
+ * customer-side checkout completion.
+ *
+ * This verifies:
+ * 1. Signature
+ * 2. Order ownership
+ * 3. Local payment ownership
+ * 4. Razorpay payment ownership
+ * 5. Amount
+ * 6. Currency
+ * 7. Payment state transition
+ *
+ * For captured payments, the order is
+ * automatically confirmed.
+ */
 const verifyRazorpayPayment = async ({
   orderId,
   userId,
@@ -359,11 +460,23 @@ const verifyRazorpayPayment = async ({
       razorpayPayment.status
     );
 
+  /**
+   * Idempotent verification.
+   *
+   * Even when the local payment is already
+   * captured, synchronize the order again so
+   * a previously incomplete update can recover.
+   */
   if (
     payment.status === nextStatus &&
     payment.gatewayPaymentId ===
       razorpayPayment.id
   ) {
+    await updateOrderPaymentStatus(
+      order,
+      nextStatus
+    );
+
     return payment;
   }
 
@@ -384,19 +497,27 @@ const verifyRazorpayPayment = async ({
   const paymentUpdate = {
     gatewayPaymentId:
       razorpayPayment.id,
-    status: nextStatus,
+
+    status:
+      nextStatus,
+
     method:
-      razorpayPayment.method || null,
+      razorpayPayment.method ||
+      null,
+
     failureReason:
       razorpayPayment.error_description ||
       null,
   };
 
-  if (nextStatus === "captured") {
+  if (
+    nextStatus === "captured"
+  ) {
     paymentUpdate.capturedAt =
       razorpayPayment.captured_at
         ? new Date(
-            razorpayPayment.captured_at * 1000
+            razorpayPayment.captured_at *
+              1000
           )
         : new Date();
   }
@@ -418,4 +539,5 @@ const verifyRazorpayPayment = async ({
 module.exports = {
   verifyRazorpaySignature,
   verifyRazorpayPayment,
+  decimalToMinorUnits,
 };

@@ -2,34 +2,70 @@ const productRepository = require("../repositories/product.repository");
 const categoryRepository = require("../repositories/category.repository");
 const brandRepository = require("../repositories/brand.repository");
 const AppError = require("../errors/AppError");
+const Vendor = require("../models/Vendor");
 
-const createProduct = async ({
-  data,
-  vendorId,
-}) => {
-  const existingSku = await productRepository.findBySku(data.sku);
+const PRIVILEGED_ROLES = [
+  "admin",
+  "super_admin",
+  "manager",
+];
 
-  if (existingSku) {
+const getVendorIdByUserId = async (userId) => {
+  const vendor = await Vendor.findOne({
+    userId,
+    isActive: true,
+    deletedAt: null,
+  });
+
+  if (!vendor) {
     throw new AppError(
-      "Product SKU already exists",
-      409,
-      "PRODUCT_SKU_ALREADY_EXISTS"
+      "Vendor profile not found",
+      404,
+      "VENDOR_NOT_FOUND"
     );
   }
 
-  const existingSlug = await productRepository.findBySlug(data.slug);
+  return vendor._id;
+};
 
-  if (existingSlug) {
+const resolveActorVendorId = async (actor) => {
+  if (PRIVILEGED_ROLES.includes(actor.role)) {
+    return null;
+  }
+
+  if (actor.role !== "vendor") {
     throw new AppError(
-      "Product slug already exists",
-      409,
-      "PRODUCT_SLUG_ALREADY_EXISTS"
+      "You do not have permission to manage products",
+      403,
+      "INSUFFICIENT_PERMISSIONS"
     );
   }
 
-  const category = await categoryRepository.findById(
-    data.categoryId
-  );
+  return getVendorIdByUserId(actor.id);
+};
+
+const ensureProductOwnership = async (product, actor) => {
+  const actorVendorId = await resolveActorVendorId(actor);
+
+  if (
+    actorVendorId &&
+    (!product.vendorId ||
+      product.vendorId.toString() !==
+        actorVendorId.toString())
+  ) {
+    throw new AppError(
+      "You do not own this product",
+      403,
+      "PRODUCT_OWNERSHIP_REQUIRED"
+    );
+  }
+
+  return actorVendorId;
+};
+
+const validateCategory = async (categoryId) => {
+  const category =
+    await categoryRepository.findById(categoryId);
 
   if (!category || !category.isActive) {
     throw new AppError(
@@ -39,17 +75,79 @@ const createProduct = async ({
     );
   }
 
-  if (data.brandId) {
-    const brand = await brandRepository.findById(data.brandId);
+  return category;
+};
 
-    if (!brand || !brand.isActive) {
-      throw new AppError(
-        "Brand not found or inactive",
-        400,
-        "INVALID_BRAND"
-      );
-    }
+const validateBrand = async (brandId) => {
+  if (!brandId) {
+    return null;
   }
+
+  const brand =
+    await brandRepository.findById(brandId);
+
+  if (!brand || !brand.isActive) {
+    throw new AppError(
+      "Brand not found or inactive",
+      400,
+      "INVALID_BRAND"
+    );
+  }
+
+  return brand;
+};
+
+const ensureUniqueSku = async (sku, currentProductId = null) => {
+  const existingProduct =
+    await productRepository.findBySku(sku);
+
+  if (
+    existingProduct &&
+    (!currentProductId ||
+      existingProduct._id.toString() !==
+        currentProductId.toString())
+  ) {
+    throw new AppError(
+      "Product SKU already exists",
+      409,
+      "PRODUCT_SKU_ALREADY_EXISTS"
+    );
+  }
+};
+
+const ensureUniqueSlug = async (
+  slug,
+  currentProductId = null
+) => {
+  const existingProduct =
+    await productRepository.findBySlug(slug);
+
+  if (
+    existingProduct &&
+    (!currentProductId ||
+      existingProduct._id.toString() !==
+        currentProductId.toString())
+  ) {
+    throw new AppError(
+      "Product slug already exists",
+      409,
+      "PRODUCT_SLUG_ALREADY_EXISTS"
+    );
+  }
+};
+
+const createProduct = async ({
+  data,
+  userId,
+}) => {
+  await ensureUniqueSku(data.sku);
+  await ensureUniqueSlug(data.slug);
+
+  await validateCategory(data.categoryId);
+  await validateBrand(data.brandId);
+
+  const vendorId =
+    await getVendorIdByUserId(userId);
 
   return productRepository.create({
     ...data,
@@ -58,9 +156,10 @@ const createProduct = async ({
 };
 
 const getProductById = async (id) => {
-  const product = await productRepository.findById(id, {
-    publicOnly: true,
-  });
+  const product =
+    await productRepository.findById(id, {
+      publicOnly: true,
+    });
 
   if (!product) {
     throw new AppError(
@@ -74,9 +173,10 @@ const getProductById = async (id) => {
 };
 
 const getProductBySlug = async (slug) => {
-  const product = await productRepository.findBySlug(slug, {
-    publicOnly: true,
-  });
+  const product =
+    await productRepository.findBySlug(slug, {
+      publicOnly: true,
+    });
 
   if (!product) {
     throw new AppError(
@@ -97,15 +197,19 @@ const listProducts = async ({
   vendorId,
   search,
 }) => {
-  const safePage = Math.max(Number(page) || 1, 1);
+  const safePage = Math.max(
+    Number(page) || 1,
+    1
+  );
+
   const safeLimit = Math.min(
     Math.max(Number(limit) || 20, 1),
     100
   );
 
-const filter = {
-  status: "active",
-};
+  const filter = {
+    status: "active",
+  };
 
   if (categoryId) {
     filter.categoryId = categoryId;
@@ -125,13 +229,15 @@ const filter = {
     };
   }
 
-  const skip = (safePage - 1) * safeLimit;
+  const skip =
+    (safePage - 1) * safeLimit;
 
-  const result = await productRepository.list({
-    filter,
-    skip,
-    limit: safeLimit,
-  });
+  const result =
+    await productRepository.list({
+      filter,
+      skip,
+      limit: safeLimit,
+    });
 
   return {
     items: result.items,
@@ -139,7 +245,9 @@ const filter = {
       page: safePage,
       limit: safeLimit,
       total: result.total,
-      totalPages: Math.ceil(result.total / safeLimit),
+      totalPages: Math.ceil(
+        result.total / safeLimit
+      ),
     },
   };
 };
@@ -149,7 +257,8 @@ const updateProduct = async ({
   data,
   actor,
 }) => {
-  const product = await productRepository.findById(id);
+  const product =
+    await productRepository.findById(id);
 
   if (!product) {
     throw new AppError(
@@ -159,88 +268,66 @@ const updateProduct = async ({
     );
   }
 
-  const privilegedRoles = [
-    "admin",
-    "super_admin",
-    "manager",
-  ];
-
-  const isPrivileged = privilegedRoles.includes(actor.role);
+  await ensureProductOwnership(
+    product,
+    actor
+  );
 
   if (
-    !isPrivileged &&
-    product.vendorId.toString() !== actor.id.toString()
+    data.sku &&
+    data.sku !== product.sku
   ) {
-    throw new AppError(
-      "You do not own this product",
-      403,
-      "PRODUCT_OWNERSHIP_REQUIRED"
+    await ensureUniqueSku(
+      data.sku,
+      product._id
     );
   }
 
-  if (data.sku && data.sku !== product.sku) {
-    const existingSku = await productRepository.findBySku(
-      data.sku
+  if (
+    data.slug &&
+    data.slug !== product.slug
+  ) {
+    await ensureUniqueSlug(
+      data.slug,
+      product._id
     );
-
-    if (existingSku) {
-      throw new AppError(
-        "Product SKU already exists",
-        409,
-        "PRODUCT_SKU_ALREADY_EXISTS"
-      );
-    }
-  }
-
-  if (data.slug && data.slug !== product.slug) {
-    const existingSlug =
-      await productRepository.findBySlug(data.slug);
-
-    if (existingSlug) {
-      throw new AppError(
-        "Product slug already exists",
-        409,
-        "PRODUCT_SLUG_ALREADY_EXISTS"
-      );
-    }
   }
 
   if (data.categoryId) {
-    const category = await categoryRepository.findById(
+    await validateCategory(
       data.categoryId
     );
-
-    if (!category || !category.isActive) {
-      throw new AppError(
-        "Category not found or inactive",
-        400,
-        "INVALID_CATEGORY"
-      );
-    }
   }
 
   if (data.brandId) {
-    const brand = await brandRepository.findById(
+    await validateBrand(
       data.brandId
     );
-
-    if (!brand || !brand.isActive) {
-      throw new AppError(
-        "Brand not found or inactive",
-        400,
-        "INVALID_BRAND"
-      );
-    }
   }
 
-  return productRepository.updateById(id, data);
+  /*
+   * Vendor ownership is immutable.
+   * Never allow a vendor to transfer a product
+   * to another vendor through the update payload.
+   */
+  const safeData = {
+    ...data,
+  };
+
+  delete safeData.vendorId;
+
+  return productRepository.updateById(
+    id,
+    safeData
+  );
 };
 
 const deleteProduct = async ({
   id,
   actor,
 }) => {
-  const product = await productRepository.findById(id);
+  const product =
+    await productRepository.findById(id);
 
   if (!product) {
     throw new AppError(
@@ -250,27 +337,14 @@ const deleteProduct = async ({
     );
   }
 
-  const privilegedRoles = [
-    "admin",
-    "super_admin",
-    "manager",
-  ];
-
-  const isPrivileged = privilegedRoles.includes(actor.role);
-
-  if (
-    !isPrivileged &&
-    product.vendorId.toString() !== actor.id.toString()
-  ) {
-    throw new AppError(
-      "You do not own this product",
-      403,
-      "PRODUCT_OWNERSHIP_REQUIRED"
-    );
-  }
+  await ensureProductOwnership(
+    product,
+    actor
+  );
 
   return productRepository.softDeleteById(id);
 };
+
 module.exports = {
   createProduct,
   getProductById,
@@ -278,4 +352,5 @@ module.exports = {
   listProducts,
   updateProduct,
   deleteProduct,
+  getVendorIdByUserId,
 };

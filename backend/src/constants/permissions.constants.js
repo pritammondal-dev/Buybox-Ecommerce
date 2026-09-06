@@ -10,6 +10,12 @@ const PERMISSIONS = Object.freeze({
   WAREHOUSES_READ: "warehouses:read",
   WAREHOUSES_MANAGE: "warehouses:manage",
 
+  SHIPMENTS_READ: "shipments:read",
+  SHIPMENTS_MANAGE: "shipments:manage",
+
+  SHIPMENTS_READ_OWN: "shipments:read_own",
+  SHIPMENTS_MANAGE_OWN: "shipments:manage_own",
+
   ORDERS_READ: "orders:read",
   ORDERS_MANAGE: "orders:manage",
 

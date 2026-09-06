@@ -733,6 +733,70 @@ const transitionOrderStatus = async (
   );
 };
 
+const markOrderPaymentCaptured = async (
+  orderId,
+  options = {}
+) => {
+  const order =
+    await orderRepository.findById(
+      orderId,
+      options
+    );
+
+  if (!order) {
+    throw new AppError(
+      "Order not found",
+      404,
+      "ORDER_NOT_FOUND"
+    );
+  }
+
+  // Idempotent case: payment is already marked paid.
+  if (
+    order.paymentStatus === "paid" &&
+    order.status === "confirmed"
+  ) {
+    return order;
+  }
+
+  // A paid order must never be moved backwards.
+  if (
+    order.paymentStatus === "paid"
+  ) {
+    return order;
+  }
+
+  if (
+    !["pending", "confirmed"].includes(
+      order.status
+    )
+  ) {
+    throw new AppError(
+      `Order cannot be confirmed from status ${order.status}`,
+      409,
+      "ORDER_CANNOT_BE_CONFIRMED"
+    );
+  }
+
+  const update = {
+    paymentStatus: "paid",
+  };
+
+  if (order.status === "pending") {
+    update.status = "confirmed";
+
+    if (!order.placedAt) {
+      update.placedAt = new Date();
+    }
+  }
+
+  return orderRepository.updateById(
+    orderId,
+    update,
+    options
+  );
+};
+
 module.exports = {
   decimalToMinorUnits,
   minorUnitsToDecimalString,
@@ -746,4 +810,5 @@ module.exports = {
   getOrderById,
   getCustomerOrders,
   transitionOrderStatus,
+  markOrderPaymentCaptured,
 };
