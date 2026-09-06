@@ -1,4 +1,5 @@
 const campaignService = require("../services/campaign.service");
+const campaignAutomationService = require("../services/campaign-automation.service");
 const apiResponse = require("../utils/apiResponse");
 
 const createCampaign = async (req, res, next) => {
@@ -61,13 +62,14 @@ const updateCampaign = async (req, res, next) => {
 
 const activateCampaign = async (req, res, next) => {
   try {
-    const campaign = await campaignService.activateCampaign(
-      req.params.campaignId
-    );
+    const result =
+      await campaignAutomationService.activateCampaignWithCoupons(
+        req.params.campaignId
+      );
 
     return apiResponse.sendSuccess(res, {
       message: "Campaign activated successfully",
-      data: campaign,
+      data: result,
     });
   } catch (error) {
     next(error);
