@@ -19,6 +19,7 @@ const vendorPayoutRoutes = require("./vendor-payout.routes");
 const couponRoutes = require("./coupon.routes");
 const couponRedemptionRoutes = require("./coupon-redemption.routes");
 const campaignRoutes = require("./campaign.routes");
+const campaignPerformanceRoutes = require("./campaign-performance.routes");
 
 const router = express.Router();
 
@@ -48,5 +49,7 @@ router.use("/finance/payouts", vendorPayoutRoutes);
 router.use("/coupons", couponRoutes);
 router.use("/coupon-redemptions", couponRedemptionRoutes);
 router.use("/campaigns", campaignRoutes);
+router.use("/campaign-performance", campaignPerformanceRoutes);
+
 
 module.exports = router;
