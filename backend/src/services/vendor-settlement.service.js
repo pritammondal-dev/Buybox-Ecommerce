@@ -234,8 +234,36 @@ const markPayable = async (settlementId) => {
   });
 };
 
+const getSettlementById = async (settlementId) => {
+  if (!mongoose.isValidObjectId(settlementId)) {
+    throw new AppError("Invalid settlement ID", 400, "INVALID_SETTLEMENT_ID");
+  }
+
+  const settlement = await vendorSettlementRepository.findById(settlementId);
+
+  if (!settlement) {
+    throw new AppError(
+      "Settlement not found",
+      404,
+      "SETTLEMENT_NOT_FOUND"
+    );
+  }
+
+  return settlement;
+};
+
+const getSettlementsByVendorId = async (vendorId) => {
+  if (!mongoose.isValidObjectId(vendorId)) {
+    throw new AppError("Invalid vendor ID", 400, "INVALID_VENDOR_ID");
+  }
+
+  return vendorSettlementRepository.findByVendorId(vendorId);
+};
+
 module.exports = {
   createSettlement,
+  getSettlementById,
+  getSettlementsByVendorId,
   markProcessing,
   markPayable,
   calculateNetPayable,

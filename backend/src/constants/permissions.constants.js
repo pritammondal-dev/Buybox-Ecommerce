@@ -28,6 +28,9 @@ const PERMISSIONS = Object.freeze({
   PAYMENTS_READ: "payments:read",
   PAYMENTS_MANAGE: "payments:manage",
 
+  FINANCE_READ: "finance:read",
+  FINANCE_MANAGE: "finance:manage",
+
   REPORTS_READ: "reports:read",
 
   SETTINGS_READ: "settings:read",

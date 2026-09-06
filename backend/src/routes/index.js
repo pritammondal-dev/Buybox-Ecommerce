@@ -13,6 +13,9 @@ const inventoryRoutes = require("./inventory.routes");
 const cartRoutes = require("./cart.routes");
 const orderRoutes = require("./order.routes");
 const paymentRoutes = require("./payment.routes");
+const financialLedgerRoutes = require("./financial-ledger.routes");
+const vendorSettlementRoutes = require("./vendor-settlement.routes");
+const vendorPayoutRoutes = require("./vendor-payout.routes");
 
 const router = express.Router();
 
@@ -36,5 +39,8 @@ router.use("/inventory", inventoryRoutes);
 router.use("/cart", cartRoutes);
 router.use("/orders", orderRoutes);
 router.use("/payments", paymentRoutes);
+router.use("/finance/ledger", financialLedgerRoutes);
+router.use("/finance/settlements", vendorSettlementRoutes);
+router.use("/finance/payouts", vendorPayoutRoutes);
 
 module.exports = router;
