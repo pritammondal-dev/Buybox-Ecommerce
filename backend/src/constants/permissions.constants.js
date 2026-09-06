@@ -35,6 +35,11 @@ const PERMISSIONS = Object.freeze({
 
   SETTINGS_READ: "settings:read",
   SETTINGS_MANAGE: "settings:manage",
+
+  COUPONS_READ: "coupons:read",
+  COUPONS_MANAGE: "coupons:manage",
+  CAMPAIGNS_READ: "campaigns:read",
+  CAMPAIGNS_MANAGE: "campaigns:manage",
 });
 
 module.exports = {

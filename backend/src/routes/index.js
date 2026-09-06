@@ -16,6 +16,9 @@ const paymentRoutes = require("./payment.routes");
 const financialLedgerRoutes = require("./financial-ledger.routes");
 const vendorSettlementRoutes = require("./vendor-settlement.routes");
 const vendorPayoutRoutes = require("./vendor-payout.routes");
+const couponRoutes = require("./coupon.routes");
+const couponRedemptionRoutes = require("./coupon-redemption.routes");
+
 
 const router = express.Router();
 
@@ -42,5 +45,7 @@ router.use("/payments", paymentRoutes);
 router.use("/finance/ledger", financialLedgerRoutes);
 router.use("/finance/settlements", vendorSettlementRoutes);
 router.use("/finance/payouts", vendorPayoutRoutes);
+router.use("/coupons", couponRoutes);
+router.use("/coupon-redemptions", couponRedemptionRoutes);
 
 module.exports = router;

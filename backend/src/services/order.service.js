@@ -6,11 +6,15 @@ const addressRepository = require("../repositories/address.repository");
 const inventoryRepository = require("../repositories/inventory.repository");
 
 const inventoryService = require("./inventory.service");
+const couponService = require("./coupon.service");
+const couponRedemptionService = require("./coupon-redemption.service");
+
 const withTransaction = require("../utils/withTransaction");
 
 const ProductVariant = require("../models/ProductVariant");
 const Product = require("../models/Product");
 const Customer = require("../models/Customer");
+const Order = require("../models/Order");
 
 const AppError = require("../errors/AppError");
 
@@ -43,11 +47,12 @@ const decimalToMinorUnits = (value) => {
   }
 
   const sign = normalizedValue.startsWith("-") ? -1 : 1;
-
   const unsignedValue = normalizedValue.replace("-", "");
 
-  const [wholePart = "0", fractionalPart = ""] =
-    unsignedValue.split(".");
+  const [
+    wholePart = "0",
+    fractionalPart = "",
+  ] = unsignedValue.split(".");
 
   const normalizedFraction = fractionalPart
     .padEnd(2, "0")
@@ -89,7 +94,6 @@ const minorUnitsToDecimalString = (minorUnits) => {
   }
 
   const sign = minorUnits < 0 ? "-" : "";
-
   const absoluteValue = Math.abs(minorUnits);
 
   const wholePart = Math.floor(
@@ -232,9 +236,7 @@ const validateCartItems = async (cart) => {
     const cartCurrency =
       cart.currency || DEFAULT_CURRENCY;
 
-    if (
-      variantCurrency !== cartCurrency
-    ) {
+    if (variantCurrency !== cartCurrency) {
       throw new AppError(
         "Cart currency does not match product currency",
         400,
@@ -248,8 +250,7 @@ const validateCartItems = async (cart) => {
       decimalToMinorUnits(unitPrice);
 
     const lineTotalMinorUnits =
-      unitPriceMinorUnits *
-      cartItem.quantity;
+      unitPriceMinorUnits * cartItem.quantity;
 
     if (
       !Number.isSafeInteger(
@@ -270,27 +271,20 @@ const validateCartItems = async (cart) => {
 
     orderItems.push({
       productId: product._id,
-
       productVariantId: variant._id,
-
       vendorId: product.vendorId,
 
+      // Used transiently by the coupon engine.
+      categoryId: product.categoryId,
+
       sku: variant.sku,
-
       productName: product.name,
-
       variantName: variant.name || "",
-
       quantity: cartItem.quantity,
-
       unitPrice,
-
       discountTotal: "0.00",
-
       taxTotal: "0.00",
-
       lineTotal,
-
       currency: variantCurrency,
     });
   }
@@ -302,19 +296,18 @@ const validateCartItems = async (cart) => {
  * Calculate authoritative checkout totals.
  *
  * Discounts, tax and shipping engines are not active yet,
- * so those values remain zero for this phase.
+ * except for the coupon discount supplied by checkout.
  */
 const calculateOrderTotals = (
   orderItems,
-  currency
+  currency,
+  couponDiscountMinorUnits = 0
 ) => {
   let subtotalMinorUnits = 0;
 
   for (const item of orderItems) {
     subtotalMinorUnits +=
-      decimalToMinorUnits(
-        item.lineTotal
-      );
+      decimalToMinorUnits(item.lineTotal);
 
     if (
       !Number.isSafeInteger(
@@ -329,13 +322,26 @@ const calculateOrderTotals = (
     }
   }
 
-  const discountTotalMinorUnits = 0;
+  if (
+    !Number.isSafeInteger(
+      couponDiscountMinorUnits
+    ) ||
+    couponDiscountMinorUnits < 0 ||
+    couponDiscountMinorUnits > subtotalMinorUnits
+  ) {
+    throw new AppError(
+      "Invalid coupon discount",
+      400,
+      "INVALID_COUPON_DISCOUNT"
+    );
+  }
+
   const taxTotalMinorUnits = 0;
   const shippingTotalMinorUnits = 0;
 
   const grandTotalMinorUnits =
     subtotalMinorUnits -
-    discountTotalMinorUnits +
+    couponDiscountMinorUnits +
     taxTotalMinorUnits +
     shippingTotalMinorUnits;
 
@@ -349,7 +355,7 @@ const calculateOrderTotals = (
 
     discountTotal:
       minorUnitsToDecimalString(
-        discountTotalMinorUnits
+        couponDiscountMinorUnits
       ),
 
     taxTotal:
@@ -372,9 +378,6 @@ const calculateOrderTotals = (
 /**
  * Reserve inventory for every order item
  * inside the caller's MongoDB transaction.
- *
- * One warehouse is selected for each order line.
- * The reservation itself is atomic at the database level.
  */
 const reserveInventoryForOrderItems = async (
   orderItems,
@@ -454,10 +457,13 @@ const reserveInventoryForOrderItems = async (
  *
  * 1. Load active cart
  * 2. Validate authoritative catalog data
- * 3. Calculate totals
- * 4. Reserve inventory
- * 5. Create order
- * 6. Convert cart
+ * 3. Determine first-order status
+ * 4. Validate coupon
+ * 5. Calculate totals
+ * 6. Reserve inventory
+ * 7. Create order
+ * 8. Redeem coupon
+ * 9. Convert cart
  *
  * Payment remains pending.
  *
@@ -467,7 +473,8 @@ const reserveInventoryForOrderItems = async (
  */
 const createOrderFromCurrentCart = async (
   userId,
-  shippingAddressId
+  shippingAddressId,
+  couponCode = null
 ) => {
   const customer =
     await validateCustomer(userId);
@@ -500,10 +507,63 @@ const createOrderFromCurrentCart = async (
     const currency =
       cart.currency || DEFAULT_CURRENCY;
 
-    const totals =
+    /*
+     * Calculate subtotal before applying coupon.
+     */
+    const subtotalTotals =
       calculateOrderTotals(
         orderItems,
         currency
+      );
+
+    /*
+     * Determine first-order status from the database.
+     *
+     * The customer cannot supply this value.
+     */
+    const previousOrder =
+      await Order.findOne({
+        customerId: customer._id,
+      })
+        .select("_id")
+        .session(session)
+        .lean();
+
+    const isFirstOrder =
+      !previousOrder;
+
+    let couponResult = null;
+
+    if (couponCode) {
+      couponResult =
+        await couponService.validateCoupon({
+          code: couponCode,
+          customerId: customer._id,
+          orderAmount:
+            Number(subtotalTotals.subtotal),
+          items: orderItems.map((item) => ({
+            productId: item.productId,
+            categoryId: item.categoryId,
+            vendorId: item.vendorId,
+            lineTotal: item.lineTotal,
+            quantity: item.quantity,
+          })),
+          isFirstOrder,
+        });
+    }
+
+    const couponDiscountMinorUnits =
+      couponResult
+        ? decimalToMinorUnits(
+            couponResult.discountAmount
+          )
+        : 0;
+
+    const totals =
+      calculateOrderTotals(
+        orderItems,
+        currency,
+        couponDiscountMinorUnits
       );
 
     const orderNumber =
@@ -532,6 +592,12 @@ const createOrderFromCurrentCart = async (
       );
     }
 
+    /*
+     * Save the coupon snapshot directly on the order.
+     *
+     * The order keeps the exact coupon identity used at
+     * checkout even if the coupon is later changed.
+     */
     const order =
       await orderRepository.create(
         {
@@ -542,6 +608,12 @@ const createOrderFromCurrentCart = async (
 
           storeId:
             cart.storeId || null,
+
+          couponId:
+            couponResult?.coupon?._id || null,
+
+          couponCode:
+            couponResult?.coupon?.code || null,
 
           status: "pending",
 
@@ -596,6 +668,29 @@ const createOrderFromCurrentCart = async (
         },
         { session }
       );
+
+    /*
+     * Record coupon usage using the newly created order.
+     *
+     * The same MongoDB session is passed through so:
+     *
+     * Order + inventory reservation + coupon redemption
+     * either all commit or all roll back.
+     */
+    if (couponResult) {
+      await couponRedemptionService.redeemCoupon({
+        couponId:
+          couponResult.coupon._id,
+
+        customerId:
+          customer._id,
+
+        orderId:
+          order._id,
+
+        session,
+      });
+    }
 
     const convertedCart =
       await cartRepository.convertActiveCart(
@@ -712,18 +807,12 @@ const transitionOrderStatus = async (
     update.placedAt = new Date();
   }
 
-  if (
-    nextStatus === "cancelled"
-  ) {
-    update.cancelledAt =
-      new Date();
+  if (nextStatus === "cancelled") {
+    update.cancelledAt = new Date();
   }
 
-  if (
-    nextStatus === "completed"
-  ) {
-    update.completedAt =
-      new Date();
+  if (nextStatus === "completed") {
+    update.completedAt = new Date();
   }
 
   return orderRepository.updateById(
@@ -733,6 +822,9 @@ const transitionOrderStatus = async (
   );
 };
 
+/**
+ * Synchronize captured payment state with the order.
+ */
 const markOrderPaymentCaptured = async (
   orderId,
   options = {}
@@ -751,7 +843,9 @@ const markOrderPaymentCaptured = async (
     );
   }
 
-  // Idempotent case: payment is already marked paid.
+  /*
+   * Idempotent case: payment is already marked paid.
+   */
   if (
     order.paymentStatus === "paid" &&
     order.status === "confirmed"
@@ -759,7 +853,9 @@ const markOrderPaymentCaptured = async (
     return order;
   }
 
-  // A paid order must never be moved backwards.
+  /*
+   * A paid order must never be moved backwards.
+   */
   if (
     order.paymentStatus === "paid"
   ) {
@@ -812,3 +908,4 @@ module.exports = {
   transitionOrderStatus,
   markOrderPaymentCaptured,
 };
+

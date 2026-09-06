@@ -1,11 +1,14 @@
 const orderService = require("../services/order.service");
+
 const apiResponse = require("../utils/apiResponse");
 
 const createOrder = async (req, res) => {
-  const order = await orderService.createOrderFromCurrentCart(
-    req.user.id,
-    req.body.shippingAddressId
-  );
+  const order =
+    await orderService.createOrderFromCurrentCart(
+      req.user.id,
+      req.body.shippingAddressId,
+      req.body.couponCode || null
+    );
 
   return apiResponse.sendSuccess(res, {
     statusCode: 201,
@@ -15,9 +18,10 @@ const createOrder = async (req, res) => {
 };
 
 const getMyOrders = async (req, res) => {
-  const orders = await orderService.getCustomerOrders(
-    req.user.id
-  );
+  const orders =
+    await orderService.getCustomerOrders(
+      req.user.id
+    );
 
   return apiResponse.sendSuccess(res, {
     message: "Orders retrieved successfully",
@@ -26,10 +30,11 @@ const getMyOrders = async (req, res) => {
 };
 
 const getMyOrderById = async (req, res) => {
-  const order = await orderService.getOrderById(
-    req.params.id,
-    req.user.id
-  );
+  const order =
+    await orderService.getOrderById(
+      req.params.id,
+      req.user.id
+    );
 
   return apiResponse.sendSuccess(res, {
     message: "Order retrieved successfully",

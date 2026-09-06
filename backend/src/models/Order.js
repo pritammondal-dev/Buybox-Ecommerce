@@ -15,17 +15,17 @@ const orderItemSchema = new mongoose.Schema(
     },
 
     warehouseId: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "Warehouse",
-  required: true,
-},
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Warehouse",
+      required: true,
+    },
 
-   vendorId: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "Vendor",
-  required: true,
-  index: true,
-},
+    vendorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Vendor",
+      required: true,
+      index: true,
+    },
 
     sku: {
       type: String,
@@ -121,6 +121,27 @@ const orderSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       default: null,
       index: true,
+    },
+
+    /*
+     * Coupon snapshot.
+     *
+     * Keeping the coupon ID and code on the order preserves
+     * which promotion was actually applied even if the coupon
+     * is later edited or deactivated.
+     */
+    couponId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Coupon",
+      default: null,
+      index: true,
+    },
+
+    couponCode: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
     },
 
     status: {
@@ -302,12 +323,25 @@ const orderSchema = new mongoose.Schema(
   }
 );
 
-orderSchema.index({ customerId: 1, createdAt: -1 });
-orderSchema.index({ customerId: 1, status: 1 });
-orderSchema.index({ status: 1, paymentStatus: 1 });
+orderSchema.index({
+  customerId: 1,
+  createdAt: -1,
+});
+
+orderSchema.index({
+  customerId: 1,
+  status: 1,
+});
+
+orderSchema.index({
+  status: 1,
+  paymentStatus: 1,
+});
+
 orderSchema.index({
   "items.vendorId": 1,
   status: 1,
 });
 
 module.exports = mongoose.model("Order", orderSchema);
+
