@@ -1,4 +1,6 @@
+const mongoose = require("mongoose");
 const User = require("../models/User");
+const Customer = require("../models/Customer");
 const RefreshToken = require("../models/RefreshToken");
 
 const {
@@ -22,34 +24,62 @@ const registerUser = async ({
 }) => {
   const normalizedEmail = email.toLowerCase().trim();
 
-  const existingUser = await User.findOne({
-    email: normalizedEmail,
-  });
+  const session = await mongoose.startSession();
 
-  if (existingUser) {
-    throw new AppError(
-      "Email is already registered",
-      409,
-      "EMAIL_ALREADY_EXISTS"
-    );
+  try {
+    let result;
+
+    await session.withTransaction(async () => {
+      const existingUser = await User.findOne({
+        email: normalizedEmail,
+      }).session(session);
+
+      if (existingUser) {
+        throw new AppError(
+          "Email is already registered",
+          409,
+          "EMAIL_ALREADY_EXISTS"
+        );
+      }
+
+      const passwordHash = await hashPassword(password);
+
+      const user = await User.create(
+        [
+          {
+            email: normalizedEmail,
+            password: passwordHash,
+            firstName,
+            lastName,
+          },
+        ],
+        { session }
+      );
+
+      const createdUser = user[0];
+
+      await Customer.create(
+        [
+          {
+            userId: createdUser._id,
+          },
+        ],
+        { session }
+      );
+
+      result = {
+        id: createdUser._id,
+        email: createdUser.email,
+        firstName: createdUser.firstName,
+        lastName: createdUser.lastName,
+        role: createdUser.role,
+      };
+    });
+
+    return result;
+  } finally {
+    await session.endSession();
   }
-
-  const passwordHash = await hashPassword(password);
-
-  const user = await User.create({
-    email: normalizedEmail,
-    password: passwordHash,
-    firstName,
-    lastName,
-  });
-
-  return {
-    id: user._id,
-    email: user.email,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    role: user.role,
-  };
 };
 
 const loginUser = async ({

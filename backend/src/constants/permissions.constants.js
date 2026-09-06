@@ -44,6 +44,9 @@ const PERMISSIONS = Object.freeze({
 
   REVIEWS_READ: "reviews:read",
   REVIEWS_MANAGE: "reviews:manage",
+
+  SUPPORT_TICKETS_READ: "support_tickets:read",
+  SUPPORT_TICKETS_MANAGE: "support_tickets:manage",
 });
 
 module.exports = {
