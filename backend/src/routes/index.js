@@ -18,7 +18,7 @@ const vendorSettlementRoutes = require("./vendor-settlement.routes");
 const vendorPayoutRoutes = require("./vendor-payout.routes");
 const couponRoutes = require("./coupon.routes");
 const couponRedemptionRoutes = require("./coupon-redemption.routes");
-
+const campaignRoutes = require("./campaign.routes");
 
 const router = express.Router();
 
@@ -47,5 +47,6 @@ router.use("/finance/settlements", vendorSettlementRoutes);
 router.use("/finance/payouts", vendorPayoutRoutes);
 router.use("/coupons", couponRoutes);
 router.use("/coupon-redemptions", couponRedemptionRoutes);
+router.use("/campaigns", campaignRoutes);
 
 module.exports = router;
