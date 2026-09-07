@@ -23,6 +23,8 @@ const campaignPerformanceRoutes = require("./campaign-performance.routes");
 const reviewRoutes = require("./review.routes");
 const supportTicketRoutes = require("./support-ticket.routes");
 const supportTicketMessageRoutes = require("./support-ticket-message.routes");
+const cmsPageRoutes = require("./cms-page.routes");
+const storefrontBannerRoutes = require("./storefront-banner.routes");
 
 const router = express.Router();
 
@@ -56,5 +58,7 @@ router.use("/campaign-performance", campaignPerformanceRoutes);
 router.use("/reviews", reviewRoutes);
 router.use("/support-tickets", supportTicketRoutes);
 router.use("/support-tickets", supportTicketMessageRoutes);
+router.use("/cms/pages", cmsPageRoutes);
+router.use("/storefront/banners", storefrontBannerRoutes);
 
 module.exports = router;
