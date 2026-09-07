@@ -34,6 +34,7 @@ const storefrontHomepageRoutes = require("./storefront-homepage.routes");
 const storefrontSectionRoutes = require("./storefront-section.routes");
 const storefrontAnnouncementBarRoutes = require("./storefront-announcement-bar.routes");
 const storefrontMediaRoutes = require("./storefront-media.routes");
+const storefrontPublicationRoutes = require("./storefront-publication.routes");
 
 
 const router = express.Router();
@@ -79,5 +80,6 @@ router.use("/storefront/homepages",storefrontHomepageRoutes);
 router.use("/storefront/sections",storefrontSectionRoutes);
 router.use("/storefront/announcement-bars",storefrontAnnouncementBarRoutes);
 router.use("/storefront/media",storefrontMediaRoutes);
+router.use("/storefront/publications",storefrontPublicationRoutes);
 
 module.exports = router;
