@@ -8,12 +8,15 @@ const inventoryRepository = require("../repositories/inventory.repository");
 const inventoryService = require("./inventory.service");
 const couponService = require("./coupon.service");
 const couponRedemptionService = require("./coupon-redemption.service");
+const notificationService = require("./notification");
+const notificationOutboxService = require("./notification-outbox.service");
 
 const withTransaction = require("../utils/withTransaction");
 
 const ProductVariant = require("../models/ProductVariant");
 const Product = require("../models/Product");
 const Customer = require("../models/Customer");
+const User = require("../models/User");
 const Order = require("../models/Order");
 
 const AppError = require("../errors/AppError");
@@ -36,7 +39,8 @@ const decimalToMinorUnits = (value) => {
   const decimalString =
     value?.toString?.() ?? String(value ?? "0");
 
-  const normalizedValue = decimalString.trim();
+  const normalizedValue =
+    decimalString.trim();
 
   if (!/^-?\d+(\.\d+)?$/.test(normalizedValue)) {
     throw new AppError(
@@ -46,17 +50,23 @@ const decimalToMinorUnits = (value) => {
     );
   }
 
-  const sign = normalizedValue.startsWith("-") ? -1 : 1;
-  const unsignedValue = normalizedValue.replace("-", "");
+  const sign =
+    normalizedValue.startsWith("-")
+      ? -1
+      : 1;
+
+  const unsignedValue =
+    normalizedValue.replace("-", "");
 
   const [
     wholePart = "0",
     fractionalPart = "",
   ] = unsignedValue.split(".");
 
-  const normalizedFraction = fractionalPart
-    .padEnd(2, "0")
-    .slice(0, 2);
+  const normalizedFraction =
+    fractionalPart
+      .padEnd(2, "0")
+      .slice(0, 2);
 
   const wholeMinorUnits =
     Number(wholePart) * MINOR_UNIT_SCALE;
@@ -65,7 +75,8 @@ const decimalToMinorUnits = (value) => {
     Number(normalizedFraction);
 
   const minorUnits =
-    wholeMinorUnits + fractionalMinorUnits;
+    wholeMinorUnits +
+    fractionalMinorUnits;
 
   if (!Number.isSafeInteger(minorUnits)) {
     throw new AppError(
@@ -84,7 +95,9 @@ const decimalToMinorUnits = (value) => {
  * Example:
  * 279900 -> "2799.00"
  */
-const minorUnitsToDecimalString = (minorUnits) => {
+const minorUnitsToDecimalString = (
+  minorUnits
+) => {
   if (!Number.isSafeInteger(minorUnits)) {
     throw new AppError(
       "Invalid minor unit amount",
@@ -93,8 +106,11 @@ const minorUnitsToDecimalString = (minorUnits) => {
     );
   }
 
-  const sign = minorUnits < 0 ? "-" : "";
-  const absoluteValue = Math.abs(minorUnits);
+  const sign =
+    minorUnits < 0 ? "-" : "";
+
+  const absoluteValue =
+    Math.abs(minorUnits);
 
   const wholePart = Math.floor(
     absoluteValue / MINOR_UNIT_SCALE
@@ -128,11 +144,12 @@ const generateOrderNumber = () => {
  * to the authenticated user.
  */
 const validateCustomer = async (userId) => {
-  const customer = await Customer.findOne({
-    userId,
-    isActive: true,
-    deletedAt: null,
-  });
+  const customer =
+    await Customer.findOne({
+      userId,
+      isActive: true,
+      deletedAt: null,
+    });
 
   if (!customer) {
     throw new AppError(
@@ -178,7 +195,10 @@ const getShippingAddress = async (
  * Cart priceSnapshot is intentionally NOT trusted.
  */
 const validateCartItems = async (cart) => {
-  if (!cart || cart.status !== "active") {
+  if (
+    !cart ||
+    cart.status !== "active"
+  ) {
     throw new AppError(
       "Active cart not found",
       404,
@@ -231,12 +251,16 @@ const validateCartItems = async (cart) => {
     }
 
     const variantCurrency =
-      variant.currency || DEFAULT_CURRENCY;
+      variant.currency ||
+      DEFAULT_CURRENCY;
 
     const cartCurrency =
-      cart.currency || DEFAULT_CURRENCY;
+      cart.currency ||
+      DEFAULT_CURRENCY;
 
-    if (variantCurrency !== cartCurrency) {
+    if (
+      variantCurrency !== cartCurrency
+    ) {
       throw new AppError(
         "Cart currency does not match product currency",
         400,
@@ -250,7 +274,8 @@ const validateCartItems = async (cart) => {
       decimalToMinorUnits(unitPrice);
 
     const lineTotalMinorUnits =
-      unitPriceMinorUnits * cartItem.quantity;
+      unitPriceMinorUnits *
+      cartItem.quantity;
 
     if (
       !Number.isSafeInteger(
@@ -273,10 +298,7 @@ const validateCartItems = async (cart) => {
       productId: product._id,
       productVariantId: variant._id,
       vendorId: product.vendorId,
-
-      // Used transiently by the coupon engine.
       categoryId: product.categoryId,
-
       sku: variant.sku,
       productName: product.name,
       variantName: variant.name || "",
@@ -307,7 +329,9 @@ const calculateOrderTotals = (
 
   for (const item of orderItems) {
     subtotalMinorUnits +=
-      decimalToMinorUnits(item.lineTotal);
+      decimalToMinorUnits(
+        item.lineTotal
+      );
 
     if (
       !Number.isSafeInteger(
@@ -327,7 +351,8 @@ const calculateOrderTotals = (
       couponDiscountMinorUnits
     ) ||
     couponDiscountMinorUnits < 0 ||
-    couponDiscountMinorUnits > subtotalMinorUnits
+    couponDiscountMinorUnits >
+      subtotalMinorUnits
   ) {
     throw new AppError(
       "Invalid coupon discount",
@@ -379,97 +404,82 @@ const calculateOrderTotals = (
  * Reserve inventory for every order item
  * inside the caller's MongoDB transaction.
  */
-const reserveInventoryForOrderItems = async (
-  orderItems,
-  orderNumber,
-  userId,
-  session
-) => {
-  for (const item of orderItems) {
-    const inventories =
-      await inventoryRepository.findByVariant(
-        item.productVariantId,
-        { session }
-      );
-
-    if (
-      !inventories ||
-      inventories.length === 0
-    ) {
-      throw new AppError(
-        `No inventory is configured for SKU ${item.sku}`,
-        409,
-        "INVENTORY_NOT_CONFIGURED"
-      );
-    }
-
-    let reservedInventory = null;
-
-    for (const inventory of inventories) {
-      const available =
-        inventory.onHand -
-        inventory.reserved;
-
-      if (available < item.quantity) {
-        continue;
-      }
-
-      reservedInventory =
-        await inventoryService.reserveStockInTransaction(
-          inventory._id,
-          item.quantity,
-          {
-            referenceType: "order",
-            referenceId: orderNumber,
-            actorUserId: userId,
-            notes:
-              "Inventory reserved during checkout",
-          },
-          session
+const reserveInventoryForOrderItems =
+  async (
+    orderItems,
+    orderNumber,
+    userId,
+    session
+  ) => {
+    for (const item of orderItems) {
+      const inventories =
+        await inventoryRepository.findByVariant(
+          item.productVariantId,
+          { session }
         );
 
-      if (reservedInventory) {
-        break;
+      if (
+        !inventories ||
+        inventories.length === 0
+      ) {
+        throw new AppError(
+          `No inventory is configured for SKU ${item.sku}`,
+          409,
+          "INVENTORY_NOT_CONFIGURED"
+        );
       }
+
+      let reservedInventory = null;
+
+      for (const inventory of inventories) {
+        const available =
+          inventory.onHand -
+          inventory.reserved;
+
+        if (
+          available < item.quantity
+        ) {
+          continue;
+        }
+
+        reservedInventory =
+          await inventoryService
+            .reserveStockInTransaction(
+              inventory._id,
+              item.quantity,
+              {
+                referenceType: "order",
+                referenceId: orderNumber,
+                actorUserId: userId,
+                notes:
+                  "Inventory reserved during checkout",
+              },
+              session
+            );
+
+        if (reservedInventory) {
+          break;
+        }
+      }
+
+      if (!reservedInventory) {
+        throw new AppError(
+          `Insufficient stock for SKU ${item.sku}`,
+          409,
+          "INSUFFICIENT_STOCK"
+        );
+      }
+
+      item.warehouseId =
+        reservedInventory.warehouseId;
     }
 
-    if (!reservedInventory) {
-      throw new AppError(
-        `Insufficient stock for SKU ${item.sku}`,
-        409,
-        "INSUFFICIENT_STOCK"
-      );
-    }
-
-    item.warehouseId =
-      reservedInventory.warehouseId;
-  }
-
-  return orderItems;
-};
+    return orderItems;
+  };
 
 /**
  * Create an order from the authenticated customer's
  * current active cart.
- *
- * Critical checkout operations are executed inside
- * one MongoDB transaction:
- *
- * 1. Load active cart
- * 2. Validate authoritative catalog data
- * 3. Determine first-order status
- * 4. Validate coupon
- * 5. Calculate totals
- * 6. Reserve inventory
- * 7. Create order
- * 8. Redeem coupon
- * 9. Convert cart
- *
- * Payment remains pending.
- *
- * IMPORTANT:
- * Razorpay API calls must NOT happen inside this
- * MongoDB transaction.
  */
 const createOrderFromCurrentCart = async (
   userId,
@@ -485,229 +495,250 @@ const createOrderFromCurrentCart = async (
       shippingAddressId
     );
 
-  return withTransaction(async (session) => {
-    const cart =
-      await cartRepository.findActiveByCustomer(
-        customer._id,
-        null,
-        { session }
-      );
-
-    if (!cart) {
-      throw new AppError(
-        "Active cart not found",
-        404,
-        "CART_NOT_FOUND"
-      );
-    }
-
-    const orderItems =
-      await validateCartItems(cart);
-
-    const currency =
-      cart.currency || DEFAULT_CURRENCY;
-
-    /*
-     * Calculate subtotal before applying coupon.
-     */
-    const subtotalTotals =
-      calculateOrderTotals(
-        orderItems,
-        currency
-      );
-
-    /*
-     * Determine first-order status from the database.
-     *
-     * The customer cannot supply this value.
-     */
-    const previousOrder =
-      await Order.findOne({
-        customerId: customer._id,
-      })
-        .select("_id")
-        .session(session)
-        .lean();
-
-    const isFirstOrder =
-      !previousOrder;
-
-    let couponResult = null;
-
-    if (couponCode) {
-      couponResult =
-        await couponService.validateCoupon({
-          code: couponCode,
-          customerId: customer._id,
-          orderAmount:
-            Number(subtotalTotals.subtotal),
-          items: orderItems.map((item) => ({
-            productId: item.productId,
-            categoryId: item.categoryId,
-            vendorId: item.vendorId,
-            lineTotal: item.lineTotal,
-            quantity: item.quantity,
-          })),
-          isFirstOrder,
-        });
-    }
-
-    const couponDiscountMinorUnits =
-      couponResult
-        ? decimalToMinorUnits(
-            couponResult.discountAmount
-          )
-        : 0;
-
-    const totals =
-      calculateOrderTotals(
-        orderItems,
-        currency,
-        couponDiscountMinorUnits
-      );
-
-    const orderNumber =
-      generateOrderNumber();
-
-    await reserveInventoryForOrderItems(
-      orderItems,
-      orderNumber,
-      userId,
-      session
-    );
-
-    const fullName = [
-      address.firstName,
-      address.lastName,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-
-    if (!fullName) {
-      throw new AppError(
-        "Shipping address name is invalid",
-        400,
-        "INVALID_SHIPPING_ADDRESS"
-      );
-    }
-
-    /*
-     * Save the coupon snapshot directly on the order.
-     *
-     * The order keeps the exact coupon identity used at
-     * checkout even if the coupon is later changed.
-     */
-    const order =
-      await orderRepository.create(
-        {
-          orderNumber,
-
-          customerId:
+  const order = await withTransaction(
+    async (session) => {
+      const cart =
+        await cartRepository
+          .findActiveByCustomer(
             customer._id,
+            null,
+            { session }
+          );
 
-          storeId:
-            cart.storeId || null,
+      if (!cart) {
+        throw new AppError(
+          "Active cart not found",
+          404,
+          "CART_NOT_FOUND"
+        );
+      }
 
-          couponId:
-            couponResult?.coupon?._id || null,
+      const orderItems =
+        await validateCartItems(cart);
 
-          couponCode:
-            couponResult?.coupon?.code || null,
+      const currency =
+        cart.currency ||
+        DEFAULT_CURRENCY;
 
-          status: "pending",
+      const subtotalTotals =
+        calculateOrderTotals(
+          orderItems,
+          currency
+        );
 
-          paymentStatus: "pending",
+      const previousOrder =
+        await Order.findOne({
+          customerId: customer._id,
+        })
+          .select("_id")
+          .session(session)
+          .lean();
 
-          fulfillmentStatus:
-            "unfulfilled",
+      const isFirstOrder =
+        !previousOrder;
 
+      let couponResult = null;
+
+      if (couponCode) {
+        couponResult =
+          await couponService.validateCoupon({
+            code: couponCode,
+            customerId: customer._id,
+            orderAmount:
+              Number(
+                subtotalTotals.subtotal
+              ),
+            items: orderItems.map(
+              (item) => ({
+                productId:
+                  item.productId,
+                categoryId:
+                  item.categoryId,
+                vendorId:
+                  item.vendorId,
+                lineTotal:
+                  item.lineTotal,
+                quantity:
+                  item.quantity,
+              })
+            ),
+            isFirstOrder,
+          });
+      }
+
+      const couponDiscountMinorUnits =
+        couponResult
+          ? decimalToMinorUnits(
+              couponResult.discountAmount
+            )
+          : 0;
+
+      const totals =
+        calculateOrderTotals(
+          orderItems,
           currency,
+          couponDiscountMinorUnits
+        );
 
-          items: orderItems,
+      const orderNumber =
+        generateOrderNumber();
 
-          subtotal:
-            totals.subtotal,
+      await reserveInventoryForOrderItems(
+        orderItems,
+        orderNumber,
+        userId,
+        session
+      );
 
-          discountTotal:
-            totals.discountTotal,
+      const fullName = [
+        address.firstName,
+        address.lastName,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
 
-          taxTotal:
-            totals.taxTotal,
+      if (!fullName) {
+        throw new AppError(
+          "Shipping address name is invalid",
+          400,
+          "INVALID_SHIPPING_ADDRESS"
+        );
+      }
 
-          shippingTotal:
-            totals.shippingTotal,
+      const createdOrder =
+        await orderRepository.create(
+          {
+            orderNumber,
 
-          grandTotal:
-            totals.grandTotal,
+            customerId:
+              customer._id,
 
-          shippingAddress: {
-            fullName,
+            storeId:
+              cart.storeId || null,
 
-            phone:
-              address.phone,
+            couponId:
+              couponResult?.coupon?._id ||
+              null,
 
-            addressLine1:
-              address.addressLine1,
+            couponCode:
+              couponResult?.coupon?.code ||
+              null,
 
-            addressLine2:
-              address.addressLine2 || "",
+            status: "pending",
+            paymentStatus: "pending",
+            fulfillmentStatus:
+              "unfulfilled",
 
-            city:
-              address.city,
+            currency,
 
-            state:
-              address.state,
+            items: orderItems,
 
-            postalCode:
-              address.postalCode,
+            subtotal:
+              totals.subtotal,
 
-            country:
-              address.country || "IN",
+            discountTotal:
+              totals.discountTotal,
+
+            taxTotal:
+              totals.taxTotal,
+
+            shippingTotal:
+              totals.shippingTotal,
+
+            grandTotal:
+              totals.grandTotal,
+
+            shippingAddress: {
+              fullName,
+              phone: address.phone,
+              addressLine1:
+                address.addressLine1,
+              addressLine2:
+                address.addressLine2 || "",
+              city: address.city,
+              state: address.state,
+              postalCode:
+                address.postalCode,
+              country:
+                address.country || "IN",
+            },
           },
-        },
-        { session }
-      );
+          { session }
+        );
 
-    /*
-     * Record coupon usage using the newly created order.
-     *
-     * The same MongoDB session is passed through so:
-     *
-     * Order + inventory reservation + coupon redemption
-     * either all commit or all roll back.
-     */
-    if (couponResult) {
-      await couponRedemptionService.redeemCoupon({
-        couponId:
-          couponResult.coupon._id,
+      if (couponResult) {
+        await couponRedemptionService
+          .redeemCoupon({
+            couponId:
+              couponResult.coupon._id,
+            customerId:
+              customer._id,
+            orderId:
+              createdOrder._id,
+            session,
+          });
+      }
 
-        customerId:
-          customer._id,
+      const convertedCart =
+        await cartRepository
+          .convertActiveCart(
+            cart._id,
+            { session }
+          );
 
-        orderId:
-          order._id,
+      if (!convertedCart) {
+        throw new AppError(
+          "Cart could not be converted",
+          409,
+          "CART_CONVERSION_FAILED"
+        );
+      }
 
-        session,
-      });
+      /**
+       * Create the order-confirmation outbox record
+       * inside the same MongoDB transaction.
+       *
+       * If the order transaction rolls back,
+       * the notification record also rolls back.
+       */
+      const user =
+        await User.findById(
+          customer.userId
+        )
+          .select(
+            "email firstName lastName"
+          )
+          .session(session)
+          .lean();
+
+      if (user?.email) {
+        const customerName = [
+          user.firstName,
+          user.lastName,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+
+        await notificationOutboxService.enqueue({
+          type: "order_confirmation",
+          channel: "email",
+          recipient: user.email,
+          payload: {
+            customerName,
+            orderNumber:
+              createdOrder.orderNumber,
+          },
+          session,
+        });
+      }
+
+      return createdOrder;
     }
+  );
 
-    const convertedCart =
-      await cartRepository.convertActiveCart(
-        cart._id,
-        { session }
-      );
-
-    if (!convertedCart) {
-      throw new AppError(
-        "Cart could not be converted",
-        409,
-        "CART_CONVERSION_FAILED"
-      );
-    }
-
-    return order;
-  });
+  return order;
 };
 
 /**
@@ -762,7 +793,87 @@ const getCustomerOrders = async (
 };
 
 /**
+ * Send an order status notification.
+ *
+ * Cancellation uses the dedicated cancellation
+ * notification template.
+ *
+ * Notification failure must never invalidate
+ * an already successful order status transition.
+ */
+const sendOrderStatusNotification = async ({
+  order,
+}) => {
+  try {
+    if (!order?.customerId) {
+      return;
+    }
+
+    const customer =
+      await Customer.findById(
+        order.customerId
+      ).lean();
+
+    if (!customer?.userId) {
+      return;
+    }
+
+    const user =
+      await User.findById(
+        customer.userId
+      )
+        .select(
+          "email firstName lastName"
+        )
+        .lean();
+
+    if (!user?.email) {
+      return;
+    }
+
+    const customerName = [
+      user.firstName,
+      user.lastName,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
+    if (order.status === "cancelled") {
+      await notificationService
+        .sendOrderCancellation({
+          to: user.email,
+          customerName,
+          orderNumber:
+            order.orderNumber,
+        });
+
+      return;
+    }
+
+    await notificationService
+      .sendOrderStatusUpdate({
+        to: user.email,
+        customerName,
+        orderNumber:
+          order.orderNumber,
+        status: order.status,
+      });
+  } catch (error) {
+    console.error(
+      "Order status notification failed:",
+      error
+    );
+  }
+};
+
+/**
  * Safely transition an order between allowed states.
+ *
+ * If an external MongoDB session is provided,
+ * the caller owns the transaction and commit.
+ *
+ * Therefore notification is NOT sent here.
  */
 const transitionOrderStatus = async (
   orderId,
@@ -807,19 +918,54 @@ const transitionOrderStatus = async (
     update.placedAt = new Date();
   }
 
-  if (nextStatus === "cancelled") {
+  if (
+    nextStatus === "cancelled"
+  ) {
     update.cancelledAt = new Date();
   }
 
-  if (nextStatus === "completed") {
+  if (
+    nextStatus === "completed"
+  ) {
     update.completedAt = new Date();
   }
 
-  return orderRepository.updateById(
-    orderId,
-    update,
-    options
-  );
+  const updatedOrder =
+    await orderRepository.updateById(
+      orderId,
+      update,
+      options
+    );
+
+  if (!updatedOrder) {
+    throw new AppError(
+      "Unable to update order status",
+      500,
+      "ORDER_STATUS_UPDATE_FAILED"
+    );
+  }
+
+  /**
+   * If a transaction session was provided,
+   * the caller owns the commit boundary.
+   *
+   * Do not send an external notification here.
+   */
+  if (options.session) {
+    return updatedOrder;
+  }
+
+  /**
+   * No external transaction exists.
+   *
+   * The update has completed successfully,
+   * so notification can safely be attempted.
+   */
+  await sendOrderStatusNotification({
+    order: updatedOrder,
+  });
+
+  return updatedOrder;
 };
 
 /**
@@ -843,7 +989,7 @@ const markOrderPaymentCaptured = async (
     );
   }
 
-  /*
+  /**
    * Idempotent case: payment is already marked paid.
    */
   if (
@@ -853,7 +999,7 @@ const markOrderPaymentCaptured = async (
     return order;
   }
 
-  /*
+  /**
    * A paid order must never be moved backwards.
    */
   if (
@@ -878,7 +1024,9 @@ const markOrderPaymentCaptured = async (
     paymentStatus: "paid",
   };
 
-  if (order.status === "pending") {
+  if (
+    order.status === "pending"
+  ) {
     update.status = "confirmed";
 
     if (!order.placedAt) {
@@ -886,11 +1034,22 @@ const markOrderPaymentCaptured = async (
     }
   }
 
-  return orderRepository.updateById(
-    orderId,
-    update,
-    options
-  );
+  const updatedOrder =
+    await orderRepository.updateById(
+      orderId,
+      update,
+      options
+    );
+
+  if (!updatedOrder) {
+    throw new AppError(
+      "Unable to mark order payment as captured",
+      500,
+      "ORDER_PAYMENT_UPDATE_FAILED"
+    );
+  }
+
+  return updatedOrder;
 };
 
 module.exports = {
@@ -908,4 +1067,3 @@ module.exports = {
   transitionOrderStatus,
   markOrderPaymentCaptured,
 };
-

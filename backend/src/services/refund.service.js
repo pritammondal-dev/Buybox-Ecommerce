@@ -3,16 +3,29 @@ const mongoose = require("mongoose");
 const paymentRepository = require("../repositories/payment.repository");
 const refundRepository = require("../repositories/refund.repository");
 const orderRepository = require("../repositories/order.repository");
+
 const Customer = require("../models/Customer");
-const razorpayRefundProvider = require("../integrations/payments/razorpay-refund.provider");
+const User = require("../models/User");
+
+const razorpayRefundProvider = require(
+  "../integrations/payments/razorpay-refund.provider"
+);
+
+const notificationService = require("./notification");
+
 const AppError = require("../errors/AppError");
 
 const {
   canTransitionRefundStatus,
 } = require("../constants/refund.constants");
 
+const {
+  canTransitionPaymentStatus,
+} = require("../constants/payment.constants");
+
 const PAYMENT_GATEWAY = "razorpay";
 const MINOR_UNIT_SCALE = 100;
+
 const REFUNDABLE_PAYMENT_STATUSES = [
   "captured",
   "partially_refunded",
@@ -27,7 +40,9 @@ const decimalToMinorUnits = (value) => {
     );
   }
 
-  const normalizedValue = value.toString().trim();
+  const normalizedValue = value
+    .toString()
+    .trim();
 
   if (!/^\d+(\.\d+)?$/.test(normalizedValue)) {
     throw new AppError(
@@ -37,8 +52,10 @@ const decimalToMinorUnits = (value) => {
     );
   }
 
-  const [wholePart, decimalPart = ""] =
-    normalizedValue.split(".");
+  const [
+    wholePart,
+    decimalPart = "",
+  ] = normalizedValue.split(".");
 
   if (decimalPart.length > 2) {
     throw new AppError(
@@ -72,18 +89,21 @@ const minorUnitsToDecimal = (minorUnits) => {
     );
   }
 
-  return (minorUnits / MINOR_UNIT_SCALE).toFixed(2);
+  return (
+    minorUnits / MINOR_UNIT_SCALE
+  ).toFixed(2);
 };
 
 const validateCustomerOrderAccess = async (
   userId,
   order
 ) => {
-  const customer = await Customer.findOne({
-    userId,
-    isActive: true,
-    deletedAt: null,
-  });
+  const customer =
+    await Customer.findOne({
+      userId,
+      isActive: true,
+      deletedAt: null,
+    });
 
   if (!customer) {
     throw new AppError(
@@ -107,12 +127,12 @@ const validateCustomerOrderAccess = async (
   return customer;
 };
 
-/*
- * Returns only refunds that have actually been processed
- * by the payment gateway.
+/**
+ * Returns only refunds that have actually
+ * been processed by the gateway.
  *
- * Pending/created refunds are accounted for separately by
- * Payment.refundReservedAmount.
+ * Pending/created refunds are accounted for
+ * through Payment.refundReservedAmount.
  */
 const getRefundTotals = async (
   paymentId,
@@ -232,7 +252,9 @@ const synchronizePaymentRefundState = async ({
   if (refundTotal === 0) {
     paymentStatus = "captured";
     orderPaymentStatus = "paid";
-  } else if (refundTotal < paymentAmount) {
+  } else if (
+    refundTotal < paymentAmount
+  ) {
     paymentStatus = "partially_refunded";
     orderPaymentStatus =
       "partially_refunded";
@@ -277,7 +299,8 @@ const synchronizePaymentRefundState = async ({
     await orderRepository.updateById(
       order._id,
       {
-        paymentStatus: orderPaymentStatus,
+        paymentStatus:
+          orderPaymentStatus,
       },
       options
     );
@@ -309,7 +332,9 @@ const releaseRefundReservation = async ({
     await paymentRepository.releaseRefundReservation(
       paymentId,
       amount,
-      session ? { session } : {}
+      session
+        ? { session }
+        : {}
     );
 
   if (!releasedPayment) {
@@ -322,6 +347,64 @@ const releaseRefundReservation = async ({
 
   return releasedPayment;
 };
+
+/**
+ * Send refund confirmation email.
+ *
+ * Email failures must never invalidate a
+ * successfully committed refund.
+ */
+const sendRefundConfirmationNotification =
+  async ({
+    order,
+    refundAmount,
+  }) => {
+    try {
+      const customer =
+        await Customer.findById(
+          order.customerId
+        ).lean();
+
+      if (!customer?.userId) {
+        return;
+      }
+
+      const user =
+        await User.findById(
+          customer.userId
+        )
+          .select(
+            "email firstName lastName"
+          )
+          .lean();
+
+      if (!user?.email) {
+        return;
+      }
+
+      const customerName = [
+        user.firstName,
+        user.lastName,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+
+      await notificationService
+        .sendRefundConfirmation({
+          to: user.email,
+          customerName,
+          orderNumber:
+            order.orderNumber,
+          amount: refundAmount,
+        });
+    } catch (error) {
+      console.error(
+        "Refund confirmation notification failed:",
+        error
+      );
+    }
+  };
 
 const createRefund = async ({
   orderId,
@@ -346,7 +429,9 @@ const createRefund = async ({
     idempotencyKey.trim();
 
   const order =
-    await orderRepository.findById(orderId);
+    await orderRepository.findById(
+      orderId
+    );
 
   if (!order) {
     throw new AppError(
@@ -391,7 +476,9 @@ const createRefund = async ({
   });
 
   const requestedAmountDecimal =
-    minorUnitsToDecimal(requestedAmount);
+    minorUnitsToDecimal(
+      requestedAmount
+    );
 
   let refund =
     await refundRepository.findByIdempotencyKey(
@@ -400,14 +487,18 @@ const createRefund = async ({
     );
 
   /*
-   * Idempotency keys must represent the same operation.
-   * Reusing a key with a different amount is a conflict.
+   * Existing idempotency record.
    */
   if (refund) {
     const existingAmount =
-      decimalToMinorUnits(refund.amount);
+      decimalToMinorUnits(
+        refund.amount
+      );
 
-    if (existingAmount !== requestedAmount) {
+    if (
+      existingAmount !==
+      requestedAmount
+    ) {
       throw new AppError(
         "Idempotency key was already used for a different refund amount",
         409,
@@ -415,17 +506,24 @@ const createRefund = async ({
       );
     }
 
+    /*
+     * Never resend the refund email here.
+     * The original successful operation already
+     * handled its notification.
+     */
     if (
-      ["created", "pending", "processed"].includes(
-        refund.status
-      )
+      [
+        "created",
+        "pending",
+        "processed",
+      ].includes(refund.status)
     ) {
       return refund;
     }
 
     /*
-     * A failed refund that already has a Razorpay refund ID
-     * must be reconciled before another refund is created.
+     * Reconcile a failed local refund that
+     * already has a Razorpay refund ID.
      */
     if (
       refund.status === "failed" &&
@@ -471,9 +569,11 @@ const createRefund = async ({
       }
 
       if (
-        gatewayRefund.amount !== undefined &&
-        Number(gatewayRefund.amount) !==
-          requestedAmount
+        gatewayRefund.amount !==
+          undefined &&
+        Number(
+          gatewayRefund.amount
+        ) !== requestedAmount
       ) {
         throw new AppError(
           "Previous Razorpay refund amount does not match",
@@ -483,7 +583,8 @@ const createRefund = async ({
       }
 
       if (
-        gatewayRefund.status === "processed"
+        gatewayRefund.status ===
+        "processed"
       ) {
         const session =
           await mongoose.startSession();
@@ -497,14 +598,16 @@ const createRefund = async ({
               {
                 status: "processed",
                 failureReason: null,
-                processedAt: new Date(),
+                processedAt:
+                  new Date(),
               },
               { session }
             );
 
           await releaseRefundReservation({
             paymentId: payment._id,
-            amount: requestedAmountDecimal,
+            amount:
+              requestedAmountDecimal,
             session,
           });
 
@@ -512,13 +615,24 @@ const createRefund = async ({
             await synchronizePaymentRefundState({
               payment,
               order,
-              options: { session },
+              options: {
+                session,
+              },
             });
 
           await session.commitTransaction();
 
+          await sendRefundConfirmationNotification({
+            order:
+              syncResult.updatedOrder ||
+              order,
+            refundAmount:
+              requestedAmountDecimal,
+          });
+
           return {
-            refund: updatedRefund,
+            refund:
+              updatedRefund,
             payment:
               syncResult.updatedPayment,
             order:
@@ -540,8 +654,10 @@ const createRefund = async ({
       }
 
       if (
-        gatewayRefund.status === "pending" ||
-        gatewayRefund.status === "created"
+        gatewayRefund.status ===
+          "pending" ||
+        gatewayRefund.status ===
+          "created"
       ) {
         throw new AppError(
           "Previous Razorpay refund is still being processed",
@@ -550,12 +666,9 @@ const createRefund = async ({
         );
       }
 
-      /*
-       * Only an explicitly failed gateway refund can be
-       * retried with the same idempotency key.
-       */
       if (
-        gatewayRefund.status !== "failed"
+        gatewayRefund.status !==
+        "failed"
       ) {
         throw new AppError(
           "Previous Razorpay refund requires reconciliation",
@@ -567,8 +680,8 @@ const createRefund = async ({
   }
 
   /*
-   * A failed local refund without a gateway refund ID
-   * can safely be retried.
+   * Failed local refund without a gateway
+   * refund ID can safely be retried.
    */
   if (
     refund &&
@@ -590,20 +703,20 @@ const createRefund = async ({
         await refundRepository.create({
           paymentId: payment._id,
           orderId: order._id,
-          customerId: order.customerId,
-          gateway: PAYMENT_GATEWAY,
-          amount: requestedAmountDecimal,
-          currency: payment.currency,
+          customerId:
+            order.customerId,
+          gateway:
+            PAYMENT_GATEWAY,
+          amount:
+            requestedAmountDecimal,
+          currency:
+            payment.currency,
           status: "created",
           reason,
           idempotencyKey:
             normalizedIdempotencyKey,
         });
     } catch (error) {
-      /*
-       * Another request may have created the same
-       * idempotency record.
-       */
       if (error?.code === 11000) {
         const concurrentRefund =
           await refundRepository.findByIdempotencyKey(
@@ -621,10 +734,7 @@ const createRefund = async ({
   }
 
   /*
-   * Atomically reserve the amount against the payment.
-   *
-   * This is the concurrency gate for different
-   * idempotency keys.
+   * Reserve the refund amount atomically.
    */
   const reservedPayment =
     await paymentRepository.reserveRefundAmount(
@@ -640,12 +750,12 @@ const createRefund = async ({
     );
   }
 
-  /*
-   * Once reserved, this request owns the reservation.
-   */
   let gatewayRequestCompleted = false;
 
   try {
+    /*
+     * Move local refund into pending state.
+     */
     if (
       refund.status === "created" &&
       canTransitionRefundStatus(
@@ -673,11 +783,15 @@ const createRefund = async ({
       refund = pendingRefund;
     }
 
+    /*
+     * Create refund at Razorpay.
+     */
     const razorpayRefund =
       await razorpayRefundProvider.createRefund({
         paymentId:
           payment.gatewayPaymentId,
-        amount: requestedAmount,
+        amount:
+          requestedAmount,
         notes: {
           orderId:
             order._id.toString(),
@@ -712,9 +826,11 @@ const createRefund = async ({
     }
 
     if (
-      razorpayRefund.amount !== undefined &&
-      Number(razorpayRefund.amount) !==
-        requestedAmount
+      razorpayRefund.amount !==
+        undefined &&
+      Number(
+        razorpayRefund.amount
+      ) !== requestedAmount
     ) {
       throw new AppError(
         "Razorpay refund amount does not match requested amount",
@@ -723,13 +839,80 @@ const createRefund = async ({
       );
     }
 
+    /*
+     * Razorpay explicitly returned failed.
+     * Release the reservation immediately.
+     */
+    if (
+      razorpayRefund.status ===
+      "failed"
+    ) {
+      const session =
+        await mongoose.startSession();
+
+      try {
+        session.startTransaction();
+
+        const updatedRefund =
+          await refundRepository.updateById(
+            refund._id,
+            {
+              gatewayRefundId:
+                razorpayRefund.id,
+              status: "failed",
+              processedAt: null,
+              failureReason:
+                "Razorpay refund failed",
+            },
+            { session }
+          );
+
+        if (!updatedRefund) {
+          throw new AppError(
+            "Unable to update failed refund",
+            500,
+            "REFUND_UPDATE_FAILED"
+          );
+        }
+
+        await releaseRefundReservation({
+          paymentId: payment._id,
+          amount:
+            requestedAmountDecimal,
+          session,
+        });
+
+        await session.commitTransaction();
+
+        return {
+          refund: updatedRefund,
+          payment,
+          order,
+          refundedAmount:
+            "0.00",
+        };
+      } catch (error) {
+        try {
+          await session.abortTransaction();
+        } catch (abortError) {
+          // Preserve original error.
+        }
+
+        throw error;
+      } finally {
+        await session.endSession();
+      }
+    }
+
     const gatewayStatus =
-      razorpayRefund.status === "processed"
+      razorpayRefund.status ===
+      "processed"
         ? "processed"
         : "pending";
 
     if (
-      refund.status !== gatewayStatus &&
+      refund.status !==
+        gatewayStatus &&
       !canTransitionRefundStatus(
         refund.status,
         gatewayStatus
@@ -754,9 +937,11 @@ const createRefund = async ({
           {
             gatewayRefundId:
               razorpayRefund.id,
-            status: gatewayStatus,
+            status:
+              gatewayStatus,
             processedAt:
-              gatewayStatus === "processed"
+              gatewayStatus ===
+              "processed"
                 ? new Date()
                 : null,
             failureReason: null,
@@ -773,16 +958,18 @@ const createRefund = async ({
       }
 
       /*
-       * Only processed refunds release the reservation
-       * immediately. Pending gateway refunds retain it
-       * until their webhook confirms the final state.
+       * Processed refunds release the reservation.
+       * Pending refunds retain it until webhook
+       * confirmation.
        */
       if (
-        gatewayStatus === "processed"
+        gatewayStatus ===
+        "processed"
       ) {
         await releaseRefundReservation({
           paymentId: payment._id,
-          amount: requestedAmountDecimal,
+          amount:
+            requestedAmountDecimal,
           session,
         });
       }
@@ -791,13 +978,32 @@ const createRefund = async ({
         await synchronizePaymentRefundState({
           payment,
           order,
-          options: { session },
+          options: {
+            session,
+          },
         });
 
       await session.commitTransaction();
 
+      /*
+       * Email only after successful transaction.
+       */
+      if (
+        gatewayStatus ===
+        "processed"
+      ) {
+        await sendRefundConfirmationNotification({
+          order:
+            syncResult.updatedOrder ||
+            order,
+          refundAmount:
+            requestedAmountDecimal,
+        });
+      }
+
       return {
-        refund: updatedRefund,
+        refund:
+          updatedRefund,
         payment:
           syncResult.updatedPayment,
         order:
@@ -818,44 +1024,45 @@ const createRefund = async ({
     }
   } catch (error) {
     /*
-     * CRITICAL:
-     *
-     * Once Razorpay accepted the refund request,
-     * we must NOT release the reservation merely because
-     * our local database operation failed.
-     *
-     * Otherwise another refund could consume the same
-     * balance while the first gateway refund already exists.
+     * If Razorpay did NOT accept the refund request,
+     * release our reservation.
      */
     if (!gatewayRequestCompleted) {
       try {
         await releaseRefundReservation({
           paymentId: payment._id,
-          amount: requestedAmountDecimal,
+          amount:
+            requestedAmountDecimal,
         });
       } catch (releaseError) {
-        /*
-         * Preserve the original error. The unreleased
-         * reservation will require reconciliation.
-         */
+        // Reconciliation will handle
+        // an unreleased reservation.
       }
 
-      if (refund.status !== "processed") {
-        await refundRepository.updateById(
-          refund._id,
-          {
-            status: "failed",
-            failureReason: error.message,
-          }
-        );
+      if (
+        refund.status !==
+        "processed"
+      ) {
+        try {
+          await refundRepository.updateById(
+            refund._id,
+            {
+              status: "failed",
+              failureReason:
+                error.message,
+            }
+          );
+        } catch (persistenceError) {
+          // Preserve original error.
+        }
       }
     } else {
       /*
-       * Gateway accepted the refund but local
-       * persistence failed.
+       * Razorpay accepted the request but
+       * local persistence failed.
        *
-       * Do NOT create another refund and do NOT
-       * release the reservation here.
+       * Never release the reservation here.
+       * Never create another refund.
        */
       try {
         await refundRepository.updateById(
@@ -867,7 +1074,7 @@ const createRefund = async ({
           }
         );
       } catch (persistenceError) {
-        // Preserve the original error.
+        // Preserve original error.
       }
     }
 

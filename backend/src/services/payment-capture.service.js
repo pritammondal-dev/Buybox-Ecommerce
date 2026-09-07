@@ -2,12 +2,14 @@ const paymentRepository = require("../repositories/payment.repository");
 const orderRepository = require("../repositories/order.repository");
 
 const orderService = require("./order.service");
+const notificationService = require("./notification");
 
 const razorpayProvider = require(
   "../integrations/payments/razorpay.provider"
 );
 
 const Customer = require("../models/Customer");
+const User = require("../models/User");
 
 const AppError = require("../errors/AppError");
 
@@ -56,9 +58,7 @@ const decimalToMinorUnits = (value) => {
     decimalPart = "",
   ] = normalizedValue.split(".");
 
-  if (
-    decimalPart.length > 2
-  ) {
+  if (decimalPart.length > 2) {
     throw new AppError(
       "Payment amount must use at most two decimal places",
       500,
@@ -75,9 +75,7 @@ const decimalToMinorUnits = (value) => {
     Number(paddedDecimalPart);
 
   if (
-    !Number.isSafeInteger(
-      minorUnits
-    )
+    !Number.isSafeInteger(minorUnits)
   ) {
     throw new AppError(
       "Payment amount exceeds supported range",
@@ -129,9 +127,7 @@ const validateCustomerOrderAccess = async (
 /**
  * Ensure the order can still receive payment.
  */
-const validateOrderPayable = (
-  order
-) => {
+const validateOrderPayable = (order) => {
   if (
     ["cancelled", "completed"].includes(
       order.status
@@ -267,18 +263,64 @@ const validateRazorpayPayment = ({
 };
 
 /**
+ * Send payment confirmation notification.
+ *
+ * Notification failures must never invalidate
+ * an already successful payment capture.
+ */
+const sendPaymentConfirmationNotification =
+  async ({
+    order,
+    customer,
+  }) => {
+    try {
+      const user =
+        await User.findById(
+          customer.userId
+        )
+          .select(
+            "email firstName lastName"
+          )
+          .lean();
+
+      if (!user?.email) {
+        return;
+      }
+
+      const customerName = [
+        user.firstName,
+        user.lastName,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+
+      await notificationService
+        .sendPaymentConfirmation({
+          to: user.email,
+          customerName,
+          orderNumber:
+            order.orderNumber,
+          amount:
+            order.grandTotal,
+        });
+    } catch (error) {
+      console.error(
+        "Payment confirmation notification failed:",
+        error
+      );
+    }
+  };
+
+/**
  * Persist a successfully captured payment
  * and synchronize the corresponding order.
- *
- * Order synchronization is delegated to the
- * canonical order service helper so that payment
- * verification, manual capture, and webhooks
- * follow the same business rule.
  */
 const updateCapturedPayment = async ({
   payment,
   order,
   razorpayPayment,
+  customer,
 }) => {
   const capturedAt =
     razorpayPayment.captured_at
@@ -309,9 +351,15 @@ const updateCapturedPayment = async ({
       }
     );
 
-  await orderService.markOrderPaymentCaptured(
-    order._id
-  );
+  const updatedOrder =
+    await orderService.markOrderPaymentCaptured(
+      order._id
+    );
+
+  await sendPaymentConfirmationNotification({
+    order: updatedOrder || order,
+    customer,
+  });
 
   return updatedPayment;
 };
@@ -329,6 +377,7 @@ const updateCapturedPayment = async ({
  * 6. Validate capture response
  * 7. Persist captured payment
  * 8. Confirm the order
+ * 9. Send payment confirmation notification
  */
 const captureRazorpayPayment = async ({
   orderId,
@@ -347,10 +396,11 @@ const captureRazorpayPayment = async ({
     );
   }
 
-  await validateCustomerOrderAccess(
-    userId,
-    order
-  );
+  const customer =
+    await validateCustomerOrderAccess(
+      userId,
+      order
+    );
 
   validateOrderPayable(order);
 
@@ -425,7 +475,7 @@ const captureRazorpayPayment = async ({
    * Idempotent case.
    *
    * Razorpay already captured the payment.
-   * We synchronize our local state instead
+   * Synchronize our local state instead
    * of attempting another capture.
    */
   if (
@@ -436,6 +486,7 @@ const captureRazorpayPayment = async ({
       payment,
       order,
       razorpayPayment,
+      customer,
     });
   }
 
@@ -528,6 +579,7 @@ const captureRazorpayPayment = async ({
     order,
     razorpayPayment:
       capturedPayment,
+    customer,
   });
 };
 

@@ -36,6 +36,23 @@ LOG_LEVEL: z.string().default("info"),
   RAZORPAY_KEY_ID: z.string().min(1),
 RAZORPAY_KEY_SECRET: z.string().min(1),
 RAZORPAY_WEBHOOK_SECRET: z.string().min(1),
+
+ELASTIC_EMAIL_API_KEY: z.string().min(1),
+ELASTIC_EMAIL_FROM_EMAIL: z
+  .string()
+  .email()
+  .or(z.literal("")),
+ELASTIC_EMAIL_FROM_NAME: z.string().min(1).default("Buybox"),
+
+EMAIL_VERIFICATION_BASE_URL: z
+  .string()
+  .url()
+  .default("http://localhost:5000/api/v1/auth/verify-email"),
+
+  PASSWORD_RESET_BASE_URL: z
+  .string()
+  .url()
+  .default("http://localhost:5000/api/v1/auth/reset-password"),
 });
 
 const env = envSchema.parse(process.env);

@@ -137,10 +137,55 @@ const logoutAll = asyncHandler(async (req, res) => {
   });
 });
 
+const verifyEmail = asyncHandler(async (req, res) => {
+  const { token } = req.query;
+
+  const user = await authService.verifyEmail(token);
+
+  return sendSuccess(res, {
+    statusCode: 200,
+    message: "Email verified successfully",
+    data: {
+      user,
+    },
+  });
+});
+
+const requestPasswordReset = asyncHandler(async (req, res) => {
+  await authService.requestPasswordReset(req.body.email);
+
+  return sendSuccess(res, {
+    statusCode: 200,
+    message:
+      "If the email is registered, a password reset link has been sent",
+    data: null,
+  });
+});
+
+const resetPassword = asyncHandler(async (req, res) => {
+  const { token, newPassword } = req.body;
+
+  const user = await authService.resetPassword(
+    token,
+    newPassword
+  );
+
+  return sendSuccess(res, {
+    statusCode: 200,
+    message: "Password reset successfully",
+    data: {
+      user,
+    },
+  });
+});
+
 module.exports = {
   register,
   login,
   refresh,
   logout,
   logoutAll,
+  verifyEmail,
+  requestPasswordReset,
+  resetPassword,
 };

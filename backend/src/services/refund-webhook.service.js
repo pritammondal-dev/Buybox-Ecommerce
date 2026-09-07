@@ -4,6 +4,15 @@ const refundRepository = require("../repositories/refund.repository");
 const paymentRepository = require("../repositories/payment.repository");
 const orderRepository = require("../repositories/order.repository");
 
+const Customer = require("../models/Customer");
+const User = require("../models/User");
+
+const razorpayRefundProvider = require(
+  "../integrations/payments/razorpay-refund.provider"
+);
+
+const notificationService = require("./notification");
+
 const {
   canTransitionRefundStatus,
 } = require("../constants/refund.constants");
@@ -15,6 +24,7 @@ const {
 const AppError = require("../errors/AppError");
 
 const REFUND_GATEWAY = "razorpay";
+const MINOR_UNIT_SCALE = 100;
 
 const REFUND_EVENT_MAP = Object.freeze({
   "refund.created": "pending",
@@ -47,8 +57,10 @@ const decimalToMinorUnits = (value) => {
     );
   }
 
-  const [wholePart, decimalPart = ""] =
-    normalizedValue.split(".");
+  const [
+    wholePart,
+    decimalPart = "",
+  ] = normalizedValue.split(".");
 
   if (decimalPart.length > 2) {
     throw new AppError(
@@ -59,7 +71,7 @@ const decimalToMinorUnits = (value) => {
   }
 
   const minorUnits =
-    Number(wholePart) * 100 +
+    Number(wholePart) * MINOR_UNIT_SCALE +
     Number(decimalPart.padEnd(2, "0"));
 
   if (!Number.isSafeInteger(minorUnits)) {
@@ -82,7 +94,9 @@ const minorUnitsToDecimal = (minorUnits) => {
     );
   }
 
-  return (minorUnits / 100).toFixed(2);
+  return (
+    minorUnits / MINOR_UNIT_SCALE
+  ).toFixed(2);
 };
 
 const getProcessedRefundTotal = async (
@@ -95,16 +109,19 @@ const getProcessedRefundTotal = async (
       options
     );
 
-  return refunds.reduce((total, refund) => {
-    if (refund.status !== "processed") {
-      return total;
-    }
+  return refunds.reduce(
+    (total, refund) => {
+      if (refund.status !== "processed") {
+        return total;
+      }
 
-    return (
-      total +
-      decimalToMinorUnits(refund.amount)
-    );
-  }, 0);
+      return (
+        total +
+        decimalToMinorUnits(refund.amount)
+      );
+    },
+    0
+  );
 };
 
 const releaseRefundReservation = async ({
@@ -162,7 +179,9 @@ const synchronizePaymentRefundState = async ({
   if (refundedTotal === 0) {
     paymentStatus = "captured";
     orderPaymentStatus = "paid";
-  } else if (refundedTotal < paymentAmount) {
+  } else if (
+    refundedTotal < paymentAmount
+  ) {
     paymentStatus = "partially_refunded";
     orderPaymentStatus =
       "partially_refunded";
@@ -231,6 +250,64 @@ const synchronizePaymentRefundState = async ({
   };
 };
 
+/**
+ * Send refund confirmation email.
+ *
+ * This is an external side effect and must never
+ * invalidate an already successful refund.
+ */
+const sendRefundConfirmationNotification =
+  async ({
+    order,
+    refundAmount,
+  }) => {
+    try {
+      const customer =
+        await Customer.findById(
+          order.customerId
+        ).lean();
+
+      if (!customer?.userId) {
+        return;
+      }
+
+      const user =
+        await User.findById(
+          customer.userId
+        )
+          .select(
+            "email firstName lastName"
+          )
+          .lean();
+
+      if (!user?.email) {
+        return;
+      }
+
+      const customerName = [
+        user.firstName,
+        user.lastName,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+
+      await notificationService
+        .sendRefundConfirmation({
+          to: user.email,
+          customerName,
+          orderNumber:
+            order.orderNumber,
+          amount: refundAmount,
+        });
+    } catch (error) {
+      console.error(
+        "Refund webhook confirmation notification failed:",
+        error
+      );
+    }
+  };
+
 const processRefundWebhook = async ({
   eventType,
   payload,
@@ -262,6 +339,7 @@ const processRefundWebhook = async ({
   }
 
   const ownsSession = !providedSession;
+
   const session =
     providedSession ||
     (await mongoose.startSession());
@@ -315,8 +393,7 @@ const processRefundWebhook = async ({
     }
 
     if (
-      payment.gateway !==
-      REFUND_GATEWAY
+      payment.gateway !== REFUND_GATEWAY
     ) {
       throw new AppError(
         "Unsupported payment gateway",
@@ -357,7 +434,7 @@ const processRefundWebhook = async ({
       }
     }
 
-    /*
+    /**
      * Duplicate webhook for the same refund state.
      */
     if (
@@ -377,7 +454,7 @@ const processRefundWebhook = async ({
       };
     }
 
-    /*
+    /**
      * Ignore stale/out-of-order refund events.
      */
     if (
@@ -449,7 +526,7 @@ const processRefundWebhook = async ({
       );
     }
 
-    /*
+    /**
      * Both processed and failed refund states
      * release the temporary refund reservation.
      */
@@ -471,8 +548,33 @@ const processRefundWebhook = async ({
         options: { session },
       });
 
+    /**
+     * Commit the transaction before sending
+     * any external notification.
+     */
     if (ownsSession) {
       await session.commitTransaction();
+    }
+
+    /**
+     * Send refund confirmation only after
+     * the refund transaction has committed.
+     *
+     * If another service owns the transaction,
+     * the caller is responsible for committing it,
+     * so the notification must not be sent here.
+     */
+    if (
+      ownsSession &&
+      nextStatus === "processed"
+    ) {
+      await sendRefundConfirmationNotification({
+        order:
+          syncResult.updatedOrder ||
+          order,
+        refundAmount:
+          refund.amount,
+      });
     }
 
     return {
@@ -515,3 +617,4 @@ module.exports = {
   getProcessedRefundTotal,
   synchronizePaymentRefundState,
 };
+

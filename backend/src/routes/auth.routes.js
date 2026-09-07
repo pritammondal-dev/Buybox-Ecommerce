@@ -9,6 +9,12 @@ const {
   refreshSchema,
 } = require("../validators/auth/refresh.validator");
 const authenticate = require("../middlewares/authentication.middleware");
+const {
+  passwordResetRequestSchema,
+} = require("../validators/auth/password-reset-request.validator");
+const {
+  passwordResetSchema,
+} = require("../validators/auth/password-reset.validator");
 
 const router = express.Router();
 
@@ -34,6 +40,24 @@ router.post(
   "/logout",
   validate(refreshSchema),
   authController.logout
+);
+
+router.get(
+  "/verify-email",
+  authController.verifyEmail
+);
+
+
+router.post(
+  "/forgot-password",
+  validate(passwordResetRequestSchema),
+  authController.requestPasswordReset
+);
+
+router.post(
+  "/reset-password",
+  validate(passwordResetSchema),
+  authController.resetPassword
 );
 
 router.post(
