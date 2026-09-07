@@ -27,6 +27,7 @@ const cmsPageRoutes = require("./cms-page.routes");
 const storefrontBannerRoutes = require("./storefront-banner.routes");
 const storefrontMenuRoutes = require("./storefront-menu.routes");
 const storefrontSettingsRoutes = require("./storefront-settings.routes");
+const storefrontSeoRoutes = require("./storefront-seo.routes");
 
 const router = express.Router();
 
@@ -64,5 +65,6 @@ router.use("/cms/pages", cmsPageRoutes);
 router.use("/storefront/banners", storefrontBannerRoutes);
 router.use("/storefront/menus", storefrontMenuRoutes);
 router.use("/storefront/settings",storefrontSettingsRoutes);
+router.use("/storefront/seo",storefrontSeoRoutes);
 
 module.exports = router;
