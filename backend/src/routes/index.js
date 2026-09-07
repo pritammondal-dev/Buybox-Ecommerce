@@ -30,6 +30,7 @@ const storefrontSettingsRoutes = require("./storefront-settings.routes");
 const storefrontSeoRoutes = require("./storefront-seo.routes");
 const storefrontRedirectRoutes = require("./storefront-redirect.routes");
 const storefrontContentBlockRoutes = require("./storefront-content-block.routes");
+const storefrontHomepageRoutes = require("./storefront-homepage.routes");
 
 const router = express.Router();
 
@@ -70,6 +71,6 @@ router.use("/storefront/settings",storefrontSettingsRoutes);
 router.use("/storefront/seo",storefrontSeoRoutes);
 router.use("/storefront/redirects",storefrontRedirectRoutes);
 router.use("/storefront/content-blocks",storefrontContentBlockRoutes);
-
+router.use("/storefront/homepages",storefrontHomepageRoutes);
 
 module.exports = router;
