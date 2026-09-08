@@ -6,22 +6,35 @@ const app = require("./app");
 const connectDatabase = require("./config/database");
 
 const {
-  runNotificationWorker,
-  stopNotificationWorker,
-} = require("./workers/notification.worker");
+  notificationWorker,
+  stopNotificationQueueWorker,
+} = require("./workers/notification-queue.worker");
+
+const {
+  runNotificationDispatcher,
+  stopNotificationDispatcher,
+} = require("./workers/notification-dispatcher.worker");
 
 const PORT = env.PORT;
 
 const startServer = async () => {
   await connectDatabase();
 
-  runNotificationWorker().catch((error) => {
+  runNotificationDispatcher();
+
+  logger.info("Notification queue worker initialized");
+
+  notificationWorker.on("ready", () => {
+    logger.info("Notification queue worker is ready");
+  });
+
+  notificationWorker.on("error", (error) => {
     logger.error(
       {
         error: error.message,
         stack: error.stack,
       },
-      "Notification worker stopped unexpectedly"
+      "Notification queue worker error"
     );
   });
 
@@ -29,10 +42,22 @@ const startServer = async () => {
     logger.info(`Buybox API running on port ${PORT}`);
   });
 
-  const shutdown = () => {
+  const shutdown = async () => {
     logger.info("Shutting down server...");
 
-    stopNotificationWorker();
+    stopNotificationDispatcher();
+
+    try {
+      await stopNotificationQueueWorker();
+    } catch (error) {
+      logger.error(
+        {
+          error: error.message,
+          stack: error.stack,
+        },
+        "Failed to stop notification queue worker"
+      );
+    }
 
     server.close(() => {
       process.exit(0);
