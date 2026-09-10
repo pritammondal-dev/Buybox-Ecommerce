@@ -4,6 +4,7 @@ const orderRepository = require("../repositories/order.repository");
 const cartRepository = require("../repositories/cart.repository");
 const addressRepository = require("../repositories/address.repository");
 const inventoryRepository = require("../repositories/inventory.repository");
+const paymentRepository = require("../repositories/payment.repository");
 
 const inventoryService = require("./inventory.service");
 const couponService = require("./coupon.service");
@@ -961,6 +962,7 @@ const cancelOrder = async (orderId, options = {}) => {
     ![
       "created",
       "pending",
+      "authorized",
       "failed",
       "captured",
       "refunded",
@@ -1021,6 +1023,19 @@ const cancelOrder = async (orderId, options = {}) => {
               "Inventory released due to order cancellation",
           },
           session
+        );
+      }
+
+      if (
+        payment &&
+        ["created", "pending", "authorized"].includes(
+          payment.status
+        )
+      ) {
+        await paymentRepository.updateById(
+          payment._id,
+          { status: "cancelled" },
+          { session }
         );
       }
 

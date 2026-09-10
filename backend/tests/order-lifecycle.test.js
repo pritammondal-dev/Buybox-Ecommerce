@@ -1,4 +1,5 @@
 jest.mock("../src/repositories/order.repository");
+jest.mock("../src/repositories/payment.repository");
 jest.mock("../src/services/notification.service");
 jest.mock("../src/services/notification-outbox.service");
 jest.mock("../src/services/payment.service");
@@ -9,6 +10,7 @@ jest.mock("../src/models/User");
 jest.mock("../src/utils/withTransaction");
 
 const orderRepository = require("../src/repositories/order.repository");
+const paymentRepository = require("../src/repositories/payment.repository");
 const notificationOutboxService = require("../src/services/notification-outbox.service");
 const paymentService = require("../src/services/payment.service");
 const inventoryService = require("../src/services/inventory.service");
@@ -274,6 +276,10 @@ describe("Order Status Lifecycle", () => {
     expect(
       notificationOutboxService.enqueue
     ).not.toHaveBeenCalled();
+
+    expect(
+      paymentRepository.updateById
+    ).not.toHaveBeenCalled();
   });
 
   it("should not refund a pending payment when cancelling an order", async () => {
@@ -292,6 +298,7 @@ describe("Order Status Lifecycle", () => {
     });
 
     paymentService.getLatestPaymentForOrder.mockResolvedValue({
+      _id: "payment-pending-124",
       status: "pending",
     });
 
@@ -327,6 +334,14 @@ describe("Order Status Lifecycle", () => {
     ).not.toHaveBeenCalled();
 
     expect(
+      paymentRepository.updateById
+    ).toHaveBeenCalledWith(
+      "payment-pending-124",
+      { status: "cancelled" },
+      expect.objectContaining({ session: expect.anything() })
+    );
+
+    expect(
       notificationOutboxService.enqueue
     ).toHaveBeenCalled();
   });
@@ -347,6 +362,7 @@ describe("Order Status Lifecycle", () => {
     });
 
     paymentService.getLatestPaymentForOrder.mockResolvedValue({
+      _id: "payment-captured-125",
       status: "captured",
     });
 
@@ -394,6 +410,14 @@ describe("Order Status Lifecycle", () => {
     ).toHaveBeenCalledWith(
       "order-123",
       "user-123"
+    );
+
+    expect(
+      paymentRepository.updateById
+    ).not.toHaveBeenCalledWith(
+      "payment-captured-125",
+      { status: "cancelled" },
+      expect.anything()
     );
   });
 
@@ -495,7 +519,7 @@ describe("Order Status Lifecycle", () => {
     expect(orderRepository.updateById).not.toHaveBeenCalled();
   });
 
-  it("should block cancellation for an authorized payment", async () => {
+  it("should cancel an authorized payment when cancelling an order", async () => {
     Customer.findOne.mockResolvedValue({
       _id: {
         toString: () => "customer-123",
@@ -511,8 +535,138 @@ describe("Order Status Lifecycle", () => {
     });
 
     paymentService.getLatestPaymentForOrder.mockResolvedValue({
+      _id: "payment-auth-127",
       status: "authorized",
     });
+
+    const cancelledOrder = {
+      _id: "order-123",
+      customerId: "customer-123",
+      orderNumber: "BB-TEST-127",
+      status: "cancelled",
+      cancellationStatus: "completed",
+      items: [],
+    };
+
+    orderRepository.updateById.mockResolvedValue(
+      cancelledOrder
+    );
+
+    withTransaction.mockImplementation(
+      async (callback) => callback({})
+    );
+
+    const result = await cancelOrder(
+      "order-123",
+      {
+        userId: "user-123",
+      }
+    );
+
+    expect(result.status).toBe("cancelled");
+    expect(result.cancellationStatus).toBe("completed");
+
+    expect(
+      paymentService.refundPaymentForOrder
+    ).not.toHaveBeenCalled();
+
+    expect(
+      paymentRepository.updateById
+    ).toHaveBeenCalledWith(
+      "payment-auth-127",
+      { status: "cancelled" },
+      expect.objectContaining({ session: expect.anything() })
+    );
+  });
+
+  it("should cancel a created payment when cancelling an order", async () => {
+    Customer.findOne.mockResolvedValue({
+      _id: {
+        toString: () => "customer-123",
+      },
+    });
+
+    orderRepository.findById.mockResolvedValue({
+      _id: "order-123",
+      customerId: "customer-123",
+      orderNumber: "BB-TEST-129",
+      status: "pending",
+      items: [],
+    });
+
+    paymentService.getLatestPaymentForOrder.mockResolvedValue({
+      _id: "payment-created-129",
+      status: "created",
+    });
+
+    const cancelledOrder = {
+      _id: "order-123",
+      customerId: "customer-123",
+      orderNumber: "BB-TEST-129",
+      status: "cancelled",
+      cancellationStatus: "completed",
+      items: [],
+    };
+
+    orderRepository.updateById.mockResolvedValue(
+      cancelledOrder
+    );
+
+    withTransaction.mockImplementation(
+      async (callback) => callback({})
+    );
+
+    const result = await cancelOrder(
+      "order-123",
+      {
+        userId: "user-123",
+      }
+    );
+
+    expect(result.status).toBe("cancelled");
+    expect(result.cancellationStatus).toBe("completed");
+
+    expect(
+      paymentRepository.updateById
+    ).toHaveBeenCalledWith(
+      "payment-created-129",
+      { status: "cancelled" },
+      expect.objectContaining({ session: expect.anything() })
+    );
+  });
+
+  it("should not update payment to cancelled when cancellation transaction fails", async () => {
+    Customer.findOne.mockResolvedValue({
+      _id: {
+        toString: () => "customer-123",
+      },
+    });
+
+    orderRepository.findById.mockResolvedValue({
+      _id: "order-123",
+      customerId: "customer-123",
+      orderNumber: "BB-TEST-130",
+      status: "pending",
+      items: [
+        {
+          productVariantId: "variant-123",
+          warehouseId: "warehouse-123",
+          quantity: 1,
+          sku: "SKU-123",
+        },
+      ],
+    });
+
+    paymentService.getLatestPaymentForOrder.mockResolvedValue({
+      _id: "payment-pending-130",
+      status: "pending",
+    });
+
+    inventoryRepository.findByVariantAndWarehouse.mockResolvedValue(null);
+
+    withTransaction.mockImplementation(
+      async (callback) => callback({})
+    );
 
     await expect(
       cancelOrder(
@@ -521,15 +675,13 @@ describe("Order Status Lifecycle", () => {
           userId: "user-123",
         }
       )
-    ).rejects.toThrow(
-      "Order payment cannot be cancelled from payment status authorized"
+    ).rejects.toThrow("Inventory record not found for SKU SKU-123");
+
+    expect(paymentRepository.updateById).not.toHaveBeenCalledWith(
+      "payment-pending-130",
+      { status: "cancelled" },
+      expect.anything()
     );
-
-    expect(
-      paymentService.refundPaymentForOrder
-    ).not.toHaveBeenCalled();
-
-    expect(withTransaction).not.toHaveBeenCalled();
   });
 
   it("should set cancellationStatus to completed during shipment cascading cancellation", async () => {
