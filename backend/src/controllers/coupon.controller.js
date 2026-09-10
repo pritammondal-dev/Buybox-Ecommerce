@@ -1,4 +1,6 @@
 const couponService = require("../services/coupon.service");
+const Customer = require("../models/Customer");
+const AppError = require("../errors/AppError");
 const apiResponse = require("../utils/apiResponse");
 
 const createCoupon = async (req, res, next) => {
@@ -91,7 +93,31 @@ const deactivateCoupon = async (req, res, next) => {
 
 const validateCoupon = async (req, res, next) => {
   try {
-    const result = await couponService.validateCoupon(req.body);
+    let customerId = req.body.customerId;
+
+    if (req.user) {
+      const customer = await Customer.findOne({
+        userId: req.user.id,
+        isActive: true,
+        deletedAt: null,
+      });
+
+      if (customer) {
+        if (customerId && customerId.toString() !== customer._id.toString()) {
+          throw new AppError(
+            "You can only validate coupons for your own account",
+            403,
+            "COUPON_ACCESS_DENIED"
+          );
+        }
+        customerId = customer._id;
+      }
+    }
+
+    const result = await couponService.validateCoupon({
+      ...req.body,
+      customerId,
+    });
 
     return apiResponse.sendSuccess(res, {
       message: "Coupon validated successfully",

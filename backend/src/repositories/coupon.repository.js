@@ -63,6 +63,24 @@ const incrementUsage = async (couponId, options = {}) => {
   );
 };
 
+const decrementUsage = async (couponId, options = {}) => {
+  return Coupon.findOneAndUpdate(
+    {
+      _id: couponId,
+      usageCount: { $gt: 0 },
+    },
+    {
+      $inc: {
+        usageCount: -1,
+      },
+    },
+    {
+      new: true,
+      session: options.session,
+    }
+  );
+};
+
 module.exports = {
   create,
   findById,
@@ -71,4 +89,5 @@ module.exports = {
   findMany,
   updateById,
   incrementUsage,
+  decrementUsage,
 };

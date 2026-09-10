@@ -5,6 +5,8 @@ const cartRepository = require("../repositories/cart.repository");
 const addressRepository = require("../repositories/address.repository");
 const inventoryRepository = require("../repositories/inventory.repository");
 const paymentRepository = require("../repositories/payment.repository");
+const couponRepository = require("../repositories/coupon.repository");
+const couponRedemptionRepository = require("../repositories/coupon-redemption.repository");
 
 const inventoryService = require("./inventory.service");
 const couponService = require("./coupon.service");
@@ -1064,6 +1066,25 @@ const cancelOrder = async (orderId, options = {}) => {
           { status: "cancelled" },
           { session }
         );
+      }
+
+      /*
+       * Idempotently rollback coupon usage for this specific order.
+       * Only decrement global usage if an active redemption for this order was deleted.
+       */
+      if (currentOrder.couponId) {
+        const rollbackRedemption =
+          await couponRedemptionRepository.deleteByOrderId(
+            currentOrder._id,
+            { session }
+          );
+
+        if (rollbackRedemption) {
+          await couponRepository.decrementUsage(
+            currentOrder.couponId,
+            { session }
+          );
+        }
       }
 
       return transitionOrderStatus(

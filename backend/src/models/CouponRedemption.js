@@ -43,14 +43,9 @@ const couponRedemptionSchema = new mongoose.Schema(
   }
 );
 
-// A customer can redeem a coupon only according to the
-// per-customer limit enforced by the service.
-couponRedemptionSchema.index(
-  { couponId: 1, customerId: 1 },
-  {
-    unique: true,
-  }
-);
+// Index for fast lookup of customer redemptions per coupon.
+// Per-customer limit is enforced atomically by the service.
+couponRedemptionSchema.index({ couponId: 1, customerId: 1 });
 
 const CouponRedemption = mongoose.model(
   "CouponRedemption",

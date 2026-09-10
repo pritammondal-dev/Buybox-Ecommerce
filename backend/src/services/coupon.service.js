@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 
 const couponRepository = require("../repositories/coupon.repository");
+const couponRedemptionRepository = require("../repositories/coupon-redemption.repository");
 const AppError = require("../errors/AppError");
 
 const {
@@ -318,6 +319,25 @@ const validateCoupon = async ({
       400,
       "INVALID_CUSTOMER_ID"
     );
+  }
+
+  if (
+    coupon.perCustomerLimit !== null &&
+    coupon.perCustomerLimit !== undefined
+  ) {
+    const currentCustomerRedemptions =
+      await couponRedemptionRepository.countByCouponAndCustomer(
+        coupon._id,
+        customerId
+      );
+
+    if (currentCustomerRedemptions >= coupon.perCustomerLimit) {
+      throw new AppError(
+        "Customer coupon usage limit has been reached",
+        409,
+        "CUSTOMER_COUPON_LIMIT_REACHED"
+      );
+    }
   }
 
   if (

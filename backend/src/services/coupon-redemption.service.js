@@ -104,16 +104,12 @@ const redeemCoupon = async ({
   /*
    * Check this customer's previous usage.
    */
-  const existing =
-    await couponRedemptionRepository.findByCouponAndCustomer(
+  const currentCount =
+    await couponRedemptionRepository.countByCouponAndCustomer(
       couponId,
       customerId,
       { session }
     );
-
-  const currentCount = existing
-    ? existing.redemptionCount
-    : 0;
 
   if (
     coupon.perCustomerLimit !== null &&
@@ -149,34 +145,7 @@ const redeemCoupon = async ({
   }
 
   /*
-   * Existing customer redemption:
-   * increment their redemption counter.
-   */
-  if (existing) {
-    try {
-      const redemption =
-        await couponRedemptionRepository.incrementRedemptionCount(
-          couponId,
-          customerId,
-          { session }
-        );
-
-      if (!redemption) {
-        throw new AppError(
-          "Coupon redemption could not be updated",
-          409,
-          "COUPON_REDEMPTION_UPDATE_FAILED"
-        );
-      }
-
-      return redemption;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  /*
-   * First redemption for this customer.
+   * Record the redemption linked specifically to this order.
    */
   try {
     const redemption =
@@ -193,15 +162,13 @@ const redeemCoupon = async ({
     return redemption;
   } catch (error) {
     /*
-     * A duplicate means another redemption was created
-     * concurrently. The surrounding transaction will roll
-     * back the coupon usage increment.
+     * Duplicate key on orderId means this order already redeemed.
      */
     if (error?.code === 11000) {
       throw new AppError(
-        "Coupon redemption already exists",
+        "Order already has a coupon redemption",
         409,
-        "COUPON_REDEMPTION_EXISTS"
+        "ORDER_COUPON_ALREADY_REDEEMED"
       );
     }
 

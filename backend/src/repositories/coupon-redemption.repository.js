@@ -60,6 +60,23 @@ const incrementRedemptionCount = async (
   );
 };
 
+const countByCouponAndCustomer = async (
+  couponId,
+  customerId,
+  options = {}
+) => {
+  return CouponRedemption.countDocuments({
+    couponId,
+    customerId,
+  }).session(options.session || null);
+};
+
+const deleteByOrderId = async (orderId, options = {}) => {
+  return CouponRedemption.findOneAndDelete({
+    orderId,
+  }).session(options.session || null);
+};
+
 module.exports = {
   create,
   findByCouponAndCustomer,
@@ -67,4 +84,6 @@ module.exports = {
   findByCouponId,
   findByCustomerId,
   incrementRedemptionCount,
+  countByCouponAndCustomer,
+  deleteByOrderId,
 };
