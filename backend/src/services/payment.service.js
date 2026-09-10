@@ -426,10 +426,11 @@ const refundPaymentForOrder = async (
   const refundAmountString =
     amountToRefund.toFixed(2);
 
-  const refundIdempotencyKey =
-    `refund-${payment._id.toString()}-${decimalToMinorUnits(
-      refundAmountString
-    )}`;
+  const priorRefundedUnits = decimalToMinorUnits(
+    payment.refundedAmount?.toString?.() || "0"
+  );
+
+  const refundIdempotencyKey = `rfnd-${payment._id.toString().slice(-12)}-${priorRefundedUnits}-${refundMinorUnits}`;
 
   const reservation =
     await paymentRepository.reserveRefundAmount(

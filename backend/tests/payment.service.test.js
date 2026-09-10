@@ -286,5 +286,134 @@ describe("Payment Service", () => {
       expect.anything()
     );
   });
-});
 
+  it("should generate different idempotency keys for two equal partial refunds", async () => {
+    Customer.findOne.mockResolvedValue({ _id: "customer-123" });
+    orderRepository.findById.mockResolvedValue({
+      _id: "order-123",
+      customerId: "customer-123",
+      orderNumber: "BB-TEST-003",
+    });
+
+    paymentRepository.findLatestByOrderId.mockResolvedValueOnce({
+      _id: "65f123456789abcdef000001",
+      orderId: "order-123",
+      customerId: "customer-123",
+      amount: "2000.00",
+      refundedAmount: "0.00",
+      refundReservedAmount: "0.00",
+      status: "captured",
+      gateway: "razorpay",
+      gatewayPaymentId: "pay_TEST123",
+    });
+
+    paymentRepository.reserveRefundAmount.mockResolvedValue({ _id: "65f123456789abcdef000001" });
+    razorpayProvider.refundPayment.mockResolvedValue({ id: "rfnd_1", status: "processed" });
+    paymentRepository.updateById.mockResolvedValue({
+      _id: "65f123456789abcdef000001",
+      status: "partially_refunded",
+      refundedAmount: "500.00",
+    });
+
+    await refundPaymentForOrder("order-123", "user-123", 500);
+    const firstCallKey = razorpayProvider.refundPayment.mock.calls[0][0].idempotencyKey;
+
+    paymentRepository.findLatestByOrderId.mockResolvedValueOnce({
+      _id: "65f123456789abcdef000001",
+      orderId: "order-123",
+      customerId: "customer-123",
+      amount: "2000.00",
+      refundedAmount: "500.00",
+      refundReservedAmount: "0.00",
+      status: "partially_refunded",
+      gateway: "razorpay",
+      gatewayPaymentId: "pay_TEST123",
+    });
+
+    await refundPaymentForOrder("order-123", "user-123", 500);
+    const secondCallKey = razorpayProvider.refundPayment.mock.calls[1][0].idempotencyKey;
+
+    expect(firstCallKey).toBe("rfnd-abcdef000001-0-50000");
+    expect(secondCallKey).toBe("rfnd-abcdef000001-50000-50000");
+    expect(firstCallKey).not.toBe(secondCallKey);
+  });
+
+  it("should generate the same idempotency key when retrying a failed refund", async () => {
+    Customer.findOne.mockResolvedValue({ _id: "customer-123" });
+    orderRepository.findById.mockResolvedValue({
+      _id: "order-123",
+      customerId: "customer-123",
+      orderNumber: "BB-TEST-004",
+    });
+
+    const paymentData = {
+      _id: "65f123456789abcdef000001",
+      orderId: "order-123",
+      customerId: "customer-123",
+      amount: "2000.00",
+      refundedAmount: "0.00",
+      refundReservedAmount: "0.00",
+      status: "captured",
+      gateway: "razorpay",
+      gatewayPaymentId: "pay_TEST123",
+    };
+
+    paymentRepository.findLatestByOrderId.mockResolvedValue(paymentData);
+    paymentRepository.reserveRefundAmount.mockResolvedValue({ _id: paymentData._id });
+    paymentRepository.releaseRefundReservation.mockResolvedValue({});
+
+    razorpayProvider.refundPayment.mockRejectedValueOnce(new Error("Network timeout"));
+
+    await expect(
+      refundPaymentForOrder("order-123", "user-123", 500)
+    ).rejects.toThrow("Network timeout");
+
+    const attempt1Key = razorpayProvider.refundPayment.mock.calls[0][0].idempotencyKey;
+
+    razorpayProvider.refundPayment.mockResolvedValueOnce({ id: "rfnd_RETRY", status: "processed" });
+    paymentRepository.updateById.mockResolvedValue({
+      _id: paymentData._id,
+      status: "partially_refunded",
+      refundedAmount: "500.00",
+    });
+
+    await refundPaymentForOrder("order-123", "user-123", 500);
+    const attempt2Key = razorpayProvider.refundPayment.mock.calls[1][0].idempotencyKey;
+
+    expect(attempt1Key).toBe("rfnd-abcdef000001-0-50000");
+    expect(attempt2Key).toBe("rfnd-abcdef000001-0-50000");
+    expect(attempt1Key).toBe(attempt2Key);
+  });
+
+  it("should generate an idempotency key <= 40 characters with valid characters", async () => {
+    Customer.findOne.mockResolvedValue({ _id: "customer-123" });
+    orderRepository.findById.mockResolvedValue({
+      _id: "order-123",
+      customerId: "customer-123",
+      orderNumber: "BB-TEST-005",
+    });
+
+    paymentRepository.findLatestByOrderId.mockResolvedValue({
+      _id: "65f123456789abcdef000001",
+      orderId: "order-123",
+      customerId: "customer-123",
+      amount: "999999.00",
+      refundedAmount: "500000.00",
+      refundReservedAmount: "0.00",
+      status: "partially_refunded",
+      gateway: "razorpay",
+      gatewayPaymentId: "pay_TEST123",
+    });
+
+    paymentRepository.reserveRefundAmount.mockResolvedValue({ _id: "65f123456789abcdef000001" });
+    razorpayProvider.refundPayment.mockResolvedValue({ id: "rfnd_BIG", status: "processed" });
+    paymentRepository.updateById.mockResolvedValue({});
+
+    await refundPaymentForOrder("order-123", "user-123", 499999);
+
+    const key = razorpayProvider.refundPayment.mock.calls[0][0].idempotencyKey;
+
+    expect(key.length).toBeLessThanOrEqual(40);
+    expect(/^[a-zA-Z0-9_-]+$/.test(key)).toBe(true);
+  });
+});
