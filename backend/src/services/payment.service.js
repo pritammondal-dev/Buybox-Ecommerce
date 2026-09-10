@@ -188,12 +188,6 @@ const createPaymentForOrder = async (
     );
   }
 
-  /*
-   * Claim the idempotency key before calling Razorpay.
-   *
-   * The unique database index protects us if two requests
-   * arrive concurrently with the same key.
-   */
   let payment;
 
   try {
@@ -282,7 +276,233 @@ const createPaymentForOrder = async (
   return updatedPayment;
 };
 
+/**
+ * Refund a captured Razorpay payment for an order.
+ *
+ * The refund amount is expressed in the order currency
+ * while Razorpay receives the amount in minor units.
+ *
+ * refundReservedAmount protects the refundable balance
+ * from concurrent refund attempts.
+ */
+const getLatestPaymentForOrder = async (
+  orderId
+) => {
+  return paymentRepository.findLatestByOrderId(
+    orderId
+  );
+};
+const refundPaymentForOrder = async (
+  orderId,
+  userId,
+  requestedAmount = null
+) => {
+  const customer = await validateCustomer(userId);
+
+  const order =
+    await orderRepository.findById(orderId);
+
+  if (!order) {
+    throw new AppError(
+      "Order not found",
+      404,
+      "ORDER_NOT_FOUND"
+    );
+  }
+
+  if (
+    order.customerId.toString() !==
+    customer._id.toString()
+  ) {
+    throw new AppError(
+      "You are not allowed to access this order",
+      403,
+      "ORDER_ACCESS_DENIED"
+    );
+  }
+
+  const payment =
+    await paymentRepository.findLatestByOrderId(
+      order._id
+    );
+
+  if (!payment) {
+    throw new AppError(
+      "Payment record not found",
+      404,
+      "PAYMENT_NOT_FOUND"
+    );
+  }
+
+  if (payment.status === "refunded") {
+    return payment;
+  }
+
+  if (!["captured", "partially_refunded"].includes(payment.status)) {
+    throw new AppError(
+      `Payment cannot be refunded from status ${payment.status}`,
+      409,
+      "PAYMENT_NOT_REFUNDABLE"
+    );
+  }
+
+  if (!payment.gatewayPaymentId) {
+    throw new AppError(
+      "Captured payment is missing Razorpay payment ID",
+      409,
+      "PAYMENT_GATEWAY_ID_MISSING"
+    );
+  }
+
+  const totalAmount =
+    Number(payment.amount.toString());
+
+  const refundedAmount =
+    Number(
+      payment.refundedAmount?.toString?.() || "0"
+    );
+
+  const reservedAmount =
+    Number(
+      payment.refundReservedAmount?.toString?.() ||
+        "0"
+    );
+
+  const refundableAmount =
+    totalAmount -
+    refundedAmount -
+    reservedAmount;
+
+  if (
+    !Number.isFinite(refundableAmount) ||
+    refundableAmount <= 0
+  ) {
+    if (refundedAmount >= totalAmount) {
+      return paymentRepository.updateById(
+        payment._id,
+        {
+          status: "refunded",
+        }
+      );
+    }
+
+    throw new AppError(
+      "No refundable payment amount remains",
+      409,
+      "NO_REFUNDABLE_AMOUNT"
+    );
+  }
+
+  const amountToRefund =
+    requestedAmount === null
+      ? refundableAmount
+      : Number(requestedAmount);
+
+  if (
+    !Number.isFinite(amountToRefund) ||
+    amountToRefund <= 0 ||
+    amountToRefund > refundableAmount
+  ) {
+    throw new AppError(
+      "Invalid refund amount",
+      400,
+      "INVALID_REFUND_AMOUNT"
+    );
+  }
+
+  const refundMinorUnits =
+    decimalToMinorUnits(
+      amountToRefund.toFixed(2)
+    );
+
+  if (refundMinorUnits <= 0) {
+    throw new AppError(
+      "Refund amount must be greater than zero",
+      400,
+      "INVALID_REFUND_AMOUNT"
+    );
+  }
+
+  const refundAmountString =
+    amountToRefund.toFixed(2);
+
+  const refundIdempotencyKey =
+    `refund-${payment._id.toString()}-${decimalToMinorUnits(
+      refundAmountString
+    )}`;
+
+  const reservation =
+    await paymentRepository.reserveRefundAmount(
+      payment._id,
+      refundAmountString
+    );
+
+  if (!reservation) {
+    throw new AppError(
+      "Refund amount is no longer available",
+      409,
+      "REFUND_AMOUNT_UNAVAILABLE"
+    );
+  }
+
+  try {
+    const refund =
+      await razorpayProvider.refundPayment({
+        paymentId:
+          payment.gatewayPaymentId,
+        amount:
+          refundMinorUnits,
+        notes: {
+          buyboxOrderId:
+            order._id.toString(),
+          orderNumber:
+            order.orderNumber,
+        },
+        idempotencyKey:
+          refundIdempotencyKey,
+      });
+
+    const newRefundedAmount =
+      refundedAmount + amountToRefund;
+
+    const isFullyRefunded =
+      newRefundedAmount >= totalAmount;
+
+    return await paymentRepository.updateById(
+      payment._id,
+      {
+        refundedAmount:
+          newRefundedAmount.toFixed(2),
+        refundReservedAmount: "0.00",
+        status:
+          isFullyRefunded
+            ? "refunded"
+            : "partially_refunded",
+        metadata: {
+          lastRefundId:
+            refund?.id || "",
+          lastRefundStatus:
+            refund?.status || "",
+        },
+      }
+    );
+  } catch (error) {
+    await paymentRepository.releaseRefundReservation(
+      payment._id,
+      refundAmountString
+    );
+
+    throw error;
+  }
+};
+
 module.exports = {
   createPaymentForOrder,
+  getLatestPaymentForOrder,
+  refundPaymentForOrder,
   decimalToMinorUnits,
 };
+
+
+
+

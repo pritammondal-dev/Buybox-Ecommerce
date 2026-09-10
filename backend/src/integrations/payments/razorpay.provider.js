@@ -1,5 +1,10 @@
+const axios = require("axios");
+
 const { razorpay } = require("../../config/payment");
+const env = require("../../config/env");
 const AppError = require("../../errors/AppError");
+
+const RAZORPAY_API_BASE_URL = "https://api.razorpay.com/v1";
 
 const createOrder = async ({
   amount,
@@ -55,8 +60,45 @@ const capturePayment = async ({
   }
 };
 
+const refundPayment = async ({
+  paymentId,
+  amount,
+  notes = {},
+  idempotencyKey,
+}) => {
+  try {
+    const response = await axios.post(
+      `${RAZORPAY_API_BASE_URL}/payments/${paymentId}/refund`,
+      {
+        amount,
+        notes,
+      },
+      {
+        auth: {
+          username: env.RAZORPAY_KEY_ID,
+          password: env.RAZORPAY_KEY_SECRET,
+        },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Refund-Idempotency": idempotencyKey,
+        },
+        timeout: 10000,
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    throw new AppError(
+      "Unable to refund Razorpay payment",
+      502,
+      "RAZORPAY_PAYMENT_REFUND_FAILED"
+    );
+  }
+};
+
 module.exports = {
   createOrder,
   fetchPayment,
   capturePayment,
+  refundPayment,
 };

@@ -20,6 +20,13 @@ router.get(
   orderController.getMyOrderById
 );
 
+
+router.post(
+  "/:id/cancel",
+  validate(orderIdSchema, "params"),
+  orderController.cancelOrder
+);
+
 router.post(
   "/",
   validate(createOrderSchema),
@@ -27,3 +34,4 @@ router.post(
 );
 
 module.exports = router;
+

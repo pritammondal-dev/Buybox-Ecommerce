@@ -1,4 +1,12 @@
+const mongoose = require("mongoose");
+
 const Payment = require("../models/Payment");
+
+const toDecimal128 = (amount) => {
+  return mongoose.Types.Decimal128.fromString(
+    amount.toString()
+  );
+};
 
 const create = async (data, options = {}) => {
   const documents = await Payment.create([data], {
@@ -94,6 +102,8 @@ const reserveRefundAmount = async (
   amount,
   options = {}
 ) => {
+  const decimalAmount = toDecimal128(amount);
+
   return Payment.findOneAndUpdate(
     {
       _id: paymentId,
@@ -101,9 +111,19 @@ const reserveRefundAmount = async (
         $lte: [
           {
             $add: [
-              { $ifNull: ["$refundedAmount", 0] },
-              { $ifNull: ["$refundReservedAmount", 0] },
-              amount,
+              {
+                $ifNull: [
+                  "$refundedAmount",
+                  mongoose.Types.Decimal128.fromString("0"),
+                ],
+              },
+              {
+                $ifNull: [
+                  "$refundReservedAmount",
+                  mongoose.Types.Decimal128.fromString("0"),
+                ],
+              },
+              decimalAmount,
             ],
           },
           "$amount",
@@ -112,7 +132,7 @@ const reserveRefundAmount = async (
     },
     {
       $inc: {
-        refundReservedAmount: amount,
+        refundReservedAmount: decimalAmount,
       },
     },
     {
@@ -128,6 +148,8 @@ const releaseRefundReservation = async (
   amount,
   options = {}
 ) => {
+  const decimalAmount = toDecimal128(amount);
+
   return Payment.findOneAndUpdate(
     {
       _id: paymentId,
@@ -136,10 +158,10 @@ const releaseRefundReservation = async (
           {
             $ifNull: [
               "$refundReservedAmount",
-              0,
+              mongoose.Types.Decimal128.fromString("0"),
             ],
           },
-          amount,
+          decimalAmount,
         ],
       },
     },
@@ -150,10 +172,10 @@ const releaseRefundReservation = async (
             {
               $ifNull: [
                 "$refundReservedAmount",
-                0,
+                mongoose.Types.Decimal128.fromString("0"),
               ],
             },
-            amount,
+            decimalAmount,
           ],
         },
       },

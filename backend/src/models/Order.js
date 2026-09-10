@@ -160,6 +160,26 @@ const orderSchema = new mongoose.Schema(
       index: true,
     },
 
+    /*
+     * Cancellation workflow state.
+     *
+     * This is separate from the final order status so the
+     * cancellation process can survive failures between the
+     * payment gateway and MongoDB transaction.
+     */
+    cancellationStatus: {
+      type: String,
+      enum: [
+        "none",
+        "pending",
+        "completed",
+        "failed",
+      ],
+      default: "none",
+      required: true,
+      index: true,
+    },
+
     paymentStatus: {
       type: String,
       enum: [
@@ -343,5 +363,9 @@ orderSchema.index({
   status: 1,
 });
 
-module.exports = mongoose.model("Order", orderSchema);
+orderSchema.index({
+  cancellationStatus: 1,
+  status: 1,
+});
 
+module.exports = mongoose.model("Order", orderSchema);

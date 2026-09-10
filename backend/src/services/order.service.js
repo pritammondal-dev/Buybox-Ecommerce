@@ -11,6 +11,8 @@ const couponRedemptionService = require("./coupon-redemption.service");
 const notificationService = require("./notification");
 const notificationOutboxService = require("./notification-outbox.service");
 
+const paymentService = require("./payment.service");
+
 const withTransaction = require("../utils/withTransaction");
 
 const ProductVariant = require("../models/ProductVariant");
@@ -840,16 +842,18 @@ const sendOrderStatusNotification = async ({
       .trim();
 
     if (order.status === "cancelled") {
-      await notificationService
-        .sendOrderCancellation({
-          to: user.email,
-          customerName,
-          orderNumber:
-            order.orderNumber,
-        });
+  await notificationOutboxService.enqueue({
+    type: "order_cancellation",
+    channel: "email",
+    recipient: user.email,
+    payload: {
+      customerName,
+      orderNumber: order.orderNumber,
+    },
+  });
 
-      return;
-    }
+  return;
+}
 
     await notificationService
       .sendOrderStatusUpdate({
@@ -875,6 +879,165 @@ const sendOrderStatusNotification = async ({
  *
  * Therefore notification is NOT sent here.
  */
+const cancelOrder = async (orderId, options = {}) => {
+  const userId = options.userId;
+
+  if (!userId) {
+    throw new AppError(
+      "User ID is required",
+      400,
+      "USER_ID_REQUIRED"
+    );
+  }
+
+  const customer = await validateCustomer(userId);
+
+  const order = await orderRepository.findById(
+    orderId,
+    options
+  );
+
+  if (!order) {
+    throw new AppError(
+      "Order not found",
+      404,
+      "ORDER_NOT_FOUND"
+    );
+  }
+
+  if (
+    order.customerId.toString() !==
+    customer._id.toString()
+  ) {
+    throw new AppError(
+      "You are not allowed to access this order",
+      403,
+      "ORDER_ACCESS_DENIED"
+    );
+  }
+
+  if (order.status === "cancelled") {
+    return order;
+  }
+
+  if (
+    !["pending", "confirmed", "processing"].includes(
+      order.status
+    )
+  ) {
+    throw new AppError(
+      `Order cannot be cancelled from status ${order.status}`,
+      409,
+      "ORDER_CANNOT_BE_CANCELLED"
+    );
+  }
+
+  /*
+   * Payment-aware cancellation.
+   *
+   * Captured payments must be refunded before the
+   * cancellation transaction is committed.
+   *
+   * Pending/created/failed payments do not require
+   * a refund because no captured money exists.
+   */
+  const payment =
+    await paymentService.getLatestPaymentForOrder(
+      orderId
+    );
+
+  if (
+    payment?.status === "captured" ||
+    payment?.status === "partially_refunded"
+  ) {
+    await paymentService.refundPaymentForOrder(
+      orderId,
+      userId
+    );
+  }
+
+  if (
+    payment &&
+    ![
+      "created",
+      "pending",
+      "failed",
+      "captured",
+      "refunded",
+      "partially_refunded",
+      "cancelled",
+    ].includes(payment.status)
+  ) {
+    throw new AppError(
+      `Order payment cannot be cancelled from payment status ${payment.status}`,
+      409,
+      "ORDER_PAYMENT_CANCELLATION_BLOCKED"
+    );
+  }
+
+  const cancelledOrder = await withTransaction(
+    async (session) => {
+      const currentOrder =
+        await orderRepository.findById(
+          orderId,
+          { session }
+        );
+
+      if (!currentOrder) {
+        throw new AppError(
+          "Order not found",
+          404,
+          "ORDER_NOT_FOUND"
+        );
+      }
+
+      if (currentOrder.status === "cancelled") {
+        return currentOrder;
+      }
+
+      for (const item of currentOrder.items) {
+        const inventory =
+          await inventoryRepository.findByVariantAndWarehouse(
+            item.productVariantId,
+            item.warehouseId,
+            { session }
+          );
+
+        if (!inventory) {
+          throw new AppError(
+            `Inventory record not found for SKU ${item.sku}`,
+            404,
+            "INVENTORY_NOT_FOUND"
+          );
+        }
+
+        await inventoryService.releaseStockInTransaction(
+          inventory._id,
+          item.quantity,
+          {
+            referenceType: "order",
+            referenceId: currentOrder.orderNumber,
+            notes:
+              "Inventory released due to order cancellation",
+          },
+          session
+        );
+      }
+
+      return transitionOrderStatus(
+        orderId,
+        "cancelled",
+        { session }
+      );
+    }
+  );
+
+  await sendOrderStatusNotification({
+    order: cancelledOrder,
+  });
+
+  return cancelledOrder;
+};
 const transitionOrderStatus = async (
   orderId,
   nextStatus,
@@ -1065,5 +1228,11 @@ module.exports = {
   getOrderById,
   getCustomerOrders,
   transitionOrderStatus,
+  cancelOrder,
   markOrderPaymentCaptured,
 };
+
+
+
+
+

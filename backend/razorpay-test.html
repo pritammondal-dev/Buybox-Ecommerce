@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Razorpay Test</title>
+</head>
+<body>
+  <h2>Buybox Razorpay Test</h2>
+  <button id="pay">Pay ?2799 Test</button>
+
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script>
+    document.getElementById("pay").onclick = function () {
+      const options = {
+        key:"rzp_test_TQkfxGDJXOtHn4",
+        amount: 279900,
+        currency: "INR",
+        name: "Buybox Test",
+        description: "Backend payment test",
+        order_id: "order_TaFqaJN8dhscKw",
+        handler: function (response) {
+          document.body.innerHTML +=
+            "<pre>" + JSON.stringify(response, null, 2) + "</pre>";
+        }
+      };
+
+      new Razorpay(options).open();
+    };
+  </script>
+</body>
+</html>

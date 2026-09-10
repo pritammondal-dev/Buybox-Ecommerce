@@ -491,7 +491,7 @@ const releaseStockInTransaction = async (
   const reservedBefore = inventory.reserved;
 
   const releasedInventory =
-    await inventoryRepository.releaseStock(
+    await inventoryRepository.releaseReservedStock(
       inventoryId,
       quantity,
       { session }

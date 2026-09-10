@@ -1,4 +1,5 @@
 const orderService = require("../services/order.service");
+const analyticsService = require("../services/analytics.service");
 
 const apiResponse = require("../utils/apiResponse");
 
@@ -9,6 +10,24 @@ const createOrder = async (req, res) => {
       req.body.shippingAddressId,
       req.body.couponCode || null
     );
+
+  await analyticsService.track({
+    eventName: "order_created",
+    eventType: "order",
+    userId: req.user.id,
+    customerId: order.customerId,
+    entityType: "order",
+    entityId: order._id,
+    properties: {
+      orderNumber: order.orderNumber,
+      currency: order.currency,
+      grandTotal: order.grandTotal.toString(),
+      itemCount: order.items.length,
+    },
+    metadata: {
+      source: "api",
+    },
+  });
 
   return apiResponse.sendSuccess(res, {
     statusCode: 201,
@@ -42,8 +61,24 @@ const getMyOrderById = async (req, res) => {
   });
 };
 
+const cancelOrder = async (req, res) => {
+  const order =
+    await orderService.cancelOrder(
+      req.params.id,
+      {
+        userId: req.user.id,
+      }
+    );
+
+  return apiResponse.sendSuccess(res, {
+    message: "Order cancelled successfully",
+    data: order,
+  });
+};
+
 module.exports = {
   createOrder,
   getMyOrders,
   getMyOrderById,
+  cancelOrder,
 };
