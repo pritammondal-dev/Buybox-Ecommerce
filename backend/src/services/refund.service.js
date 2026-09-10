@@ -459,11 +459,23 @@ const createRefund = async ({
     );
   }
 
+  if (
+    !REFUNDABLE_PAYMENT_STATUSES.includes(
+      payment.status
+    )
+  ) {
+    throw new AppError(
+      "Payment is not refundable",
+      409,
+      "PAYMENT_NOT_REFUNDABLE"
+    );
+  }
+
   if (!payment.gatewayPaymentId) {
     throw new AppError(
-      "Payment has not been captured by Razorpay",
+      "Captured payment is missing Razorpay payment ID",
       409,
-      "PAYMENT_NOT_CAPTURED"
+      "PAYMENT_GATEWAY_ID_MISSING"
     );
   }
 

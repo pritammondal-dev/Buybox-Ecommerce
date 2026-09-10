@@ -12,6 +12,9 @@ const {
   createPaymentForOrder,
   refundPaymentForOrder,
 } = require("../src/services/payment.service");
+const {
+  createRefund,
+} = require("../src/services/refund.service");
 
 describe("Payment Service", () => {
   beforeEach(() => {
@@ -231,11 +234,85 @@ describe("Payment Service", () => {
         "order-123",
         "user-123"
       )
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({
+      code: "PAYMENT_NOT_REFUNDABLE",
+    });
 
     expect(
       razorpayProvider.refundPayment
     ).not.toHaveBeenCalled();
+  });
+
+  it("should reject createRefund in refund.service with PAYMENT_NOT_REFUNDABLE when payment is not captured", async () => {
+    Customer.findOne.mockResolvedValue({
+      _id: "customer-123",
+    });
+
+    orderRepository.findById.mockResolvedValue({
+      _id: "order-123",
+      customerId: "customer-123",
+      status: "delivered",
+    });
+
+    paymentRepository.findLatestByOrderId.mockResolvedValue({
+      _id: "payment-123",
+      orderId: "order-123",
+      customerId: "customer-123",
+      amount: "2799.00",
+      refundedAmount: "0.00",
+      refundReservedAmount: "0.00",
+      status: "pending",
+      gateway: "razorpay",
+      gatewayPaymentId: null,
+    });
+
+    await expect(
+      createRefund({
+        orderId: "order-123",
+        userId: "user-123",
+        amount: "1000.00",
+        reason: "Customer return",
+        idempotencyKey: "test-refund-key",
+      })
+    ).rejects.toMatchObject({
+      code: "PAYMENT_NOT_REFUNDABLE",
+    });
+  });
+
+  it("should reject createRefund in refund.service with PAYMENT_GATEWAY_ID_MISSING when captured payment has no gatewayPaymentId", async () => {
+    Customer.findOne.mockResolvedValue({
+      _id: "customer-123",
+    });
+
+    orderRepository.findById.mockResolvedValue({
+      _id: "order-123",
+      customerId: "customer-123",
+      status: "delivered",
+    });
+
+    paymentRepository.findLatestByOrderId.mockResolvedValue({
+      _id: "payment-123",
+      orderId: "order-123",
+      customerId: "customer-123",
+      amount: "2799.00",
+      refundedAmount: "0.00",
+      refundReservedAmount: "0.00",
+      status: "captured",
+      gateway: "razorpay",
+      gatewayPaymentId: null,
+    });
+
+    await expect(
+      createRefund({
+        orderId: "order-123",
+        userId: "user-123",
+        amount: "1000.00",
+        reason: "Customer return",
+        idempotencyKey: "test-refund-key",
+      })
+    ).rejects.toMatchObject({
+      code: "PAYMENT_GATEWAY_ID_MISSING",
+    });
   });
 
   it("should release the refund reservation when Razorpay refund fails", async () => {
