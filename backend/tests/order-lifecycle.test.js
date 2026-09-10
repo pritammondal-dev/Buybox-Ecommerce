@@ -128,6 +128,7 @@ describe("Order Status Lifecycle", () => {
     const cancelledOrder = {
       ...order,
       status: "cancelled",
+      cancellationStatus: "completed",
     };
 
     Customer.findOne.mockResolvedValue(customer);
@@ -171,6 +172,15 @@ describe("Order Status Lifecycle", () => {
     );
 
     expect(result.status).toBe("cancelled");
+    expect(result.cancellationStatus).toBe("completed");
+    expect(orderRepository.updateById).toHaveBeenCalledWith(
+      "order-123",
+      expect.objectContaining({
+        status: "cancelled",
+        cancellationStatus: "completed",
+      }),
+      expect.anything()
+    );
 
     expect(
       inventoryService.releaseStockInTransaction
@@ -242,6 +252,7 @@ describe("Order Status Lifecycle", () => {
       customerId: "customer-123",
       orderNumber: "BB-TEST-123",
       status: "cancelled",
+      cancellationStatus: "completed",
     };
 
     orderRepository.findById.mockResolvedValue(cancelledOrder);
@@ -254,6 +265,7 @@ describe("Order Status Lifecycle", () => {
     );
 
     expect(result.status).toBe("cancelled");
+    expect(result.cancellationStatus).toBe("completed");
 
     expect(
       inventoryService.releaseStockInTransaction
@@ -288,6 +300,7 @@ describe("Order Status Lifecycle", () => {
       customerId: "customer-123",
       orderNumber: "BB-TEST-124",
       status: "cancelled",
+      cancellationStatus: "completed",
       items: [],
     };
 
@@ -307,6 +320,7 @@ describe("Order Status Lifecycle", () => {
     );
 
     expect(result.status).toBe("cancelled");
+    expect(result.cancellationStatus).toBe("completed");
 
     expect(
       paymentService.refundPaymentForOrder
@@ -345,6 +359,7 @@ describe("Order Status Lifecycle", () => {
       customerId: "customer-123",
       orderNumber: "BB-TEST-125",
       status: "cancelled",
+      cancellationStatus: "completed",
       items: [],
     };
 
@@ -364,6 +379,15 @@ describe("Order Status Lifecycle", () => {
     );
 
     expect(result.status).toBe("cancelled");
+    expect(result.cancellationStatus).toBe("completed");
+    expect(orderRepository.updateById).toHaveBeenCalledWith(
+      "order-123",
+      expect.objectContaining({
+        status: "cancelled",
+        cancellationStatus: "completed",
+      }),
+      expect.anything()
+    );
 
     expect(
       paymentService.refundPaymentForOrder
@@ -401,6 +425,7 @@ describe("Order Status Lifecycle", () => {
       customerId: "customer-123",
       orderNumber: "BB-TEST-128",
       status: "cancelled",
+      cancellationStatus: "completed",
       items: [],
     };
 
@@ -420,6 +445,7 @@ describe("Order Status Lifecycle", () => {
     );
 
     expect(result.status).toBe("cancelled");
+    expect(result.cancellationStatus).toBe("completed");
 
     expect(
       paymentService.refundPaymentForOrder
@@ -465,6 +491,8 @@ describe("Order Status Lifecycle", () => {
     expect(
       inventoryService.releaseStockInTransaction
     ).not.toHaveBeenCalled();
+
+    expect(orderRepository.updateById).not.toHaveBeenCalled();
   });
 
   it("should block cancellation for an authorized payment", async () => {
@@ -503,7 +531,40 @@ describe("Order Status Lifecycle", () => {
 
     expect(withTransaction).not.toHaveBeenCalled();
   });
+
+  it("should set cancellationStatus to completed during shipment cascading cancellation", async () => {
+    const order = {
+      _id: "order-123",
+      status: "processing",
+    };
+
+    const updatedOrder = {
+      ...order,
+      status: "cancelled",
+      cancelledAt: new Date(),
+      cancellationStatus: "completed",
+    };
+
+    orderRepository.findById.mockResolvedValue(order);
+    orderRepository.updateById.mockResolvedValue(updatedOrder);
+
+    const session = {};
+    const result = await transitionOrderStatus(
+      "order-123",
+      "cancelled",
+      { session }
+    );
+
+    expect(result.status).toBe("cancelled");
+    expect(result.cancellationStatus).toBe("completed");
+    expect(orderRepository.updateById).toHaveBeenCalledWith(
+      "order-123",
+      expect.objectContaining({
+        status: "cancelled",
+        cancelledAt: expect.any(Date),
+        cancellationStatus: "completed",
+      }),
+      { session }
+    );
+  });
 });
-
-
-

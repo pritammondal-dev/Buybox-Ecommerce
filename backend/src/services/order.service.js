@@ -1081,10 +1081,9 @@ const transitionOrderStatus = async (
     update.placedAt = new Date();
   }
 
-  if (
-    nextStatus === "cancelled"
-  ) {
+  if (nextStatus === "cancelled") {
     update.cancelledAt = new Date();
+    update.cancellationStatus = "completed";
   }
 
   if (
