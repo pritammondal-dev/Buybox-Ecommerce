@@ -31,7 +31,6 @@ const notificationOutboxSchema = new mongoose.Schema(
       type: String,
       enum: ["pending", "processing", "sent", "failed"],
       default: "pending",
-      index: true,
     },
 
     attempts: {
@@ -65,6 +64,7 @@ const notificationOutboxSchema = new mongoose.Schema(
 notificationOutboxSchema.index({
   status: 1,
   availableAt: 1,
+  createdAt: 1,
 });
 
 module.exports = mongoose.model(

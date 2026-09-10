@@ -220,15 +220,40 @@ const validateCartItems = async (cart) => {
     );
   }
 
+  const variantIds = cart.items.map(
+    (item) => item.productVariantId
+  );
+
+  const variants = await ProductVariant.find({
+    _id: { $in: variantIds },
+    isActive: true,
+    deletedAt: null,
+  }).lean();
+
+  const variantMap = new Map(
+    variants.map((v) => [v._id.toString(), v])
+  );
+
+  const productIds = [
+    ...new Set(variants.map((v) => v.productId.toString())),
+  ];
+
+  const products = await Product.find({
+    _id: { $in: productIds },
+    status: "active",
+    deletedAt: null,
+  }).lean();
+
+  const productMap = new Map(
+    products.map((p) => [p._id.toString(), p])
+  );
+
   const orderItems = [];
 
   for (const cartItem of cart.items) {
-    const variant =
-      await ProductVariant.findOne({
-        _id: cartItem.productVariantId,
-        isActive: true,
-        deletedAt: null,
-      });
+    const variant = variantMap.get(
+      cartItem.productVariantId.toString()
+    );
 
     if (!variant) {
       throw new AppError(
@@ -238,12 +263,9 @@ const validateCartItems = async (cart) => {
       );
     }
 
-    const product =
-      await Product.findOne({
-        _id: variant.productId,
-        status: "active",
-        deletedAt: null,
-      });
+    const product = productMap.get(
+      variant.productId.toString()
+    );
 
     if (!product) {
       throw new AppError(

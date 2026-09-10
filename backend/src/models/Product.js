@@ -44,21 +44,18 @@ const productSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",
       required: true,
-      index: true,
     },
 
     brandId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Brand",
       default: null,
-      index: true,
     },
 
     vendorId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Vendor",
       required: true,
-      index: true,
     },
 
     price: {
@@ -210,6 +207,12 @@ productSchema.index({
   brandId: 1,
   status: 1,
   deletedAt: 1,
+});
+
+productSchema.index({
+  status: 1,
+  deletedAt: 1,
+  createdAt: -1,
 });
 
 module.exports = mongoose.model("Product", productSchema);

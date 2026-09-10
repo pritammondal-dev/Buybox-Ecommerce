@@ -6,14 +6,12 @@ const wishlistItemSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Product",
       required: true,
-      index: true,
     },
 
     productVariantId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ProductVariant",
       default: null,
-      index: true,
     },
 
     addedAt: {
