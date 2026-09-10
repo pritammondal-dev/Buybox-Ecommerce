@@ -417,3 +417,76 @@ describe("Payment Service", () => {
     expect(/^[a-zA-Z0-9_-]+$/.test(key)).toBe(true);
   });
 });
+
+describe("Payment Repository - releaseRefundReservation", () => {
+  const actualPaymentRepository = jest.requireActual("../src/repositories/payment.repository");
+  const Payment = require("../src/models/Payment");
+
+  let mockPaymentDoc;
+  let findOneAndUpdateSpy;
+
+  beforeEach(() => {
+    mockPaymentDoc = {
+      _id: "payment-123",
+      amount: "2000.00",
+      refundedAmount: "0.00",
+      refundReservedAmount: "500.00",
+    };
+
+    findOneAndUpdateSpy = jest.spyOn(Payment, "findOneAndUpdate").mockImplementation((filter, update, options) => {
+      const targetAmount = Number(update.$inc.refundReservedAmount.toString().replace(/^-/, ""));
+      const currentReserved = Number(mockPaymentDoc.refundReservedAmount);
+
+      if (currentReserved < targetAmount) {
+        return Promise.resolve(null);
+      }
+
+      const newReserved = (currentReserved + Number(update.$inc.refundReservedAmount.toString())).toFixed(2);
+      mockPaymentDoc.refundReservedAmount = newReserved;
+
+      return Promise.resolve({
+        ...mockPaymentDoc,
+        refundReservedAmount: newReserved,
+      });
+    });
+  });
+
+  afterEach(() => {
+    findOneAndUpdateSpy.mockRestore();
+  });
+
+  it("should successfully release a reservation and correctly decrease refundReservedAmount", async () => {
+    const result = await actualPaymentRepository.releaseRefundReservation("payment-123", "200.00");
+
+    expect(findOneAndUpdateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        _id: "payment-123",
+        $expr: expect.objectContaining({
+          $gte: expect.any(Array),
+        }),
+      }),
+      expect.objectContaining({
+        $inc: expect.objectContaining({
+          refundReservedAmount: expect.any(Object),
+        }),
+      }),
+      expect.objectContaining({
+        returnDocument: "after",
+        runValidators: true,
+      })
+    );
+
+    const updateCall = findOneAndUpdateSpy.mock.calls[0][1];
+    expect(updateCall.$inc.refundReservedAmount.toString()).toBe("-200.00");
+    expect(result).not.toBeNull();
+    expect(result.refundReservedAmount).toBe("300.00");
+    expect(mockPaymentDoc.refundReservedAmount).toBe("300.00");
+  });
+
+  it("should not update payment when attempted release is larger than reserved amount", async () => {
+    const result = await actualPaymentRepository.releaseRefundReservation("payment-123", "600.00");
+
+    expect(result).toBeNull();
+    expect(mockPaymentDoc.refundReservedAmount).toBe("500.00");
+  });
+});

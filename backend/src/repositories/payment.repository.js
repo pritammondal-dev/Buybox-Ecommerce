@@ -149,6 +149,9 @@ const releaseRefundReservation = async (
   options = {}
 ) => {
   const decimalAmount = toDecimal128(amount);
+  const negativeDecimalAmount = toDecimal128(
+    `-${decimalAmount.toString().replace(/^-/, "")}`
+  );
 
   return Payment.findOneAndUpdate(
     {
@@ -166,22 +169,12 @@ const releaseRefundReservation = async (
       },
     },
     {
-      $set: {
-        refundReservedAmount: {
-          $subtract: [
-            {
-              $ifNull: [
-                "$refundReservedAmount",
-                mongoose.Types.Decimal128.fromString("0"),
-              ],
-            },
-            decimalAmount,
-          ],
-        },
+      $inc: {
+        refundReservedAmount: negativeDecimalAmount,
       },
     },
     {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
       session: options.session,
     }
