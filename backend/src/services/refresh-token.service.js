@@ -1,4 +1,5 @@
 const RefreshToken = require("../models/RefreshToken");
+const User = require("../models/User");
 const AppError = require("../errors/AppError");
 
 const {
@@ -93,13 +94,31 @@ if (storedToken.revokedAt) {
     );
   }
 
+  const user = await User.findById(storedToken.userId);
+
+  if (!user) {
+    throw new AppError(
+      "User not found",
+      401,
+      "USER_NOT_FOUND"
+    );
+  }
+
+  if (!user.isActive) {
+    throw new AppError(
+      "User account is inactive",
+      403,
+      "ACCOUNT_INACTIVE"
+    );
+  }
+
   const newAccessToken = generateAccessToken({
-    sub: decoded.sub,
-    role: decoded.role,
+    sub: user._id.toString(),
+    role: user.role,
   });
 
   const newRefreshToken = generateRefreshToken({
-    sub: decoded.sub,
+    sub: user._id.toString(),
   });
 
   const newDecodedRefreshToken =
