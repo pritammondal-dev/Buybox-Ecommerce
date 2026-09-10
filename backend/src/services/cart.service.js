@@ -138,6 +138,106 @@ const createEmptyCart = async (
   });
 };
 
+const recoverAbandonedCartDocument = async (abandonedCart) => {
+  const validItems = [];
+
+  for (const item of abandonedCart.items) {
+    const variant = await ProductVariant.findOne({
+      _id: item.productVariantId,
+      isActive: true,
+      deletedAt: null,
+    });
+
+    if (!variant) {
+      continue;
+    }
+
+    const product = await Product.findOne({
+      _id: variant.productId,
+      status: "active",
+      deletedAt: null,
+    });
+
+    if (!product) {
+      continue;
+    }
+
+    const variantCurrency =
+      variant.currency || abandonedCart.currency || DEFAULT_CURRENCY;
+
+    validItems.push({
+      _id: item._id,
+      productVariantId: variant._id,
+      quantity: Math.min(item.quantity, MAX_ITEM_QUANTITY),
+      priceSnapshot: variant.price,
+      currency: variantCurrency,
+      addedAt: item.addedAt || new Date(),
+    });
+  }
+
+  const subtotal = calculateSubtotal(validItems);
+  const discountMinorUnits = decimalToMinorUnits(
+    abandonedCart.discountTotal || 0
+  );
+  const taxMinorUnits = decimalToMinorUnits(
+    abandonedCart.taxTotal || 0
+  );
+  const shippingMinorUnits = decimalToMinorUnits(
+    abandonedCart.shippingTotal || 0
+  );
+  const subtotalMinorUnits = decimalToMinorUnits(subtotal);
+
+  const grandTotalMinorUnits = Math.max(
+    subtotalMinorUnits -
+      discountMinorUnits +
+      taxMinorUnits +
+      shippingMinorUnits,
+    0
+  );
+
+  const updateData = {
+    items: validItems,
+    subtotal,
+    grandTotal: minorUnitsToDecimal128(grandTotalMinorUnits),
+  };
+
+  const recovered = await cartRepository.recoverAbandonedCart(
+    abandonedCart._id,
+    updateData
+  );
+
+  return recovered;
+};
+
+const recoverCart = async (userId, storeId = null) => {
+  const customer = await validateCustomer(userId);
+
+  const activeCart = await cartRepository.findActiveByCustomer(
+    customer._id,
+    storeId
+  );
+
+  if (activeCart) {
+    return activeCart;
+  }
+
+  const abandonedCart =
+    await cartRepository.findLatestAbandonedByCustomer(
+      customer._id,
+      storeId
+    );
+
+  if (!abandonedCart) {
+    throw new AppError(
+      "No abandoned cart found to recover",
+      404,
+      "ABANDONED_CART_NOT_FOUND"
+    );
+  }
+
+  return recoverAbandonedCartDocument(abandonedCart);
+};
+
 const getCart = async (userId, storeId = null) => {
   const customer = await validateCustomer(userId);
 
@@ -147,6 +247,16 @@ const getCart = async (userId, storeId = null) => {
   );
 
   if (!cart) {
+    const abandonedCart =
+      await cartRepository.findLatestAbandonedByCustomer(
+        customer._id,
+        storeId
+      );
+
+    if (abandonedCart) {
+      return abandonedCart;
+    }
+
     try {
       cart = await createEmptyCart(
         customer._id,
@@ -231,6 +341,18 @@ const addItem = async (
     customer._id,
     storeId
   );
+
+  if (!cart) {
+    const abandonedCart =
+      await cartRepository.findLatestAbandonedByCustomer(
+        customer._id,
+        storeId
+      );
+
+    if (abandonedCart) {
+      cart = await recoverAbandonedCartDocument(abandonedCart);
+    }
+  }
 
   if (!cart) {
     try {
@@ -328,6 +450,18 @@ const updateItemQuantity = async (
   );
 
   if (!cart) {
+    const abandonedCart =
+      await cartRepository.findLatestAbandonedByCustomer(
+        customer._id,
+        storeId
+      );
+
+    if (abandonedCart) {
+      cart = await recoverAbandonedCartDocument(abandonedCart);
+    }
+  }
+
+  if (!cart) {
     throw new AppError(
       "Active cart not found",
       404,
@@ -377,10 +511,22 @@ const removeItem = async (
 ) => {
   const customer = await validateCustomer(userId);
 
-  const cart = await cartRepository.findActiveByCustomer(
+  let cart = await cartRepository.findActiveByCustomer(
     customer._id,
     storeId
   );
+
+  if (!cart) {
+    const abandonedCart =
+      await cartRepository.findLatestAbandonedByCustomer(
+        customer._id,
+        storeId
+      );
+
+    if (abandonedCart) {
+      cart = await recoverAbandonedCartDocument(abandonedCart);
+    }
+  }
 
   if (!cart) {
     throw new AppError(
@@ -413,10 +559,22 @@ const removeItem = async (
 const clearCart = async (userId, storeId = null) => {
   const customer = await validateCustomer(userId);
 
-  const cart = await cartRepository.findActiveByCustomer(
+  let cart = await cartRepository.findActiveByCustomer(
     customer._id,
     storeId
   );
+
+  if (!cart) {
+    const abandonedCart =
+      await cartRepository.findLatestAbandonedByCustomer(
+        customer._id,
+        storeId
+      );
+
+    if (abandonedCart) {
+      cart = await recoverAbandonedCartDocument(abandonedCart);
+    }
+  }
 
   if (!cart) {
     throw new AppError(
@@ -443,4 +601,5 @@ module.exports = {
   updateItemQuantity,
   removeItem,
   clearCart,
+  recoverCart,
 };

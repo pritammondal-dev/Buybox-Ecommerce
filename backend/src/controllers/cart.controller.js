@@ -64,10 +64,20 @@ const clearCart = async (req, res) => {
   });
 };
 
+const recoverCart = async (req, res) => {
+  const cart = await cartService.recoverCart(req.user.id);
+
+  return apiResponse.sendSuccess(res, {
+    message: "Cart recovered successfully",
+    data: cart,
+  });
+};
+
 module.exports = {
   getCart,
   addItem,
   updateItemQuantity,
   removeItem,
   clearCart,
+  recoverCart,
 };

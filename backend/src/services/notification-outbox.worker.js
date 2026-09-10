@@ -53,6 +53,37 @@ const processNotification = async (notification) => {
         ...payload,
       });
 
+    case "abandoned_cart": {
+      const Cart = require("../models/Cart");
+      const Customer = require("../models/Customer");
+
+      const cart = await Cart.findById(payload.cartId);
+      if (!cart || cart.status !== "abandoned" || !cart.items || cart.items.length === 0) {
+        return {
+          skipped: true,
+          reason: "CART_NO_LONGER_ABANDONED",
+        };
+      }
+
+      const customer = await Customer.findOne({
+        _id: cart.customerId,
+        isActive: true,
+        deletedAt: null,
+      });
+
+      if (!customer) {
+        return {
+          skipped: true,
+          reason: "CUSTOMER_INACTIVE_OR_DELETED",
+        };
+      }
+
+      return notificationService.sendAbandonedCartNotification({
+        to: recipient,
+        ...payload,
+      });
+    }
+
     default:
       throw new Error(
         `Unsupported notification type: ${type}`

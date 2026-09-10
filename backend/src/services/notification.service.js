@@ -8,6 +8,7 @@ const {
   refundConfirmationTemplate,
   emailVerificationTemplate,
   passwordResetTemplate,
+  abandonedCartTemplate,
 } = require("./notification.templates");
 
 class NotificationService {
@@ -131,6 +132,26 @@ class NotificationService {
     const template = passwordResetTemplate({
       customerName,
       resetUrl,
+    });
+
+    return this.sendEmail({
+      to,
+      ...template,
+    });
+  }
+
+  async sendAbandonedCartNotification({
+    to,
+    customerName,
+    itemCount,
+    grandTotal,
+    currency,
+  }) {
+    const template = abandonedCartTemplate({
+      customerName,
+      itemCount,
+      grandTotal,
+      currency,
     });
 
     return this.sendEmail({

@@ -50,9 +50,27 @@ EMAIL_VERIFICATION_BASE_URL: z
   .default("http://localhost:5000/api/v1/auth/verify-email"),
 
   PASSWORD_RESET_BASE_URL: z
-  .string()
-  .url()
-  .default("http://localhost:5000/api/v1/auth/reset-password"),
+    .string()
+    .url()
+    .default("http://localhost:5000/api/v1/auth/reset-password"),
+
+  CART_ABANDONMENT_INACTIVITY_MINUTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(60),
+
+  CART_ABANDONMENT_BATCH_SIZE: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(50),
+
+  CART_ABANDONMENT_SCAN_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(300000),
 });
 
 const env = envSchema.parse(process.env);

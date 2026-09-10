@@ -22,6 +22,8 @@ router.use(authenticate);
 
 router.get("/", cartController.getCart);
 
+router.post("/recover", cartController.recoverCart);
+
 router.post(
   "/items",
   validate(addCartItemSchema),

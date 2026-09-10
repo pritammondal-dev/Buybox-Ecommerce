@@ -163,6 +163,32 @@ If you did not request this, you can safely ignore this email.
   `.trim(),
 });
 
+const abandonedCartTemplate = ({
+  customerName,
+  itemCount,
+  grandTotal,
+  currency,
+}) => ({
+  subject: "You left items in your cart!",
+
+  html: `
+    <h2>You left items in your cart!</h2>
+    <p>Hello ${customerName || "Customer"},</p>
+    <p>You have <strong>${itemCount || 1}</strong> item(s) waiting in your cart (Total: <strong>${currency || "INR"} ${grandTotal || "0.00"}</strong>).</p>
+    <p>Return to your cart anytime to complete your purchase.</p>
+  `,
+
+  text: `
+You left items in your cart!
+
+Hello ${customerName || "Customer"},
+
+You have ${itemCount || 1} item(s) waiting in your cart (Total: ${currency || "INR"} ${grandTotal || "0.00"}).
+
+Return to your cart anytime to complete your purchase.
+  `.trim(),
+});
+
 module.exports = {
   orderConfirmationTemplate,
   paymentConfirmationTemplate,
@@ -171,4 +197,5 @@ module.exports = {
   refundConfirmationTemplate,
   emailVerificationTemplate,
   passwordResetTemplate,
+  abandonedCartTemplate,
 };

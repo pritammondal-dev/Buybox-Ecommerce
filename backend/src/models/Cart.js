@@ -128,6 +128,16 @@ const cartSchema = new mongoose.Schema(
       default: Date.now,
       index: true,
     },
+
+    abandonedAt: {
+      type: Date,
+      default: null,
+    },
+
+    recoveredAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -144,5 +154,7 @@ cartSchema.index(
     },
   }
 );
+
+cartSchema.index({ status: 1, lastActivityAt: 1 });
 
 module.exports = mongoose.model("Cart", cartSchema);

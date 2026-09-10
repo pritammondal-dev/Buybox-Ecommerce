@@ -15,12 +15,18 @@ const {
   stopNotificationDispatcher,
 } = require("./workers/notification-dispatcher.worker");
 
+const {
+  runCartAbandonmentScheduler,
+  stopCartAbandonmentScheduler,
+} = require("./workers/cart-abandonment.worker");
+
 const PORT = env.PORT;
 
 const startServer = async () => {
   await connectDatabase();
 
   runNotificationDispatcher();
+  runCartAbandonmentScheduler();
 
   logger.info("Notification queue worker initialized");
 
@@ -46,6 +52,7 @@ const startServer = async () => {
     logger.info("Shutting down server...");
 
     stopNotificationDispatcher();
+    stopCartAbandonmentScheduler();
 
     try {
       await stopNotificationQueueWorker();
