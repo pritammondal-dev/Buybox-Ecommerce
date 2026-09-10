@@ -35,7 +35,7 @@ const storefrontSectionRoutes = require("./storefront-section.routes");
 const storefrontAnnouncementBarRoutes = require("./storefront-announcement-bar.routes");
 const storefrontMediaRoutes = require("./storefront-media.routes");
 const storefrontPublicationRoutes = require("./storefront-publication.routes");
-
+const wishlistRoutes = require("./wishlist.routes");
 
 const router = express.Router();
 
@@ -57,6 +57,7 @@ router.use("/vendors", vendorRoutes);
 router.use("/warehouses", warehouseRoutes);
 router.use("/inventory", inventoryRoutes);
 router.use("/cart", cartRoutes);
+router.use("/wishlist", wishlistRoutes);
 router.use("/orders", orderRoutes);
 router.use("/payments", paymentRoutes);
 router.use("/finance/ledger", financialLedgerRoutes);
