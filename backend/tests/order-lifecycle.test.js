@@ -282,6 +282,52 @@ describe("Order Status Lifecycle", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("should not enqueue duplicate cancellation notification when order is found already cancelled concurrently inside transaction", async () => {
+    Customer.findOne.mockResolvedValue({
+      _id: {
+        toString: () => "customer-123",
+      },
+    });
+
+    const activeOrder = {
+      _id: "order-123",
+      customerId: "customer-123",
+      orderNumber: "BB-TEST-123",
+      status: "confirmed",
+      items: [],
+    };
+
+    const alreadyCancelledOrder = {
+      _id: "order-123",
+      customerId: "customer-123",
+      orderNumber: "BB-TEST-123",
+      status: "cancelled",
+      cancellationStatus: "completed",
+      items: [],
+    };
+
+    orderRepository.findById
+      .mockResolvedValueOnce(activeOrder)
+      .mockResolvedValueOnce(alreadyCancelledOrder);
+
+    paymentService.getLatestPaymentForOrder.mockResolvedValue({
+      _id: "payment-123",
+      status: "pending",
+    });
+
+    const result = await cancelOrder(
+      "order-123",
+      {
+        userId: "user-123",
+      }
+    );
+
+    expect(result.status).toBe("cancelled");
+    expect(result.cancellationStatus).toBe("completed");
+    expect(inventoryService.releaseStockInTransaction).not.toHaveBeenCalled();
+    expect(notificationOutboxService.enqueue).not.toHaveBeenCalled();
+  });
+
   it("should not refund a pending payment when cancelling an order", async () => {
     Customer.findOne.mockResolvedValue({
       _id: {

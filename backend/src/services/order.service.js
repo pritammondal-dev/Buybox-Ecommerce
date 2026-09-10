@@ -977,8 +977,12 @@ const cancelOrder = async (orderId, options = {}) => {
     );
   }
 
+  let wasAlreadyCancelled = false;
+
   const cancelledOrder = await withTransaction(
     async (session) => {
+      wasAlreadyCancelled = false;
+
       const currentOrder =
         await orderRepository.findById(
           orderId,
@@ -994,6 +998,7 @@ const cancelOrder = async (orderId, options = {}) => {
       }
 
       if (currentOrder.status === "cancelled") {
+        wasAlreadyCancelled = true;
         return currentOrder;
       }
 
@@ -1047,9 +1052,11 @@ const cancelOrder = async (orderId, options = {}) => {
     }
   );
 
-  await sendOrderStatusNotification({
-    order: cancelledOrder,
-  });
+  if (!wasAlreadyCancelled) {
+    await sendOrderStatusNotification({
+      order: cancelledOrder,
+    });
+  }
 
   return cancelledOrder;
 };
