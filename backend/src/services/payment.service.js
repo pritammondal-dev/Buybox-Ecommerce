@@ -6,6 +6,7 @@ const refundRepository = require("../repositories/refund.repository");
 const orderService = require("./order.service");
 
 const razorpayProvider = require("../integrations/payments/razorpay.provider");
+const paymentOrphanRecoveryService = require("./payment-orphan-recovery.service");
 
 const Customer = require("../models/Customer");
 
@@ -62,15 +63,21 @@ const decimalToMinorUnits = (value) => {
 };
 
 const generateReceipt = (orderNumber) => {
-  const suffix = crypto
-    .randomBytes(6)
+  const token = crypto
+    .randomBytes(4)
     .toString("hex")
     .toUpperCase();
 
-  return `BB-${orderNumber}-${suffix}`.slice(
+  const cleanOrderNumber = String(orderNumber || "").trim();
+  // Razorpay maximum receipt length is 40 characters.
+  // Prefix "BB-" (3 chars) + Hyphen "-" (1 char) + token (8 chars) = 12 chars overhead.
+  const maxOrderNumberLength = 40 - 12;
+  const safeOrderNumber = cleanOrderNumber.slice(
     0,
-    100
+    Math.max(1, maxOrderNumberLength)
   );
+
+  return `BB-${safeOrderNumber}-${token}`;
 };
 
 const validateIdempotencyKey = (idempotencyKey) => {
@@ -205,18 +212,63 @@ const handleActivePayment = async ({
     );
   }
 
-  if (!activePayment.gatewayOrderId) {
+  let currentPayment = activePayment;
+
+  if (!currentPayment.gatewayOrderId) {
+    if (!currentPayment.receipt) {
+      throw new AppError(
+        "Payment creation is currently in progress for this order. Please retry in a few seconds",
+        409,
+        "PAYMENT_CREATION_IN_PROGRESS"
+      );
+    }
+
+    const recoveryResult =
+      await paymentOrphanRecoveryService.recoverOrphanedGatewayOrderByReceipt({
+        payment: currentPayment,
+        order,
+        expectedMinorUnits: amount,
+      });
+
+    if (!recoveryResult.recovered) {
+      if (recoveryResult.reason === "GATEWAY_FETCH_FAILED" && recoveryResult.error) {
+        throw recoveryResult.error;
+      }
+
+      throw new AppError(
+        "Payment creation is currently in progress for this order. Please retry in a few seconds",
+        409,
+        "PAYMENT_CREATION_IN_PROGRESS"
+      );
+    }
+
+    currentPayment = recoveryResult.payment || currentPayment;
+    const gatewayOrder = recoveryResult.gatewayOrder;
+
+    if (gatewayOrder.status === "paid") {
+      return await reconcilePaidGatewayOrder({
+        activePayment: currentPayment,
+        order,
+        amount,
+        gatewayOrderId: currentPayment.gatewayOrderId,
+      });
+    }
+
+    if (["created", "attempted"].includes(gatewayOrder.status)) {
+      return currentPayment;
+    }
+
     throw new AppError(
-      "Payment creation is currently in progress for this order. Please retry in a few seconds",
+      "An active payment already exists for this order",
       409,
-      "PAYMENT_CREATION_IN_PROGRESS"
+      "ACTIVE_PAYMENT_EXISTS"
     );
   }
 
   let gatewayOrder;
   try {
     gatewayOrder = await razorpayProvider.fetchOrder(
-      activePayment.gatewayOrderId
+      currentPayment.gatewayOrderId
     );
   } catch (error) {
     throw new AppError(
@@ -254,15 +306,15 @@ const handleActivePayment = async ({
 
   if (gatewayOrder.status === "paid") {
     return await reconcilePaidGatewayOrder({
-      activePayment,
+      activePayment: currentPayment,
       order,
       amount,
-      gatewayOrderId: activePayment.gatewayOrderId,
+      gatewayOrderId: currentPayment.gatewayOrderId,
     });
   }
 
   if (["created", "attempted"].includes(gatewayOrder.status)) {
-    return activePayment;
+    return currentPayment;
   }
 
   throw new AppError(
@@ -362,14 +414,6 @@ const createPaymentForOrder = async (
         existingByKey.status
       )
     ) {
-      if (!existingByKey.gatewayOrderId) {
-        throw new AppError(
-          "Payment creation is currently in progress for this order. Please retry in a few seconds",
-          409,
-          "PAYMENT_CREATION_IN_PROGRESS"
-        );
-      }
-
       return await handleActivePayment({
         activePayment: existingByKey,
         order,
@@ -391,6 +435,10 @@ const createPaymentForOrder = async (
     });
   }
 
+  const receipt = generateReceipt(
+    order.orderNumber
+  );
+
   let payment;
 
   try {
@@ -403,7 +451,7 @@ const createPaymentForOrder = async (
       amount: order.grandTotal,
       currency: order.currency,
       status: "created",
-      receipt: null,
+      receipt,
       idempotencyKey:
         normalizedIdempotencyKey,
       metadata: {},
@@ -435,13 +483,11 @@ const createPaymentForOrder = async (
           return byKey;
         }
 
-        if (byKey.gatewayOrderId) {
-          return await handleActivePayment({
-            activePayment: byKey,
-            order,
-            amount,
-          });
-        }
+        return await handleActivePayment({
+          activePayment: byKey,
+          order,
+          amount,
+        });
       }
 
       throw new AppError(
@@ -454,10 +500,6 @@ const createPaymentForOrder = async (
     throw error;
   }
 
-  const receipt = generateReceipt(
-    order.orderNumber
-  );
-
   let razorpayOrder;
 
   try {
@@ -465,7 +507,7 @@ const createPaymentForOrder = async (
       await razorpayProvider.createOrder({
         amount,
         currency: order.currency,
-        receipt,
+        receipt: payment.receipt || receipt,
         notes: {
           buyboxOrderId:
             order._id.toString(),
@@ -481,7 +523,7 @@ const createPaymentForOrder = async (
         failureReason:
           error.message ||
           "Razorpay order creation failed",
-        receipt,
+        receipt: payment.receipt || receipt,
       }
     );
 
@@ -494,7 +536,7 @@ const createPaymentForOrder = async (
       {
         gatewayOrderId:
           razorpayOrder.id,
-        receipt,
+        receipt: payment.receipt || receipt,
         status:
           razorpayOrder.status === "created"
             ? "created"
@@ -775,8 +817,5 @@ module.exports = {
   getLatestPaymentForOrder,
   refundPaymentForOrder,
   decimalToMinorUnits,
+  generateReceipt,
 };
-
-
-
-

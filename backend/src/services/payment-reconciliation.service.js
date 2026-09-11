@@ -1,7 +1,10 @@
 const paymentRepository = require("../repositories/payment.repository");
 const orderRepository = require("../repositories/order.repository");
 const orderService = require("./order.service");
-const { decimalToMinorUnits } = require("./payment.service");
+const {
+  decimalToMinorUnits,
+  recoverOrphanedGatewayOrderByReceipt,
+} = require("./payment-orphan-recovery.service");
 const razorpayProvider = require("../integrations/payments/razorpay.provider");
 const env = require("../config/env");
 const logger = require("../config/logger");
@@ -32,16 +35,38 @@ class PaymentReconciliationService {
       return { reconciled: false, reason: "UNSUPPORTED_GATEWAY" };
     }
 
-    if (!payment.gatewayOrderId || typeof payment.gatewayOrderId !== "string" || !payment.gatewayOrderId.trim()) {
-      return { reconciled: false, reason: "MISSING_GATEWAY_ORDER_ID" };
+    let currentPayment = payment;
+
+    if (
+      !currentPayment.gatewayOrderId ||
+      typeof currentPayment.gatewayOrderId !== "string" ||
+      !currentPayment.gatewayOrderId.trim()
+    ) {
+      if (!currentPayment.receipt) {
+        return { reconciled: false, reason: "MISSING_GATEWAY_ORDER_ID" };
+      }
+
+      const recoveryResult =
+        await recoverOrphanedGatewayOrderByReceipt({
+          payment: currentPayment,
+        });
+
+      if (!recoveryResult.recovered) {
+        return {
+          reconciled: false,
+          reason: recoveryResult.reason || "GATEWAY_ORDER_NOT_FOUND",
+        };
+      }
+
+      currentPayment = recoveryResult.payment || currentPayment;
     }
 
-    const order = await orderRepository.findById(payment.orderId);
+    const order = await orderRepository.findById(currentPayment.orderId);
     if (!order) {
       logger.warn(
         {
-          paymentId: payment._id,
-          orderId: payment.orderId,
+          paymentId: currentPayment._id,
+          orderId: currentPayment.orderId,
         },
         "Reconciliation aborted: associated order not found"
       );
@@ -51,13 +76,13 @@ class PaymentReconciliationService {
     let gatewayOrder;
     try {
       gatewayOrder = await razorpayProvider.fetchOrder(
-        payment.gatewayOrderId.trim()
+        currentPayment.gatewayOrderId.trim()
       );
     } catch (fetchOrderError) {
       logger.warn(
         {
-          paymentId: payment._id,
-          gatewayOrderId: payment.gatewayOrderId,
+          paymentId: currentPayment._id,
+          gatewayOrderId: currentPayment.gatewayOrderId,
           error: fetchOrderError.message,
         },
         "Reconciliation fail-closed: unable to fetch gateway order"
@@ -70,8 +95,8 @@ class PaymentReconciliationService {
     if (!buyboxOrderId || buyboxOrderId !== order._id.toString()) {
       logger.warn(
         {
-          paymentId: payment._id,
-          gatewayOrderId: payment.gatewayOrderId,
+          paymentId: currentPayment._id,
+          gatewayOrderId: currentPayment.gatewayOrderId,
           gatewayBuyboxOrderId: buyboxOrderId || null,
           expectedOrderId: order._id.toString(),
         },
@@ -84,8 +109,8 @@ class PaymentReconciliationService {
     if (orderNumberNote && orderNumberNote !== order.orderNumber?.toString?.().trim?.()) {
       logger.warn(
         {
-          paymentId: payment._id,
-          gatewayOrderId: payment.gatewayOrderId,
+          paymentId: currentPayment._id,
+          gatewayOrderId: currentPayment.gatewayOrderId,
           gatewayOrderNumber: orderNumberNote,
           expectedOrderNumber: order.orderNumber,
         },
@@ -103,8 +128,8 @@ class PaymentReconciliationService {
     if (gatewayAmount !== expectedAmount || gatewayCurrency !== localCurrency) {
       logger.warn(
         {
-          paymentId: payment._id,
-          gatewayOrderId: payment.gatewayOrderId,
+          paymentId: currentPayment._id,
+          gatewayOrderId: currentPayment.gatewayOrderId,
           gatewayAmount,
           expectedAmount,
           gatewayCurrency,
@@ -128,13 +153,13 @@ class PaymentReconciliationService {
     let paymentsResponse;
     try {
       paymentsResponse = await razorpayProvider.fetchOrderPayments(
-        payment.gatewayOrderId.trim()
+        currentPayment.gatewayOrderId.trim()
       );
     } catch (fetchPaymentsError) {
       logger.warn(
         {
-          paymentId: payment._id,
-          gatewayOrderId: payment.gatewayOrderId,
+          paymentId: currentPayment._id,
+          gatewayOrderId: currentPayment.gatewayOrderId,
           error: fetchPaymentsError.message,
         },
         "Reconciliation fail-closed: unable to fetch gateway order payments"
@@ -158,8 +183,8 @@ class PaymentReconciliationService {
     if (!capturedPayment) {
       logger.warn(
         {
-          paymentId: payment._id,
-          gatewayOrderId: payment.gatewayOrderId,
+          paymentId: currentPayment._id,
+          gatewayOrderId: currentPayment.gatewayOrderId,
           itemCount: items.length,
         },
         "Reconciliation fail-closed: no matching captured payment found on gateway"
@@ -168,7 +193,7 @@ class PaymentReconciliationService {
     }
 
     // Idempotency check before update
-    const freshPayment = await paymentRepository.findById(payment._id);
+    const freshPayment = await paymentRepository.findById(currentPayment._id);
     if (freshPayment?.status === "captured") {
       await orderService.markOrderPaymentCaptured(order._id);
       return {
@@ -187,7 +212,7 @@ class PaymentReconciliationService {
     const updateData = {
       status: "captured",
       gatewayPaymentId: capturedPaymentId,
-      method: capturedPayment.method || payment.method || null,
+      method: capturedPayment.method || currentPayment.method || null,
       capturedAt: capturedPayment.captured_at
         ? new Date(capturedPayment.captured_at * 1000)
         : new Date(),
@@ -196,12 +221,12 @@ class PaymentReconciliationService {
 
     // Atomic conditional update to prevent racing with concurrent webhook/verification
     const updatedPayment = await paymentRepository.reconcileActivePayment(
-      payment._id,
+      currentPayment._id,
       updateData
     );
 
     if (!updatedPayment) {
-      const latestPayment = await paymentRepository.findById(payment._id);
+      const latestPayment = await paymentRepository.findById(currentPayment._id);
       if (latestPayment?.status === "captured") {
         await orderService.markOrderPaymentCaptured(order._id);
         return {
@@ -221,7 +246,7 @@ class PaymentReconciliationService {
       {
         paymentId: updatedPayment._id,
         orderId: order._id,
-        gatewayOrderId: payment.gatewayOrderId,
+        gatewayOrderId: currentPayment.gatewayOrderId,
         gatewayPaymentId: capturedPaymentId,
       },
       "Payment successfully reconciled to captured by reconciliation worker"

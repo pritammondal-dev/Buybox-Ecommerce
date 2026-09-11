@@ -68,6 +68,28 @@ const fetchOrderPayments = async (orderId) => {
   }
 };
 
+const fetchOrdersByReceipt = async (receipt) => {
+  if (!receipt || typeof receipt !== "string" || !receipt.trim()) {
+    throw new AppError(
+      "Invalid receipt identifier",
+      400,
+      "INVALID_RECEIPT"
+    );
+  }
+
+  try {
+    return await razorpay.orders.all({
+      receipt: receipt.trim(),
+    });
+  } catch (error) {
+    throw new AppError(
+      "Unable to fetch Razorpay orders by receipt",
+      502,
+      "RAZORPAY_ORDER_RECEIPT_FETCH_FAILED"
+    );
+  }
+};
+
 const fetchPayment = async (paymentId) => {
   try {
     return await razorpay.payments.fetch(paymentId);
@@ -140,6 +162,7 @@ module.exports = {
   createOrder,
   fetchOrder,
   fetchOrderPayments,
+  fetchOrdersByReceipt,
   fetchPayment,
   capturePayment,
   refundPayment,

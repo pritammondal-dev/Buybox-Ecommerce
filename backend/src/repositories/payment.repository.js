@@ -267,10 +267,21 @@ const findEligibleForReconciliation = async (
     status: {
       $in: ["created", "pending", "authorized"],
     },
-    gatewayOrderId: {
-      $type: "string",
-      $ne: "",
-    },
+    $or: [
+      {
+        gatewayOrderId: {
+          $type: "string",
+          $ne: "",
+        },
+      },
+      {
+        gatewayOrderId: null,
+        receipt: {
+          $type: "string",
+          $ne: "",
+        },
+      },
+    ],
   })
     .session(options.session || null)
     .sort({ createdAt: 1 })
