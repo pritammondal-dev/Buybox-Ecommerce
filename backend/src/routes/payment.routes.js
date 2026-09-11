@@ -4,6 +4,12 @@ const paymentController = require("../controllers/payment.controller");
 const paymentWebhookController = require("../controllers/payment-webhook.controller");
 
 const authenticate = require("../middlewares/authentication.middleware");
+const {
+  requirePermissions,
+} = require("../middlewares/authorization.middleware");
+const {
+  PERMISSIONS,
+} = require("../constants/permissions.constants");
 const validate = require("../middlewares/validate.middleware");
 
 const {
@@ -52,6 +58,7 @@ router.post(
 
 router.post(
   "/orders/:orderId/refunds",
+  requirePermissions(PERMISSIONS.PAYMENTS_MANAGE),
   validate(createPaymentSchema, "params"),
   validate(createRefundSchema),
   refundController.createRefund
