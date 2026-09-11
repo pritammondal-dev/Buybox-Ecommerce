@@ -1,4 +1,8 @@
 const mongoose = require("mongoose");
+const {
+  ALLOWED_TAX_CATEGORIES,
+  DEFAULT_TAX_CATEGORY,
+} = require("../constants/tax.constants");
 
 const productSchema = new mongoose.Schema(
   {
@@ -77,6 +81,19 @@ const productSchema = new mongoose.Schema(
       trim: true,
       minlength: 3,
       maxlength: 3,
+    },
+
+    isTaxable: {
+      type: Boolean,
+      default: true,
+      required: true,
+    },
+
+    taxCategory: {
+      type: String,
+      enum: ALLOWED_TAX_CATEGORIES,
+      default: DEFAULT_TAX_CATEGORY,
+      required: true,
     },
 
     stockStatus: {

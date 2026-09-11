@@ -47,6 +47,9 @@ const PERMISSIONS = Object.freeze({
 
   SUPPORT_TICKETS_READ: "support_tickets:read",
   SUPPORT_TICKETS_MANAGE: "support_tickets:manage",
+
+  TAX_READ: "tax:read",
+  TAX_MANAGE: "tax:manage",
 });
 
 module.exports = {

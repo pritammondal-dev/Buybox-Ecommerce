@@ -1,4 +1,7 @@
 const { z } = require("zod");
+const {
+  ALLOWED_TAX_CATEGORIES,
+} = require("../../constants/tax.constants");
 
 const updateProductSchema = z
   .object({
@@ -68,6 +71,14 @@ const updateProductSchema = z
       .trim()
       .toUpperCase()
       .length(3)
+      .optional(),
+
+    isTaxable: z
+      .boolean()
+      .optional(),
+
+    taxCategory: z
+      .enum(ALLOWED_TAX_CATEGORIES)
       .optional(),
 
     status: z

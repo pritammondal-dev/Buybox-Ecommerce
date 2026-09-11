@@ -1,4 +1,10 @@
 const mongoose = require("mongoose");
+const {
+  ALLOWED_TAX_CATEGORIES,
+  DEFAULT_TAX_CATEGORY,
+  ALLOWED_TAX_PRICING_MODES,
+  DEFAULT_TAX_PRICING_MODE,
+} = require("../constants/tax.constants");
 
 const orderItemSchema = new mongoose.Schema(
   {
@@ -82,6 +88,57 @@ const orderItemSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Decimal128,
       required: true,
       min: 0,
+    },
+
+    taxDetails: {
+      taxRuleId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "TaxRule",
+        default: null,
+      },
+      ruleName: {
+        type: String,
+        default: null,
+        trim: true,
+      },
+      jurisdictionCountry: {
+        type: String,
+        uppercase: true,
+        trim: true,
+        default: null,
+      },
+      jurisdictionState: {
+        type: String,
+        uppercase: true,
+        trim: true,
+        default: null,
+      },
+      taxCategory: {
+        type: String,
+        enum: ALLOWED_TAX_CATEGORIES,
+        default: DEFAULT_TAX_CATEGORY,
+      },
+      isTaxable: {
+        type: Boolean,
+        default: true,
+      },
+      pricingMode: {
+        type: String,
+        enum: ALLOWED_TAX_PRICING_MODES,
+        default: DEFAULT_TAX_PRICING_MODE,
+      },
+      taxRate: {
+        type: mongoose.Schema.Types.Decimal128,
+        default: 0,
+      },
+      taxableBase: {
+        type: mongoose.Schema.Types.Decimal128,
+        default: 0,
+      },
+      taxAmount: {
+        type: mongoose.Schema.Types.Decimal128,
+        default: 0,
+      },
     },
 
     currency: {
@@ -246,6 +303,48 @@ const orderSchema = new mongoose.Schema(
       required: true,
       min: 0,
       default: 0,
+    },
+
+    pricingMode: {
+      type: String,
+      enum: ALLOWED_TAX_PRICING_MODES,
+      default: DEFAULT_TAX_PRICING_MODE,
+    },
+
+    taxSnapshot: {
+      jurisdictionCountry: {
+        type: String,
+        uppercase: true,
+        trim: true,
+        default: null,
+      },
+      jurisdictionState: {
+        type: String,
+        uppercase: true,
+        trim: true,
+        default: null,
+      },
+      calculatedAt: {
+        type: Date,
+        default: Date.now,
+      },
+      itemsTaxTotal: {
+        type: mongoose.Schema.Types.Decimal128,
+        default: 0,
+      },
+      shippingTaxTotal: {
+        type: mongoose.Schema.Types.Decimal128,
+        default: 0,
+      },
+      totalTax: {
+        type: mongoose.Schema.Types.Decimal128,
+        default: 0,
+      },
+      pricingMode: {
+        type: String,
+        enum: ALLOWED_TAX_PRICING_MODES,
+        default: DEFAULT_TAX_PRICING_MODE,
+      },
     },
 
     shippingTotal: {

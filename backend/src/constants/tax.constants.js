@@ -1,0 +1,28 @@
+const TAX_CATEGORIES = Object.freeze({
+  STANDARD: "standard",
+  REDUCED: "reduced",
+  ZERO_RATED: "zero_rated",
+  EXEMPT: "exempt",
+});
+
+const ALLOWED_TAX_CATEGORIES = Object.freeze(Object.values(TAX_CATEGORIES));
+const DEFAULT_TAX_CATEGORY = TAX_CATEGORIES.STANDARD;
+
+const TAX_PRICING_MODES = Object.freeze({
+  TAX_EXCLUSIVE: "tax_exclusive",
+  TAX_INCLUSIVE: "tax_inclusive",
+});
+
+const ALLOWED_TAX_PRICING_MODES = Object.freeze(
+  Object.values(TAX_PRICING_MODES)
+);
+const DEFAULT_TAX_PRICING_MODE = TAX_PRICING_MODES.TAX_EXCLUSIVE;
+
+module.exports = {
+  TAX_CATEGORIES,
+  ALLOWED_TAX_CATEGORIES,
+  DEFAULT_TAX_CATEGORY,
+  TAX_PRICING_MODES,
+  ALLOWED_TAX_PRICING_MODES,
+  DEFAULT_TAX_PRICING_MODE,
+};

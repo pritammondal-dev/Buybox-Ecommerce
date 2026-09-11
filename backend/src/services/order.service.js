@@ -11,10 +11,16 @@ const couponRedemptionRepository = require("../repositories/coupon-redemption.re
 const inventoryService = require("./inventory.service");
 const couponService = require("./coupon.service");
 const couponRedemptionService = require("./coupon-redemption.service");
+const taxService = require("./tax.service");
 const notificationService = require("./notification");
 const notificationOutboxService = require("./notification-outbox.service");
 
 const paymentService = require("./payment.service");
+
+const {
+  TAX_PRICING_MODES,
+  DEFAULT_TAX_PRICING_MODE,
+} = require("../constants/tax.constants");
 
 const withTransaction = require("../utils/withTransaction");
 
@@ -331,6 +337,9 @@ const validateCartItems = async (cart) => {
       variantName: variant.name || "",
       quantity: cartItem.quantity,
       unitPrice,
+      isTaxable:
+        product.isTaxable !== undefined ? product.isTaxable : true,
+      taxCategory: product.taxCategory || "standard",
       discountTotal: "0.00",
       taxTotal: "0.00",
       lineTotal,
@@ -350,7 +359,8 @@ const validateCartItems = async (cart) => {
 const calculateOrderTotals = (
   orderItems,
   currency,
-  couponDiscountMinorUnits = 0
+  couponDiscountMinorUnits = 0,
+  taxCalculation = null
 ) => {
   let subtotalMinorUnits = 0;
 
@@ -388,17 +398,33 @@ const calculateOrderTotals = (
     );
   }
 
-  const taxTotalMinorUnits = 0;
-  const shippingTotalMinorUnits = 0;
+  const taxTotalMinorUnits =
+    taxCalculation?.totalTaxMinorUnits !== undefined
+      ? taxCalculation.totalTaxMinorUnits
+      : 0;
 
-  const grandTotalMinorUnits =
-    subtotalMinorUnits -
-    couponDiscountMinorUnits +
-    taxTotalMinorUnits +
-    shippingTotalMinorUnits;
+  const shippingTotalMinorUnits = 0;
+  const pricingMode =
+    taxCalculation?.pricingMode || DEFAULT_TAX_PRICING_MODE;
+
+  let grandTotalMinorUnits;
+  if (pricingMode === TAX_PRICING_MODES.TAX_INCLUSIVE) {
+    grandTotalMinorUnits =
+      subtotalMinorUnits -
+      couponDiscountMinorUnits +
+      shippingTotalMinorUnits +
+      (taxCalculation?.shippingTaxTotalMinorUnits || 0);
+  } else {
+    grandTotalMinorUnits =
+      subtotalMinorUnits -
+      couponDiscountMinorUnits +
+      taxTotalMinorUnits +
+      shippingTotalMinorUnits;
+  }
 
   return {
     currency,
+    pricingMode,
 
     subtotal:
       minorUnitsToDecimalString(
@@ -600,18 +626,32 @@ const createOrderFromCurrentCart = async (
             )
           : 0;
 
+      const taxCalculation =
+        await taxService.calculateOrderTax({
+          items: orderItems,
+          shippingAddress: address,
+          couponDiscountMinorUnits,
+          shippingTotalMinorUnits: 0,
+          pricingMode: DEFAULT_TAX_PRICING_MODE,
+          currency,
+          session,
+        });
+
+      const finalizedOrderItems = taxCalculation.items;
+
       const totals =
         calculateOrderTotals(
-          orderItems,
+          finalizedOrderItems,
           currency,
-          couponDiscountMinorUnits
+          couponDiscountMinorUnits,
+          taxCalculation
         );
 
       const orderNumber =
         generateOrderNumber();
 
       await reserveInventoryForOrderItems(
-        orderItems,
+        finalizedOrderItems,
         orderNumber,
         userId,
         session
@@ -657,9 +697,12 @@ const createOrderFromCurrentCart = async (
             fulfillmentStatus:
               "unfulfilled",
 
+            pricingMode:
+              totals.pricingMode,
+
             currency,
 
-            items: orderItems,
+            items: finalizedOrderItems,
 
             subtotal:
               totals.subtotal,
@@ -669,6 +712,9 @@ const createOrderFromCurrentCart = async (
 
             taxTotal:
               totals.taxTotal,
+
+            taxSnapshot:
+              taxCalculation.taxSnapshot,
 
             shippingTotal:
               totals.shippingTotal,
