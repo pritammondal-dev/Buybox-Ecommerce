@@ -564,6 +564,15 @@ describe("Payment Service", () => {
       };
 
       paymentRepository.findByOrderIdAndIdempotencyKey.mockResolvedValue(completedPayment);
+      razorpayProvider.fetchOrder.mockResolvedValue({
+        id: "order_rzp_completed",
+        status: "created",
+        amount: 150000,
+        currency: "INR",
+        notes: {
+          buyboxOrderId: "order-123",
+        },
+      });
 
       const result = await createPaymentForOrder("order-123", "user-123", "idemp-key-replay-1");
 
@@ -572,7 +581,7 @@ describe("Payment Service", () => {
       expect(razorpayProvider.createOrder).not.toHaveBeenCalled();
     });
 
-    it("should reject creation with 409 ACTIVE_PAYMENT_EXISTS when active payment exists with a different key", async () => {
+    it("should reject creation with 409 ACTIVE_PAYMENT_EXISTS when gateway state cannot be verified", async () => {
       paymentRepository.findByOrderIdAndIdempotencyKey.mockResolvedValue(null);
       paymentRepository.findActiveByOrderId.mockResolvedValue({
         _id: "payment-other-key",
@@ -581,6 +590,7 @@ describe("Payment Service", () => {
         status: "created",
         idempotencyKey: "different-key-123",
       });
+      razorpayProvider.fetchOrder.mockRejectedValue(new Error("Gateway unreachable"));
 
       await expect(
         createPaymentForOrder("order-123", "user-123", "new-attempt-key")
@@ -588,6 +598,33 @@ describe("Payment Service", () => {
         statusCode: 409,
         code: "ACTIVE_PAYMENT_EXISTS",
       });
+    });
+
+    it("should reuse active payment when retried with a different key and gateway order is payable", async () => {
+      paymentRepository.findByOrderIdAndIdempotencyKey.mockResolvedValue(null);
+      const activePayment = {
+        _id: "payment-reused-different-key",
+        orderId: "order-123",
+        gatewayOrderId: "order_rzp_reused",
+        status: "created",
+        idempotencyKey: "key-attempt-1",
+      };
+      paymentRepository.findActiveByOrderId.mockResolvedValue(activePayment);
+      razorpayProvider.fetchOrder.mockResolvedValue({
+        id: "order_rzp_reused",
+        status: "created",
+        amount: 150000,
+        currency: "INR",
+        notes: {
+          buyboxOrderId: "order-123",
+        },
+      });
+
+      const result = await createPaymentForOrder("order-123", "user-123", "key-attempt-2");
+
+      expect(result).toBe(activePayment);
+      expect(paymentRepository.create).not.toHaveBeenCalled();
+      expect(razorpayProvider.createOrder).not.toHaveBeenCalled();
     });
 
     it("should permit fresh creation attempt when historical payment failed (no key poisoning)", async () => {
@@ -664,6 +701,15 @@ describe("Payment Service", () => {
       };
 
       paymentRepository.findActiveByOrderId.mockResolvedValueOnce(winnerPayment);
+      razorpayProvider.fetchOrder.mockResolvedValue({
+        id: "order_rzp_winner",
+        status: "created",
+        amount: 150000,
+        currency: "INR",
+        notes: {
+          buyboxOrderId: "order-123",
+        },
+      });
 
       const result = await createPaymentForOrder("order-123", "user-123", "racing-same-key");
 

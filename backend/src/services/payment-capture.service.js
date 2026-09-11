@@ -471,6 +471,20 @@ const captureRazorpayPayment = async ({
     expectedAmount,
   });
 
+  if (
+    payment.status !== "captured" &&
+    !canTransitionPaymentStatus(
+      payment.status,
+      "captured"
+    )
+  ) {
+    throw new AppError(
+      `Invalid payment status transition from ${payment.status} to captured`,
+      409,
+      "INVALID_PAYMENT_STATUS_TRANSITION"
+    );
+  }
+
   /**
    * Idempotent case.
    *

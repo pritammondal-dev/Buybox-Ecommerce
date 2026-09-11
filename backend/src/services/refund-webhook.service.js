@@ -349,12 +349,81 @@ const processRefundWebhook = async ({
       session.startTransaction();
     }
 
-    const refund =
+    let refund =
       await refundRepository.findByGatewayRefundId(
         REFUND_GATEWAY,
         razorpayRefund.id,
         { session }
       );
+
+    if (!refund) {
+      const fallbackPayment =
+        await paymentRepository.findByGatewayPaymentId(
+          REFUND_GATEWAY,
+          razorpayRefund.payment_id,
+          { session }
+        );
+
+      if (fallbackPayment) {
+        const fallbackOrder =
+          await orderRepository.findById(
+            fallbackPayment.orderId,
+            { session }
+          );
+
+        if (fallbackOrder) {
+          try {
+            refund = await refundRepository.create(
+              {
+                paymentId: fallbackPayment._id,
+                orderId: fallbackOrder._id,
+                customerId: fallbackOrder.customerId,
+                gateway: REFUND_GATEWAY,
+                gatewayRefundId: razorpayRefund.id,
+                amount: minorUnitsToDecimal(
+                  Number(razorpayRefund.amount)
+                ),
+                currency: String(
+                  razorpayRefund.currency ||
+                    fallbackPayment.currency
+                )
+                  .trim()
+                  .toUpperCase(),
+                status: nextStatus,
+                reason:
+                  "Gateway webhook reconciliation refund",
+                processedAt:
+                  nextStatus === "processed"
+                    ? new Date()
+                    : null,
+              },
+              { session }
+            );
+          } catch (createErr) {
+            if (createErr?.code === 11000) {
+              const existingRefund =
+                await refundRepository.findByGatewayRefundId(
+                  REFUND_GATEWAY,
+                  razorpayRefund.id,
+                  { session }
+                );
+
+              if (
+                existingRefund &&
+                existingRefund.paymentId.toString() ===
+                  fallbackPayment._id.toString()
+              ) {
+                refund = existingRefund;
+              } else {
+                throw createErr;
+              }
+            } else {
+              throw createErr;
+            }
+          }
+        }
+      }
+    }
 
     if (!refund) {
       throw new AppError(

@@ -34,10 +34,26 @@ const updateById = async (id, data, options = {}) => {
   });
 };
 
+const findByCustomerIdAndIdempotencyKey = async (
+  customerId,
+  idempotencyKey,
+  options = {}
+) => {
+  if (!idempotencyKey) {
+    return null;
+  }
+
+  return Order.findOne({
+    customerId,
+    idempotencyKey,
+  }).session(options.session || null);
+};
+
 module.exports = {
   create,
   findById,
   findByOrderNumber,
   findByCustomer,
+  findByCustomerIdAndIdempotencyKey,
   updateById,
 };

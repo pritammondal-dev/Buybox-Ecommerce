@@ -50,6 +50,9 @@ const PERMISSIONS = Object.freeze({
 
   TAX_READ: "tax:read",
   TAX_MANAGE: "tax:manage",
+
+  ANALYTICS_READ: "analytics:read",
+  ANALYTICS_READ_OWN: "analytics:read_own",
 });
 
 module.exports = {

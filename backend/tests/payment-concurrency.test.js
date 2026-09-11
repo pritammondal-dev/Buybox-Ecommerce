@@ -143,7 +143,7 @@ describe("Task 8B.4 — Concurrent Payment Creation API & Lifecycle Hardening", 
       expect(paymentRepository.create).not.toHaveBeenCalled();
     });
 
-    it("returns 409 ACTIVE_PAYMENT_EXISTS when an active payment exists with a different key", async () => {
+    it("returns 409 ACTIVE_PAYMENT_EXISTS when gateway state cannot be verified", async () => {
       paymentRepository.findByOrderIdAndIdempotencyKey.mockResolvedValue(null);
       paymentRepository.findActiveByOrderId.mockResolvedValue({
         _id: "pay-existing",
@@ -153,6 +153,7 @@ describe("Task 8B.4 — Concurrent Payment Creation API & Lifecycle Hardening", 
         gatewayOrderId: "order_rzp_existing",
         idempotencyKey: "previous-key-12345",
       });
+      razorpayProvider.fetchOrder.mockRejectedValue(new Error("Gateway unreachable"));
 
       const response = await request(app)
         .post(`/api/v1/payments/orders/${orderId}`)
@@ -161,6 +162,38 @@ describe("Task 8B.4 — Concurrent Payment Creation API & Lifecycle Hardening", 
 
       expect(response.status).toBe(409);
       expect(response.body.code).toBe("ACTIVE_PAYMENT_EXISTS");
+      expect(razorpayProvider.createOrder).not.toHaveBeenCalled();
+      expect(paymentRepository.create).not.toHaveBeenCalled();
+    });
+
+    it("reuses active payment with 201 when retrying with a different key and gateway order is payable", async () => {
+      paymentRepository.findByOrderIdAndIdempotencyKey.mockResolvedValue(null);
+      paymentRepository.findActiveByOrderId.mockResolvedValue({
+        _id: "pay-existing-reused",
+        orderId,
+        customerId,
+        status: "created",
+        gatewayOrderId: "order_rzp_existing_reused",
+        idempotencyKey: "previous-key-12345",
+      });
+
+      razorpayProvider.fetchOrder.mockResolvedValue({
+        id: "order_rzp_existing_reused",
+        status: "created",
+        amount: 250000,
+        currency: "INR",
+        notes: {
+          buyboxOrderId: orderId,
+        },
+      });
+
+      const response = await request(app)
+        .post(`/api/v1/payments/orders/${orderId}`)
+        .set("Authorization", `Bearer ${token}`)
+        .set("Idempotency-Key", "new-key-67890");
+
+      expect(response.status).toBe(201);
+      expect(response.body.data.gatewayOrderId).toBe("order_rzp_existing_reused");
       expect(razorpayProvider.createOrder).not.toHaveBeenCalled();
       expect(paymentRepository.create).not.toHaveBeenCalled();
     });
@@ -227,6 +260,16 @@ describe("Task 8B.4 — Concurrent Payment Creation API & Lifecycle Hardening", 
         status: "created",
         gatewayOrderId: "order_rzp_winner_done",
         idempotencyKey: "racing-same-key",
+      });
+
+      razorpayProvider.fetchOrder.mockResolvedValue({
+        id: "order_rzp_winner_done",
+        status: "created",
+        amount: 250000,
+        currency: "INR",
+        notes: {
+          buyboxOrderId: orderId,
+        },
       });
 
       const response = await request(app)

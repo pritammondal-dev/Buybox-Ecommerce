@@ -441,11 +441,6 @@ const createRefund = async ({
     );
   }
 
-  await validateCustomerOrderAccess(
-    userId,
-    order
-  );
-
   const payment =
     await paymentRepository.findLatestByOrderId(
       order._id

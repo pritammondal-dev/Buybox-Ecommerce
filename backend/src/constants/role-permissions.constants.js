@@ -25,6 +25,9 @@ const ROLE_PERMISSIONS = Object.freeze({
     // Ownership must still be enforced by the shipment service.
     PERMISSIONS.SHIPMENTS_READ_OWN,
     PERMISSIONS.SHIPMENTS_MANAGE_OWN,
+
+    // Vendor-scoped analytics permissions
+    PERMISSIONS.ANALYTICS_READ_OWN,
   ],
 
   [ROLES.SUPPORT]: [
@@ -79,6 +82,8 @@ const ROLE_PERMISSIONS = Object.freeze({
 
     PERMISSIONS.TAX_READ,
     PERMISSIONS.TAX_MANAGE,
+
+    PERMISSIONS.ANALYTICS_READ,
   ],
 
   [ROLES.ADMIN]: Object.values(PERMISSIONS),

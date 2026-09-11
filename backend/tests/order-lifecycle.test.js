@@ -27,6 +27,12 @@ const {
 describe("Order Status Lifecycle", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    if (paymentRepository.cancelPendingPayment) {
+      paymentRepository.cancelPendingPayment.mockResolvedValue({
+        _id: "payment-123",
+        status: "cancelled",
+      });
+    }
   });
 
   it("should confirm a pending order and set placedAt", async () => {
@@ -380,10 +386,9 @@ describe("Order Status Lifecycle", () => {
     ).not.toHaveBeenCalled();
 
     expect(
-      paymentRepository.updateById
+      paymentRepository.cancelPendingPayment
     ).toHaveBeenCalledWith(
       "payment-pending-124",
-      { status: "cancelled" },
       expect.objectContaining({ session: expect.anything() })
     );
 
@@ -447,6 +452,7 @@ describe("Order Status Lifecycle", () => {
       expect.objectContaining({
         status: "cancelled",
         cancellationStatus: "completed",
+        paymentStatus: "refunded",
       }),
       expect.anything()
     );
@@ -617,10 +623,9 @@ describe("Order Status Lifecycle", () => {
     ).not.toHaveBeenCalled();
 
     expect(
-      paymentRepository.updateById
+      paymentRepository.cancelPendingPayment
     ).toHaveBeenCalledWith(
       "payment-auth-127",
-      { status: "cancelled" },
       expect.objectContaining({ session: expect.anything() })
     );
   });
@@ -673,10 +678,9 @@ describe("Order Status Lifecycle", () => {
     expect(result.cancellationStatus).toBe("completed");
 
     expect(
-      paymentRepository.updateById
+      paymentRepository.cancelPendingPayment
     ).toHaveBeenCalledWith(
       "payment-created-129",
-      { status: "cancelled" },
       expect.objectContaining({ session: expect.anything() })
     );
   });
@@ -723,11 +727,7 @@ describe("Order Status Lifecycle", () => {
       )
     ).rejects.toThrow("Inventory record not found for SKU SKU-123");
 
-    expect(paymentRepository.updateById).not.toHaveBeenCalledWith(
-      "payment-pending-130",
-      { status: "cancelled" },
-      expect.anything()
-    );
+    expect(paymentRepository.cancelPendingPayment).not.toHaveBeenCalled();
   });
 
   it("should set cancellationStatus to completed during shipment cascading cancellation", async () => {
@@ -764,5 +764,120 @@ describe("Order Status Lifecycle", () => {
       }),
       { session }
     );
+  });
+
+  it("should abort cancellation with PAYMENT_CAPTURED_CONCURRENTLY and not overwrite payment when payment becomes captured concurrently inside transaction", async () => {
+    Customer.findOne.mockResolvedValue({
+      _id: {
+        toString: () => "customer-123",
+      },
+    });
+
+    orderRepository.findById.mockResolvedValue({
+      _id: "order-123",
+      customerId: "customer-123",
+      orderNumber: "BB-TEST-131",
+      status: "pending",
+      items: [],
+    });
+
+    paymentService.getLatestPaymentForOrder.mockResolvedValue({
+      _id: "payment-131",
+      status: "pending",
+    });
+
+    // Simulating concurrent capture appearing inside transaction
+    paymentRepository.findLatestByOrderId.mockResolvedValue({
+      _id: "payment-131",
+      status: "captured",
+    });
+
+    withTransaction.mockImplementation(async (callback) => callback({}));
+
+    await expect(
+      cancelOrder("order-123", { userId: "user-123" })
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: "PAYMENT_CAPTURED_CONCURRENTLY",
+    });
+
+    expect(paymentRepository.cancelPendingPayment).not.toHaveBeenCalled();
+    expect(paymentService.refundPaymentForOrder).not.toHaveBeenCalled();
+  });
+
+  it("should set order.paymentStatus = 'refunded' and status = 'cancelled' when cancelling an order with captured payment", async () => {
+    Customer.findOne.mockResolvedValue({
+      _id: {
+        toString: () => "customer-123",
+      },
+    });
+
+    orderRepository.findById.mockResolvedValue({
+      _id: "order-123",
+      customerId: "customer-123",
+      orderNumber: "BB-TEST-132",
+      status: "pending",
+      items: [],
+    });
+
+    paymentService.getLatestPaymentForOrder.mockResolvedValue({
+      _id: "payment-132",
+      status: "captured",
+    });
+
+    paymentService.refundPaymentForOrder.mockResolvedValue({
+      _id: "payment-132",
+      status: "refunded",
+    });
+
+    paymentRepository.findLatestByOrderId.mockResolvedValue({
+      _id: "payment-132",
+      status: "refunded",
+    });
+
+    orderRepository.updateById.mockResolvedValue({
+      _id: "order-123",
+      status: "cancelled",
+      paymentStatus: "refunded",
+      cancellationStatus: "completed",
+    });
+
+    withTransaction.mockImplementation(async (callback) => callback({}));
+
+    const result = await cancelOrder("order-123", { userId: "user-123" });
+
+    expect(result.status).toBe("cancelled");
+    expect(orderRepository.updateById).toHaveBeenCalledWith(
+      "order-123",
+      expect.objectContaining({
+        status: "cancelled",
+        paymentStatus: "refunded",
+      }),
+      expect.anything()
+    );
+  });
+
+  it("should be idempotent and not issue duplicate refunds when cancelOrder is called on an already cancelled order", async () => {
+    Customer.findOne.mockResolvedValue({
+      _id: {
+        toString: () => "customer-123",
+      },
+    });
+
+    orderRepository.findById.mockResolvedValue({
+      _id: "order-123",
+      customerId: "customer-123",
+      orderNumber: "BB-TEST-133",
+      status: "cancelled",
+      paymentStatus: "refunded",
+      cancellationStatus: "completed",
+      items: [],
+    });
+
+    const result = await cancelOrder("order-123", { userId: "user-123" });
+
+    expect(result.status).toBe("cancelled");
+    expect(paymentService.getLatestPaymentForOrder).not.toHaveBeenCalled();
+    expect(paymentService.refundPaymentForOrder).not.toHaveBeenCalled();
   });
 });

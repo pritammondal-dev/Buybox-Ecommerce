@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const orderRepository = require("../repositories/order.repository");
 const paymentRepository = require("../repositories/payment.repository");
 const refundRepository = require("../repositories/refund.repository");
+const orderService = require("./order.service");
 
 const razorpayProvider = require("../integrations/payments/razorpay.provider");
 
@@ -88,6 +89,189 @@ const validateIdempotencyKey = (idempotencyKey) => {
   return idempotencyKey.trim();
 };
 
+const reconcilePaidGatewayOrder = async ({
+  activePayment,
+  order,
+  amount,
+  gatewayOrderId,
+}) => {
+  if (activePayment.status === "captured") {
+    await orderService.markOrderPaymentCaptured(order._id);
+    return activePayment;
+  }
+
+  if (!["created", "pending"].includes(activePayment.status)) {
+    throw new AppError(
+      "An active payment already exists for this order",
+      409,
+      "ACTIVE_PAYMENT_EXISTS"
+    );
+  }
+
+  const currentPayment =
+    (await paymentRepository.findById(activePayment._id)) || activePayment;
+
+  if (currentPayment.status === "captured") {
+    await orderService.markOrderPaymentCaptured(order._id);
+    return currentPayment;
+  }
+
+  if (!["created", "pending"].includes(currentPayment.status)) {
+    throw new AppError(
+      "An active payment already exists for this order",
+      409,
+      "ACTIVE_PAYMENT_EXISTS"
+    );
+  }
+
+  let paymentsResponse;
+  try {
+    paymentsResponse =
+      await razorpayProvider.fetchOrderPayments(gatewayOrderId);
+  } catch (error) {
+    throw new AppError(
+      "An active payment already exists for this order",
+      409,
+      "ACTIVE_PAYMENT_EXISTS"
+    );
+  }
+
+  const items = Array.isArray(paymentsResponse?.items)
+    ? paymentsResponse.items
+    : [];
+
+  const localCurrency = order.currency?.toString().toUpperCase();
+  const capturedPayment = items.find(
+    (p) =>
+      p.status === "captured" &&
+      typeof p.id === "string" &&
+      p.id.trim().length > 0 &&
+      Number(p.amount) === amount &&
+      p.currency?.toString().toUpperCase() === localCurrency
+  );
+
+  if (!capturedPayment) {
+    throw new AppError(
+      "An active payment already exists for this order",
+      409,
+      "ACTIVE_PAYMENT_EXISTS"
+    );
+  }
+
+  const latestBeforeUpdate =
+    (await paymentRepository.findById(activePayment._id)) || currentPayment;
+
+  if (latestBeforeUpdate.status === "captured") {
+    await orderService.markOrderPaymentCaptured(order._id);
+    return latestBeforeUpdate;
+  }
+
+  if (!["created", "pending"].includes(latestBeforeUpdate.status)) {
+    throw new AppError(
+      "An active payment already exists for this order",
+      409,
+      "ACTIVE_PAYMENT_EXISTS"
+    );
+  }
+
+  const updatedPayment = await paymentRepository.updateById(
+    activePayment._id,
+    {
+      status: "captured",
+      gatewayPaymentId: capturedPayment.id.trim(),
+      method: capturedPayment.method || activePayment.method || null,
+      capturedAt: capturedPayment.captured_at
+        ? new Date(capturedPayment.captured_at * 1000)
+        : new Date(),
+      failureReason: null,
+    }
+  );
+
+  await orderService.markOrderPaymentCaptured(order._id);
+
+  return updatedPayment || latestBeforeUpdate;
+};
+
+const handleActivePayment = async ({
+  activePayment,
+  order,
+  amount,
+}) => {
+  if (activePayment.status === "authorized") {
+    throw new AppError(
+      "Payment has already been authorized for this order",
+      409,
+      "PAYMENT_ALREADY_AUTHORIZED"
+    );
+  }
+
+  if (!activePayment.gatewayOrderId) {
+    throw new AppError(
+      "Payment creation is currently in progress for this order. Please retry in a few seconds",
+      409,
+      "PAYMENT_CREATION_IN_PROGRESS"
+    );
+  }
+
+  let gatewayOrder;
+  try {
+    gatewayOrder = await razorpayProvider.fetchOrder(
+      activePayment.gatewayOrderId
+    );
+  } catch (error) {
+    throw new AppError(
+      "An active payment already exists for this order",
+      409,
+      "ACTIVE_PAYMENT_EXISTS"
+    );
+  }
+
+  const buyboxOrderId =
+    gatewayOrder?.notes?.buyboxOrderId?.toString?.().trim?.();
+  if (!buyboxOrderId || buyboxOrderId !== order._id.toString()) {
+    throw new AppError(
+      "An active payment already exists for this order",
+      409,
+      "ACTIVE_PAYMENT_EXISTS"
+    );
+  }
+
+  const gatewayAmount = Number(gatewayOrder?.amount);
+  const gatewayCurrency =
+    gatewayOrder?.currency?.toString?.().toUpperCase?.();
+  const localCurrency = order.currency?.toString?.().toUpperCase?.();
+
+  if (
+    gatewayAmount !== amount ||
+    gatewayCurrency !== localCurrency
+  ) {
+    throw new AppError(
+      "An active payment already exists for this order",
+      409,
+      "ACTIVE_PAYMENT_EXISTS"
+    );
+  }
+
+  if (gatewayOrder.status === "paid") {
+    return await reconcilePaidGatewayOrder({
+      activePayment,
+      order,
+      amount,
+      gatewayOrderId: activePayment.gatewayOrderId,
+    });
+  }
+
+  if (["created", "attempted"].includes(gatewayOrder.status)) {
+    return activePayment;
+  }
+
+  throw new AppError(
+    "An active payment already exists for this order",
+    409,
+    "ACTIVE_PAYMENT_EXISTS"
+  );
+};
+
 const createPaymentForOrder = async (
   orderId,
   userId,
@@ -141,6 +325,18 @@ const createPaymentForOrder = async (
     );
   }
 
+  const amount = decimalToMinorUnits(
+    order.grandTotal
+  );
+
+  if (amount <= 0) {
+    throw new AppError(
+      "Order amount must be greater than zero",
+      400,
+      "INVALID_PAYMENT_AMOUNT"
+    );
+  }
+
   const existingByKey =
     await paymentRepository.findByOrderIdAndIdempotencyKey(
       order._id,
@@ -157,20 +353,28 @@ const createPaymentForOrder = async (
       );
     }
 
+    if (existingByKey.status === "captured") {
+      return existingByKey;
+    }
+
     if (
-      ["created", "pending", "captured"].includes(
+      ["created", "pending"].includes(
         existingByKey.status
       )
     ) {
-      if (existingByKey.gatewayOrderId) {
-        return existingByKey;
+      if (!existingByKey.gatewayOrderId) {
+        throw new AppError(
+          "Payment creation is currently in progress for this order. Please retry in a few seconds",
+          409,
+          "PAYMENT_CREATION_IN_PROGRESS"
+        );
       }
 
-      throw new AppError(
-        "Payment creation is currently in progress for this order. Please retry in a few seconds",
-        409,
-        "PAYMENT_CREATION_IN_PROGRESS"
-      );
+      return await handleActivePayment({
+        activePayment: existingByKey,
+        order,
+        amount,
+      });
     }
   }
 
@@ -180,46 +384,11 @@ const createPaymentForOrder = async (
     );
 
   if (activePayment) {
-    if (activePayment.status === "authorized") {
-      throw new AppError(
-        "Payment has already been authorized for this order",
-        409,
-        "PAYMENT_ALREADY_AUTHORIZED"
-      );
-    }
-
-    if (activePayment.gatewayOrderId) {
-      if (
-        activePayment.idempotencyKey ===
-        normalizedIdempotencyKey
-      ) {
-        return activePayment;
-      }
-
-      throw new AppError(
-        "An active payment already exists for this order",
-        409,
-        "ACTIVE_PAYMENT_EXISTS"
-      );
-    }
-
-    throw new AppError(
-      "Payment creation is currently in progress for this order. Please retry in a few seconds",
-      409,
-      "PAYMENT_CREATION_IN_PROGRESS"
-    );
-  }
-
-  const amount = decimalToMinorUnits(
-    order.grandTotal
-  );
-
-  if (amount <= 0) {
-    throw new AppError(
-      "Order amount must be greater than zero",
-      400,
-      "INVALID_PAYMENT_AMOUNT"
-    );
+    return await handleActivePayment({
+      activePayment,
+      order,
+      amount,
+    });
   }
 
   let payment;
@@ -247,34 +416,11 @@ const createPaymentForOrder = async (
         );
 
       if (active) {
-        if (active.status === "authorized") {
-          throw new AppError(
-            "Payment has already been authorized for this order",
-            409,
-            "PAYMENT_ALREADY_AUTHORIZED"
-          );
-        }
-
-        if (active.gatewayOrderId) {
-          if (
-            active.idempotencyKey ===
-            normalizedIdempotencyKey
-          ) {
-            return active;
-          }
-
-          throw new AppError(
-            "An active payment already exists for this order",
-            409,
-            "ACTIVE_PAYMENT_EXISTS"
-          );
-        }
-
-        throw new AppError(
-          "Payment creation is currently in progress for this order. Please retry in a few seconds",
-          409,
-          "PAYMENT_CREATION_IN_PROGRESS"
-        );
+        return await handleActivePayment({
+          activePayment: active,
+          order,
+          amount,
+        });
       }
 
       const byKey =
@@ -284,8 +430,18 @@ const createPaymentForOrder = async (
           normalizedIdempotencyKey
         );
 
-      if (byKey && byKey.gatewayOrderId) {
-        return byKey;
+      if (byKey) {
+        if (byKey.status === "captured") {
+          return byKey;
+        }
+
+        if (byKey.gatewayOrderId) {
+          return await handleActivePayment({
+            activePayment: byKey,
+            order,
+            amount,
+          });
+        }
       }
 
       throw new AppError(

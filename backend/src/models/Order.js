@@ -30,7 +30,6 @@ const orderItemSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Vendor",
       required: true,
-      index: true,
     },
 
     sku: {
@@ -435,6 +434,17 @@ const orderSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
+    idempotencyKey: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
+    idempotencyFingerprint: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -453,18 +463,35 @@ orderSchema.index({
 });
 
 orderSchema.index({
+  "items.vendorId": 1,
   status: 1,
-  paymentStatus: 1,
+  createdAt: -1,
 });
 
 orderSchema.index({
-  "items.vendorId": 1,
   status: 1,
+  paymentStatus: 1,
+  createdAt: -1,
 });
 
 orderSchema.index({
   cancellationStatus: 1,
   status: 1,
 });
+
+orderSchema.index(
+  {
+    customerId: 1,
+    idempotencyKey: 1,
+  },
+  {
+    unique: true,
+    partialFilterExpression: {
+      idempotencyKey: {
+        $type: "string",
+      },
+    },
+  }
+);
 
 module.exports = mongoose.model("Order", orderSchema);

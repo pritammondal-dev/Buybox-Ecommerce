@@ -37,6 +37,7 @@ const storefrontAnnouncementBarRoutes = require("./storefront-announcement-bar.r
 const storefrontMediaRoutes = require("./storefront-media.routes");
 const storefrontPublicationRoutes = require("./storefront-publication.routes");
 const wishlistRoutes = require("./wishlist.routes");
+const analyticsRoutes = require("./analytics.routes");
 
 const router = express.Router();
 
@@ -84,5 +85,6 @@ router.use("/storefront/sections",storefrontSectionRoutes);
 router.use("/storefront/announcement-bars",storefrontAnnouncementBarRoutes);
 router.use("/storefront/media",storefrontMediaRoutes);
 router.use("/storefront/publications",storefrontPublicationRoutes);
+router.use("/analytics", analyticsRoutes);
 
 module.exports = router;

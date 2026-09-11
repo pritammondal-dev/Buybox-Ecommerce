@@ -7,6 +7,7 @@ const createRefund = async (req, res) => {
   const refund = await refundService.createRefund({
     orderId: req.params.orderId,
     userId: req.user.id,
+    user: req.user,
     amount: req.body.amount,
     reason: req.body.reason,
     idempotencyKey,

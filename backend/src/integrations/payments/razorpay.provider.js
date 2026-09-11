@@ -48,6 +48,26 @@ const fetchOrder = async (orderId) => {
   }
 };
 
+const fetchOrderPayments = async (orderId) => {
+  if (!orderId || typeof orderId !== "string" || !orderId.trim()) {
+    throw new AppError(
+      "Invalid Razorpay order ID",
+      400,
+      "INVALID_GATEWAY_ORDER_ID"
+    );
+  }
+
+  try {
+    return await razorpay.orders.fetchPayments(orderId.trim());
+  } catch (error) {
+    throw new AppError(
+      "Unable to fetch Razorpay order payments",
+      502,
+      "RAZORPAY_ORDER_PAYMENTS_FETCH_FAILED"
+    );
+  }
+};
+
 const fetchPayment = async (paymentId) => {
   try {
     return await razorpay.payments.fetch(paymentId);
@@ -119,6 +139,7 @@ const refundPayment = async ({
 module.exports = {
   createOrder,
   fetchOrder,
+  fetchOrderPayments,
   fetchPayment,
   capturePayment,
   refundPayment,

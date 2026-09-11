@@ -135,6 +135,40 @@ const minorUnitsToDecimalString = (
 };
 
 /**
+ * Validate and normalize the Idempotency-Key header value.
+ */
+const validateIdempotencyKey = (idempotencyKey) => {
+  if (
+    typeof idempotencyKey !== "string" ||
+    idempotencyKey.trim().length < 8 ||
+    idempotencyKey.trim().length > 128
+  ) {
+    throw new AppError(
+      "A valid Idempotency-Key is required",
+      400,
+      "INVALID_IDEMPOTENCY_KEY"
+    );
+  }
+
+  return idempotencyKey.trim();
+};
+
+/**
+ * Generate a SHA-256 fingerprint of the order checkout inputs.
+ */
+const generateCheckoutFingerprint = ({
+  customerId,
+  shippingAddressId,
+  couponCode,
+}) => {
+  const normalizedCoupon = couponCode
+    ? String(couponCode).trim().toUpperCase()
+    : "";
+  const payload = `${String(customerId)}|${String(shippingAddressId)}|${normalizedCoupon}`;
+  return crypto.createHash("sha256").update(payload, "utf8").digest("hex");
+};
+
+/**
  * Generate a unique human-readable order number.
  */
 const generateOrderNumber = () => {
@@ -537,7 +571,8 @@ const reserveInventoryForOrderItems =
 const createOrderFromCurrentCart = async (
   userId,
   shippingAddressId,
-  couponCode = null
+  couponCode = null,
+  idempotencyKey = null
 ) => {
   const customer =
     await validateCustomer(userId);
@@ -548,268 +583,381 @@ const createOrderFromCurrentCart = async (
       shippingAddressId
     );
 
-  const order = await withTransaction(
-    async (session) => {
-      const cart =
-        await cartRepository
-          .findActiveByCustomer(
-            customer._id,
-            null,
-            { session }
-          );
+  let normalizedKey = null;
+  let fingerprint = null;
 
-      if (!cart) {
-        throw new AppError(
-          "Active cart not found",
-          404,
-          "CART_NOT_FOUND"
-        );
-      }
+  if (idempotencyKey !== null && idempotencyKey !== undefined) {
+    normalizedKey = validateIdempotencyKey(idempotencyKey);
+    fingerprint = generateCheckoutFingerprint({
+      customerId: customer._id,
+      shippingAddressId,
+      couponCode,
+    });
 
-      const orderItems =
-        await validateCartItems(cart);
-
-      const currency =
-        cart.currency ||
-        DEFAULT_CURRENCY;
-
-      const subtotalTotals =
-        calculateOrderTotals(
-          orderItems,
-          currency
-        );
-
-      const previousOrder =
-        await Order.findOne({
-          customerId: customer._id,
-        })
-          .select("_id")
-          .session(session)
-          .lean();
-
-      const isFirstOrder =
-        !previousOrder;
-
-      let couponResult = null;
-
-      if (couponCode) {
-        couponResult =
-          await couponService.validateCoupon({
-            code: couponCode,
-            customerId: customer._id,
-            orderAmount:
-              Number(
-                subtotalTotals.subtotal
-              ),
-            items: orderItems.map(
-              (item) => ({
-                productId:
-                  item.productId,
-                categoryId:
-                  item.categoryId,
-                vendorId:
-                  item.vendorId,
-                lineTotal:
-                  item.lineTotal,
-                quantity:
-                  item.quantity,
-              })
-            ),
-            isFirstOrder,
-          });
-      }
-
-      const couponDiscountMinorUnits =
-        couponResult
-          ? decimalToMinorUnits(
-              couponResult.discountAmount
-            )
-          : 0;
-
-      const taxCalculation =
-        await taxService.calculateOrderTax({
-          items: orderItems,
-          shippingAddress: address,
-          couponDiscountMinorUnits,
-          shippingTotalMinorUnits: 0,
-          pricingMode: DEFAULT_TAX_PRICING_MODE,
-          currency,
-          session,
-        });
-
-      const finalizedOrderItems = taxCalculation.items;
-
-      const totals =
-        calculateOrderTotals(
-          finalizedOrderItems,
-          currency,
-          couponDiscountMinorUnits,
-          taxCalculation
-        );
-
-      const orderNumber =
-        generateOrderNumber();
-
-      await reserveInventoryForOrderItems(
-        finalizedOrderItems,
-        orderNumber,
-        userId,
-        session
+    const existingOrder =
+      await orderRepository.findByCustomerIdAndIdempotencyKey(
+        customer._id,
+        normalizedKey
       );
 
-      const fullName = [
-        address.firstName,
-        address.lastName,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .trim();
-
-      if (!fullName) {
+    if (existingOrder) {
+      if (existingOrder.idempotencyFingerprint !== fingerprint) {
         throw new AppError(
-          "Shipping address name is invalid",
-          400,
-          "INVALID_SHIPPING_ADDRESS"
+          "Idempotency key already used for a different order request",
+          409,
+          "IDEMPOTENCY_KEY_CONFLICT"
         );
       }
 
-      const createdOrder =
-        await orderRepository.create(
-          {
-            orderNumber,
+      Object.defineProperty(existingOrder, "isReplay", {
+        value: true,
+        enumerable: false,
+        configurable: true,
+        writable: true,
+      });
 
-            customerId:
+      return existingOrder;
+    }
+  }
+
+  let order;
+  try {
+    order = await withTransaction(
+      async (session) => {
+        const cart =
+          await cartRepository
+            .findActiveByCustomer(
               customer._id,
-
-            storeId:
-              cart.storeId || null,
-
-            couponId:
-              couponResult?.coupon?._id ||
               null,
+              { session }
+            );
 
-            couponCode:
-              couponResult?.coupon?.code ||
-              null,
+        if (!cart) {
+          if (normalizedKey) {
+            const existingOrder =
+              await orderRepository.findByCustomerIdAndIdempotencyKey(
+                customer._id,
+                normalizedKey,
+                { session }
+              );
 
-            status: "pending",
-            paymentStatus: "pending",
-            fulfillmentStatus:
-              "unfulfilled",
+            if (existingOrder) {
+              if (existingOrder.idempotencyFingerprint !== fingerprint) {
+                throw new AppError(
+                  "Idempotency key already used for a different order request",
+                  409,
+                  "IDEMPOTENCY_KEY_CONFLICT"
+                );
+              }
 
-            pricingMode:
-              totals.pricingMode,
+              Object.defineProperty(existingOrder, "isReplay", {
+                value: true,
+                enumerable: false,
+                configurable: true,
+                writable: true,
+              });
 
-            currency,
+              return existingOrder;
+            }
+          }
 
-            items: finalizedOrderItems,
+          throw new AppError(
+            "Active cart not found",
+            404,
+            "CART_NOT_FOUND"
+          );
+        }
 
-            subtotal:
-              totals.subtotal,
+        const orderItems =
+          await validateCartItems(cart);
 
-            discountTotal:
-              totals.discountTotal,
+        const currency =
+          cart.currency ||
+          DEFAULT_CURRENCY;
 
-            taxTotal:
-              totals.taxTotal,
-
-            taxSnapshot:
-              taxCalculation.taxSnapshot,
-
-            shippingTotal:
-              totals.shippingTotal,
-
-            grandTotal:
-              totals.grandTotal,
-
-            shippingAddress: {
-              fullName,
-              phone: address.phone,
-              addressLine1:
-                address.addressLine1,
-              addressLine2:
-                address.addressLine2 || "",
-              city: address.city,
-              state: address.state,
-              postalCode:
-                address.postalCode,
-              country:
-                address.country || "IN",
-            },
-          },
-          { session }
-        );
-
-      if (couponResult) {
-        await couponRedemptionService
-          .redeemCoupon({
-            couponId:
-              couponResult.coupon._id,
-            customerId:
-              customer._id,
-            orderId:
-              createdOrder._id,
-            session,
-          });
-      }
-
-      const convertedCart =
-        await cartRepository
-          .convertActiveCart(
-            cart._id,
-            { session }
+        const subtotalTotals =
+          calculateOrderTotals(
+            orderItems,
+            currency
           );
 
-      if (!convertedCart) {
-        throw new AppError(
-          "Cart could not be converted",
-          409,
-          "CART_CONVERSION_FAILED"
+        const previousOrder =
+          await Order.findOne({
+            customerId: customer._id,
+          })
+            .select("_id")
+            .session(session)
+            .lean();
+
+        const isFirstOrder =
+          !previousOrder;
+
+        let couponResult = null;
+
+        if (couponCode) {
+          couponResult =
+            await couponService.validateCoupon({
+              code: couponCode,
+              customerId: customer._id,
+              orderAmount:
+                Number(
+                  subtotalTotals.subtotal
+                ),
+              items: orderItems.map(
+                (item) => ({
+                  productId:
+                    item.productId,
+                  categoryId:
+                    item.categoryId,
+                  vendorId:
+                    item.vendorId,
+                  lineTotal:
+                    item.lineTotal,
+                  quantity:
+                    item.quantity,
+                })
+              ),
+              isFirstOrder,
+            });
+        }
+
+        const couponDiscountMinorUnits =
+          couponResult
+            ? decimalToMinorUnits(
+                couponResult.discountAmount
+              )
+            : 0;
+
+        const taxCalculation =
+          await taxService.calculateOrderTax({
+            items: orderItems,
+            shippingAddress: address,
+            couponDiscountMinorUnits,
+            shippingTotalMinorUnits: 0,
+            pricingMode: DEFAULT_TAX_PRICING_MODE,
+            currency,
+            session,
+          });
+
+        const finalizedOrderItems = taxCalculation.items;
+
+        const totals =
+          calculateOrderTotals(
+            finalizedOrderItems,
+            currency,
+            couponDiscountMinorUnits,
+            taxCalculation
+          );
+
+        const orderNumber =
+          generateOrderNumber();
+
+        await reserveInventoryForOrderItems(
+          finalizedOrderItems,
+          orderNumber,
+          userId,
+          session
         );
-      }
 
-      /**
-       * Create the order-confirmation outbox record
-       * inside the same MongoDB transaction.
-       *
-       * If the order transaction rolls back,
-       * the notification record also rolls back.
-       */
-      const user =
-        await User.findById(
-          customer.userId
-        )
-          .select(
-            "email firstName lastName"
-          )
-          .session(session)
-          .lean();
-
-      if (user?.email) {
-        const customerName = [
-          user.firstName,
-          user.lastName,
+        const fullName = [
+          address.firstName,
+          address.lastName,
         ]
           .filter(Boolean)
           .join(" ")
           .trim();
 
-        await notificationOutboxService.enqueue({
-          type: "order_confirmation",
-          channel: "email",
-          recipient: user.email,
-          payload: {
-            customerName,
-            orderNumber:
-              createdOrder.orderNumber,
-          },
-          session,
-        });
+        if (!fullName) {
+          throw new AppError(
+            "Shipping address name is invalid",
+            400,
+            "INVALID_SHIPPING_ADDRESS"
+          );
+        }
+
+        const createdOrder =
+          await orderRepository.create(
+            {
+              orderNumber,
+
+              customerId:
+                customer._id,
+
+              storeId:
+                cart.storeId || null,
+
+              couponId:
+                couponResult?.coupon?._id ||
+                null,
+
+              couponCode:
+                couponResult?.coupon?.code ||
+                null,
+
+              status: "pending",
+              paymentStatus: "pending",
+              fulfillmentStatus:
+                "unfulfilled",
+
+              pricingMode:
+                totals.pricingMode,
+
+              currency,
+
+              items: finalizedOrderItems,
+
+              subtotal:
+                totals.subtotal,
+
+              discountTotal:
+                totals.discountTotal,
+
+              taxTotal:
+                totals.taxTotal,
+
+              taxSnapshot:
+                taxCalculation.taxSnapshot,
+
+              shippingTotal:
+                totals.shippingTotal,
+
+              grandTotal:
+                totals.grandTotal,
+
+              shippingAddress: {
+                fullName,
+                phone: address.phone,
+                addressLine1:
+                  address.addressLine1,
+                addressLine2:
+                  address.addressLine2 || "",
+                city: address.city,
+                state: address.state,
+                postalCode:
+                  address.postalCode,
+                country:
+                  address.country || "IN",
+              },
+
+              idempotencyKey: normalizedKey,
+              idempotencyFingerprint: fingerprint,
+            },
+            { session }
+          );
+
+        if (couponResult) {
+          await couponRedemptionService
+            .redeemCoupon({
+              couponId:
+                couponResult.coupon._id,
+              customerId:
+                customer._id,
+              orderId:
+                createdOrder._id,
+              session,
+            });
+        }
+
+        const convertedCart =
+          await cartRepository
+            .convertActiveCart(
+              cart._id,
+              { session }
+            );
+
+        if (!convertedCart) {
+          throw new AppError(
+            "Cart could not be converted",
+            409,
+            "CART_CONVERSION_FAILED"
+          );
+        }
+
+        /**
+         * Create the order-confirmation outbox record
+         * inside the same MongoDB transaction.
+         *
+         * If the order transaction rolls back,
+         * the notification record also rolls back.
+         */
+        const user =
+          await User.findById(
+            customer.userId
+          )
+            .select(
+              "email firstName lastName"
+            )
+            .session(session)
+            .lean();
+
+        if (user?.email) {
+          const customerName = [
+            user.firstName,
+            user.lastName,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+
+          await notificationOutboxService.enqueue({
+            type: "order_confirmation",
+            channel: "email",
+            recipient: user.email,
+            payload: {
+              customerName,
+              orderNumber:
+                createdOrder.orderNumber,
+            },
+            session,
+          });
+        }
+
+        return createdOrder;
+      }
+    );
+  } catch (error) {
+    const isDuplicateKeyError =
+      error?.code === 11000 ||
+      Boolean(error?.message && error.message.includes("E11000"));
+
+    if (isDuplicateKeyError && normalizedKey) {
+      let winningOrder =
+        await orderRepository.findByCustomerIdAndIdempotencyKey(
+          customer._id,
+          normalizedKey
+        );
+
+      if (!winningOrder) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        winningOrder =
+          await orderRepository.findByCustomerIdAndIdempotencyKey(
+            customer._id,
+            normalizedKey
+          );
       }
 
-      return createdOrder;
+      if (winningOrder) {
+        if (winningOrder.idempotencyFingerprint !== fingerprint) {
+          throw new AppError(
+            "Idempotency key already used for a different order request",
+            409,
+            "IDEMPOTENCY_KEY_CONFLICT"
+          );
+        }
+
+        Object.defineProperty(winningOrder, "isReplay", {
+          value: true,
+          enumerable: false,
+          configurable: true,
+          writable: true,
+        });
+
+        return winningOrder;
+      }
     }
-  );
+
+    throw error;
+  }
 
   return order;
 };
@@ -1017,11 +1165,12 @@ const cancelOrder = async (orderId, options = {}) => {
       orderId
     );
 
+  let refundedPayment = null;
   if (
     payment?.status === "captured" ||
     payment?.status === "partially_refunded"
   ) {
-    await paymentService.refundPaymentForOrder(
+    refundedPayment = await paymentService.refundPaymentForOrder(
       orderId,
       userId
     );
@@ -1101,17 +1250,53 @@ const cancelOrder = async (orderId, options = {}) => {
         );
       }
 
-      if (
-        payment &&
-        ["created", "pending", "authorized"].includes(
-          payment.status
-        )
-      ) {
-        await paymentRepository.updateById(
-          payment._id,
-          { status: "cancelled" },
+      const currentPayment =
+        (await paymentRepository.findLatestByOrderId(
+          orderId,
           { session }
-        );
+        )) ||
+        refundedPayment ||
+        payment;
+
+      let orderPaymentStatus;
+
+      if (currentPayment) {
+        if (
+          ["created", "pending", "authorized"].includes(
+            currentPayment.status
+          )
+        ) {
+          const cancelledPayment =
+            typeof paymentRepository.cancelPendingPayment === "function"
+              ? await paymentRepository.cancelPendingPayment(
+                  currentPayment._id,
+                  { session }
+                )
+              : await paymentRepository.updateById(
+                  currentPayment._id,
+                  { status: "cancelled" },
+                  { session }
+                );
+
+          if (!cancelledPayment) {
+            throw new AppError(
+              "Payment state changed during cancellation. Please retry.",
+              409,
+              "PAYMENT_STATE_CONFLICT"
+            );
+          }
+        } else if (
+          currentPayment.status === "captured" ||
+          currentPayment.status === "partially_refunded"
+        ) {
+          throw new AppError(
+            "Payment was captured concurrently. Please retry cancellation to trigger refund.",
+            409,
+            "PAYMENT_CAPTURED_CONCURRENTLY"
+          );
+        } else if (currentPayment.status === "refunded") {
+          orderPaymentStatus = "refunded";
+        }
       }
 
       /*
@@ -1136,7 +1321,10 @@ const cancelOrder = async (orderId, options = {}) => {
       return transitionOrderStatus(
         orderId,
         "cancelled",
-        { session }
+        {
+          session,
+          paymentStatus: orderPaymentStatus,
+        }
       );
     }
   );
@@ -1184,6 +1372,10 @@ const transitionOrderStatus = async (
   const update = {
     status: nextStatus,
   };
+
+  if (options.paymentStatus) {
+    update.paymentStatus = options.paymentStatus;
+  }
 
   if (
     nextStatus === "confirmed" &&
