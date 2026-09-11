@@ -12,6 +12,8 @@ const {
 const { processRefundWebhook } = require("./refund-webhook.service");
 
 const orderService = require("./order.service");
+const razorpayProvider = require("../integrations/payments/razorpay.provider");
+const logger = require("../config/logger");
 
 const PAYMENT_GATEWAY = "razorpay";
 
@@ -111,6 +113,172 @@ const markEventProcessed = async ({ eventId, session, result }) => {
 
 const synchronizeCapturedOrder = async ({ orderId, session }) => {
   return orderService.markOrderPaymentCaptured(orderId, { session });
+};
+
+const reconcileOrphanPayment = async ({
+  razorpayPayment,
+  razorpayOrder,
+  session,
+}) => {
+  let buyboxOrderId = razorpayOrder?.notes?.buyboxOrderId;
+  let fetchedOrder = null;
+
+  if (!buyboxOrderId) {
+    try {
+      fetchedOrder = await razorpayProvider.fetchOrder(
+        razorpayPayment.order_id
+      );
+      buyboxOrderId = fetchedOrder?.notes?.buyboxOrderId;
+    } catch (fetchError) {
+      logger.warn(
+        {
+          gatewayOrderId: razorpayPayment.order_id,
+          error: fetchError.message,
+        },
+        "Failed to fetch Razorpay order during orphan reconciliation"
+      );
+      return null;
+    }
+  }
+
+  if (
+    !buyboxOrderId ||
+    typeof buyboxOrderId !== "string" ||
+    !mongoose.Types.ObjectId.isValid(buyboxOrderId.trim())
+  ) {
+    logger.warn(
+      {
+        gatewayOrderId: razorpayPayment.order_id,
+        resolvedOrderId: buyboxOrderId || null,
+      },
+      "Orphan payment reconciliation failed: invalid or missing buyboxOrderId"
+    );
+    return null;
+  }
+
+  const normalizedBuyboxOrderId = buyboxOrderId.trim();
+
+  const candidatePayment = await paymentRepository.findActiveByOrderId(
+    normalizedBuyboxOrderId,
+    { session }
+  );
+
+  if (!candidatePayment) {
+    return null;
+  }
+
+  if (
+    candidatePayment.gateway !== PAYMENT_GATEWAY ||
+    candidatePayment.status !== "created" ||
+    candidatePayment.gatewayOrderId !== null ||
+    candidatePayment.orderId.toString() !== normalizedBuyboxOrderId
+  ) {
+    return null;
+  }
+
+  const localOrder = await orderRepository.findById(
+    candidatePayment.orderId,
+    { session }
+  );
+
+  if (!localOrder) {
+    return null;
+  }
+
+  if (
+    razorpayOrder?.id &&
+    razorpayOrder.id !== razorpayPayment.order_id
+  ) {
+    return null;
+  }
+
+  if (
+    fetchedOrder?.id &&
+    fetchedOrder.id !== razorpayPayment.order_id
+  ) {
+    return null;
+  }
+
+  const orderNumberNote =
+    razorpayOrder?.notes?.orderNumber ||
+    fetchedOrder?.notes?.orderNumber;
+
+  if (
+    orderNumberNote &&
+    String(orderNumberNote).trim() !== String(localOrder.orderNumber).trim()
+  ) {
+    logger.warn(
+      {
+        gatewayOrderId: razorpayPayment.order_id,
+        orderNumberNote,
+        expectedOrderNumber: localOrder.orderNumber,
+      },
+      "Orphan reconciliation aborted: orderNumber mismatch"
+    );
+    return null;
+  }
+
+  try {
+    validateAmountAndCurrency({
+      razorpayPayment,
+      payment: candidatePayment,
+      order: localOrder,
+    });
+  } catch (validationError) {
+    logger.warn(
+      {
+        gatewayOrderId: razorpayPayment.order_id,
+        error: validationError.message,
+      },
+      "Orphan reconciliation aborted: amount/currency validation failed"
+    );
+    return null;
+  }
+
+  const linkedPayment = await paymentRepository.linkOrphanGatewayOrderId(
+    candidatePayment._id,
+    razorpayPayment.order_id,
+    { session }
+  );
+
+  if (linkedPayment) {
+    logger.info(
+      {
+        paymentId: linkedPayment._id,
+        orderId: localOrder._id,
+        gatewayOrderId: razorpayPayment.order_id,
+      },
+      "Orphan payment successfully linked to gateway order"
+    );
+    return linkedPayment;
+  }
+
+  const freshPayment = await paymentRepository.findById(
+    candidatePayment._id,
+    { session }
+  );
+
+  if (freshPayment?.gatewayOrderId === razorpayPayment.order_id) {
+    logger.info(
+      {
+        paymentId: freshPayment._id,
+        orderId: localOrder._id,
+        gatewayOrderId: razorpayPayment.order_id,
+      },
+      "Orphan payment was concurrently linked with matching gateway order"
+    );
+    return freshPayment;
+  }
+
+  logger.warn(
+    {
+      paymentId: candidatePayment._id,
+      freshGatewayOrderId: freshPayment?.gatewayOrderId || null,
+      freshStatus: freshPayment?.status || null,
+    },
+    "Orphan payment conditional linkage lost race to different gateway state"
+  );
+  return null;
 };
 
 const processPaymentWebhookEvent = async (eventId) => {
@@ -218,11 +386,19 @@ const processPaymentWebhookEvent = async (eventId) => {
       );
     }
 
-    const payment = await paymentRepository.findByGatewayOrderId(
+    let payment = await paymentRepository.findByGatewayOrderId(
       PAYMENT_GATEWAY,
       razorpayPayment.order_id,
       { session },
     );
+
+    if (!payment) {
+      payment = await reconcileOrphanPayment({
+        razorpayPayment,
+        razorpayOrder,
+        session,
+      });
+    }
 
     if (!payment) {
       throw new AppError(

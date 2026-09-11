@@ -234,6 +234,30 @@ const cancelPendingPayment = async (
   );
 };
 
+const linkOrphanGatewayOrderId = async (
+  paymentId,
+  gatewayOrderId,
+  options = {}
+) => {
+  return Payment.findOneAndUpdate(
+    {
+      _id: paymentId,
+      status: "created",
+      gatewayOrderId: null,
+    },
+    {
+      $set: {
+        gatewayOrderId,
+      },
+    },
+    {
+      new: true,
+      runValidators: true,
+      session: options.session,
+    }
+  );
+};
+
 module.exports = {
   create,
   findById,
@@ -244,6 +268,7 @@ module.exports = {
   findByIdempotencyKey,
   findByOrderIdAndIdempotencyKey,
   findActiveByOrderId,
+  linkOrphanGatewayOrderId,
   updateById,
   reserveRefundAmount,
   releaseRefundReservation,

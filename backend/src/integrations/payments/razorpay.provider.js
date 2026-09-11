@@ -28,6 +28,26 @@ const createOrder = async ({
   }
 };
 
+const fetchOrder = async (orderId) => {
+  if (!orderId || typeof orderId !== "string" || !orderId.trim()) {
+    throw new AppError(
+      "Invalid Razorpay order ID",
+      400,
+      "INVALID_GATEWAY_ORDER_ID"
+    );
+  }
+
+  try {
+    return await razorpay.orders.fetch(orderId.trim());
+  } catch (error) {
+    throw new AppError(
+      "Unable to fetch Razorpay order",
+      502,
+      "RAZORPAY_ORDER_FETCH_FAILED"
+    );
+  }
+};
+
 const fetchPayment = async (paymentId) => {
   try {
     return await razorpay.payments.fetch(paymentId);
@@ -98,6 +118,7 @@ const refundPayment = async ({
 
 module.exports = {
   createOrder,
+  fetchOrder,
   fetchPayment,
   capturePayment,
   refundPayment,
