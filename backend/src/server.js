@@ -20,6 +20,11 @@ const {
   stopCartAbandonmentScheduler,
 } = require("./workers/cart-abandonment.worker");
 
+const {
+  runPaymentReconciliationScheduler,
+  stopPaymentReconciliationScheduler,
+} = require("./workers/payment-reconciliation.worker");
+
 const PORT = env.PORT;
 
 const startServer = async () => {
@@ -27,6 +32,7 @@ const startServer = async () => {
 
   runNotificationDispatcher();
   runCartAbandonmentScheduler();
+  runPaymentReconciliationScheduler();
 
   logger.info("Notification queue worker initialized");
 
@@ -53,6 +59,7 @@ const startServer = async () => {
 
     stopNotificationDispatcher();
     stopCartAbandonmentScheduler();
+    stopPaymentReconciliationScheduler();
 
     try {
       await stopNotificationQueueWorker();

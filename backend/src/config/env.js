@@ -71,6 +71,18 @@ EMAIL_VERIFICATION_BASE_URL: z
     .int()
     .positive()
     .default(300000),
+
+  PAYMENT_RECONCILIATION_SCAN_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(60000),
+
+  PAYMENT_RECONCILIATION_BATCH_SIZE: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(50),
 });
 
 const env = envSchema.parse(process.env);

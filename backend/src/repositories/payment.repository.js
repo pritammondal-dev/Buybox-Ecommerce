@@ -258,6 +258,48 @@ const linkOrphanGatewayOrderId = async (
   );
 };
 
+const findEligibleForReconciliation = async (
+  { limit = 50, gateway = "razorpay" } = {},
+  options = {}
+) => {
+  return Payment.find({
+    gateway,
+    status: {
+      $in: ["created", "pending", "authorized"],
+    },
+    gatewayOrderId: {
+      $type: "string",
+      $ne: "",
+    },
+  })
+    .session(options.session || null)
+    .sort({ createdAt: 1 })
+    .limit(limit);
+};
+
+const reconcileActivePayment = async (
+  paymentId,
+  updateData,
+  options = {}
+) => {
+  return Payment.findOneAndUpdate(
+    {
+      _id: paymentId,
+      status: {
+        $in: ["created", "pending", "authorized"],
+      },
+    },
+    {
+      $set: updateData,
+    },
+    {
+      new: true,
+      runValidators: true,
+      session: options.session,
+    }
+  );
+};
+
 module.exports = {
   create,
   findById,
@@ -268,6 +310,8 @@ module.exports = {
   findByIdempotencyKey,
   findByOrderIdAndIdempotencyKey,
   findActiveByOrderId,
+  findEligibleForReconciliation,
+  reconcileActivePayment,
   linkOrphanGatewayOrderId,
   updateById,
   reserveRefundAmount,
