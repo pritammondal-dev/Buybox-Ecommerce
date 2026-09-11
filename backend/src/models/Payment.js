@@ -126,7 +126,6 @@ const paymentSchema = new mongoose.Schema(
       type: String,
       default: null,
       trim: true,
-      index: true,
     },
   },
   {
@@ -157,14 +156,34 @@ paymentSchema.index({
 
 paymentSchema.index(
   {
+    orderId: 1,
     gateway: 1,
     idempotencyKey: 1,
   },
   {
     unique: true,
+    name: "orderId_gateway_idempotencyKey_unique",
     partialFilterExpression: {
       idempotencyKey: {
         $type: "string",
+      },
+      status: {
+        $in: ["created", "pending", "authorized", "captured"],
+      },
+    },
+  }
+);
+
+paymentSchema.index(
+  {
+    orderId: 1,
+  },
+  {
+    unique: true,
+    name: "orderId_active_payment_unique",
+    partialFilterExpression: {
+      status: {
+        $in: ["created", "pending", "authorized"],
       },
     },
   }

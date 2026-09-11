@@ -2,6 +2,7 @@ const crypto = require("crypto");
 
 const orderRepository = require("../repositories/order.repository");
 const paymentRepository = require("../repositories/payment.repository");
+const refundRepository = require("../repositories/refund.repository");
 
 const razorpayProvider = require("../integrations/payments/razorpay.provider");
 
@@ -141,39 +142,72 @@ const createPaymentForOrder = async (
   }
 
   const existingByKey =
-    await paymentRepository.findByIdempotencyKey(
+    await paymentRepository.findByOrderIdAndIdempotencyKey(
+      order._id,
       PAYMENT_GATEWAYS.RAZORPAY,
       normalizedIdempotencyKey
     );
 
   if (existingByKey) {
-    if (
-      existingByKey.orderId.toString() !==
-      order._id.toString()
-    ) {
+    if (existingByKey.status === "authorized") {
       throw new AppError(
-        "Idempotency key is already associated with another order",
+        "Payment has already been authorized for this order",
         409,
-        "IDEMPOTENCY_KEY_CONFLICT"
+        "PAYMENT_ALREADY_AUTHORIZED"
       );
     }
 
-    return existingByKey;
+    if (
+      ["created", "pending", "captured"].includes(
+        existingByKey.status
+      )
+    ) {
+      if (existingByKey.gatewayOrderId) {
+        return existingByKey;
+      }
+
+      throw new AppError(
+        "Payment creation is currently in progress for this order. Please retry in a few seconds",
+        409,
+        "PAYMENT_CREATION_IN_PROGRESS"
+      );
+    }
   }
 
-  const existingPayment =
-    await paymentRepository.findLatestByOrderId(
+  const activePayment =
+    await paymentRepository.findActiveByOrderId(
       order._id
     );
 
-  if (
-    existingPayment &&
-    existingPayment.gatewayOrderId &&
-    ["created", "pending"].includes(
-      existingPayment.status
-    )
-  ) {
-    return existingPayment;
+  if (activePayment) {
+    if (activePayment.status === "authorized") {
+      throw new AppError(
+        "Payment has already been authorized for this order",
+        409,
+        "PAYMENT_ALREADY_AUTHORIZED"
+      );
+    }
+
+    if (activePayment.gatewayOrderId) {
+      if (
+        activePayment.idempotencyKey ===
+        normalizedIdempotencyKey
+      ) {
+        return activePayment;
+      }
+
+      throw new AppError(
+        "An active payment already exists for this order",
+        409,
+        "ACTIVE_PAYMENT_EXISTS"
+      );
+    }
+
+    throw new AppError(
+      "Payment creation is currently in progress for this order. Please retry in a few seconds",
+      409,
+      "PAYMENT_CREATION_IN_PROGRESS"
+    );
   }
 
   const amount = decimalToMinorUnits(
@@ -207,15 +241,58 @@ const createPaymentForOrder = async (
     });
   } catch (error) {
     if (error?.code === 11000) {
-      const existing =
-        await paymentRepository.findByIdempotencyKey(
+      const active =
+        await paymentRepository.findActiveByOrderId(
+          order._id
+        );
+
+      if (active) {
+        if (active.status === "authorized") {
+          throw new AppError(
+            "Payment has already been authorized for this order",
+            409,
+            "PAYMENT_ALREADY_AUTHORIZED"
+          );
+        }
+
+        if (active.gatewayOrderId) {
+          if (
+            active.idempotencyKey ===
+            normalizedIdempotencyKey
+          ) {
+            return active;
+          }
+
+          throw new AppError(
+            "An active payment already exists for this order",
+            409,
+            "ACTIVE_PAYMENT_EXISTS"
+          );
+        }
+
+        throw new AppError(
+          "Payment creation is currently in progress for this order. Please retry in a few seconds",
+          409,
+          "PAYMENT_CREATION_IN_PROGRESS"
+        );
+      }
+
+      const byKey =
+        await paymentRepository.findByOrderIdAndIdempotencyKey(
+          order._id,
           PAYMENT_GATEWAYS.RAZORPAY,
           normalizedIdempotencyKey
         );
 
-      if (existing) {
-        return existing;
+      if (byKey && byKey.gatewayOrderId) {
+        return byKey;
       }
+
+      throw new AppError(
+        "Payment creation is currently in progress for this order. Please retry in a few seconds",
+        409,
+        "PAYMENT_CREATION_IN_PROGRESS"
+      );
     }
 
     throw error;
@@ -468,6 +545,46 @@ const refundPaymentForOrder = async (
 
     const isFullyRefunded =
       newRefundedAmount >= totalAmount;
+
+    try {
+      await refundRepository.create({
+        paymentId: payment._id,
+        orderId: order._id,
+        customerId: order.customerId,
+        gateway: PAYMENT_GATEWAYS.RAZORPAY,
+        gatewayRefundId: refund?.id || null,
+        amount: refundAmountString,
+        currency: order.currency,
+        status: refund?.status === "processed" ? "processed" : "pending",
+        reason: "Order cancellation refund",
+        idempotencyKey: refundIdempotencyKey,
+        processedAt: refund?.status === "processed" ? new Date() : null,
+      });
+    } catch (createError) {
+      if (createError?.code === 11000) {
+        const existingRefund =
+          (await refundRepository.findByIdempotencyKey(
+            PAYMENT_GATEWAYS.RAZORPAY,
+            refundIdempotencyKey
+          )) ||
+          (refund?.id
+            ? await refundRepository.findByGatewayRefundId(
+                PAYMENT_GATEWAYS.RAZORPAY,
+                refund.id
+              )
+            : null);
+
+        if (
+          !existingRefund ||
+          existingRefund.paymentId.toString() !== payment._id.toString() ||
+          existingRefund.orderId.toString() !== order._id.toString()
+        ) {
+          throw createError;
+        }
+      } else {
+        throw createError;
+      }
+    }
 
     return await paymentRepository.updateById(
       payment._id,

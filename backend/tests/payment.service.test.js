@@ -1,10 +1,12 @@
 jest.mock("../src/repositories/order.repository");
 jest.mock("../src/repositories/payment.repository");
+jest.mock("../src/repositories/refund.repository");
 jest.mock("../src/integrations/payments/razorpay.provider");
 jest.mock("../src/models/Customer");
 
 const orderRepository = require("../src/repositories/order.repository");
 const paymentRepository = require("../src/repositories/payment.repository");
+const refundRepository = require("../src/repositories/refund.repository");
 const razorpayProvider = require("../src/integrations/payments/razorpay.provider");
 const Customer = require("../src/models/Customer");
 
@@ -165,6 +167,17 @@ describe("Payment Service", () => {
     expect(
       paymentRepository.updateById
     ).toHaveBeenCalled();
+
+    expect(
+      refundRepository.create
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paymentId: "payment-123",
+        orderId: "order-123",
+        gatewayRefundId: "rfnd_TEST123",
+        status: "processed",
+      })
+    );
 
     expect(result.status).toBe("refunded");
   });
@@ -492,6 +505,198 @@ describe("Payment Service", () => {
 
     expect(key.length).toBeLessThanOrEqual(40);
     expect(/^[a-zA-Z0-9_-]+$/.test(key)).toBe(true);
+  });
+
+  describe("Concurrent Payment Creation Hardening (Task 8B.4)", () => {
+    const customer = { _id: "customer-123" };
+    const order = {
+      _id: "order-123",
+      customerId: "customer-123",
+      orderNumber: "BB-TEST-CONCURRENCY",
+      grandTotal: "1500.00",
+      currency: "INR",
+      paymentStatus: "pending",
+      status: "pending",
+    };
+
+    beforeEach(() => {
+      Customer.findOne.mockResolvedValue(customer);
+      orderRepository.findById.mockResolvedValue(order);
+    });
+
+    it("should reject creation with 409 PAYMENT_ALREADY_AUTHORIZED when payment is authorized", async () => {
+      paymentRepository.findByOrderIdAndIdempotencyKey.mockResolvedValue({
+        _id: "payment-auth",
+        status: "authorized",
+        gatewayOrderId: "order_auth_123",
+      });
+
+      await expect(
+        createPaymentForOrder("order-123", "user-123", "idemp-key-auth-1")
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        code: "PAYMENT_ALREADY_AUTHORIZED",
+      });
+    });
+
+    it("should reject creation with 409 PAYMENT_CREATION_IN_PROGRESS when in-flight payment has null gatewayOrderId", async () => {
+      paymentRepository.findByOrderIdAndIdempotencyKey.mockResolvedValue({
+        _id: "payment-in-flight",
+        status: "created",
+        gatewayOrderId: null,
+      });
+
+      await expect(
+        createPaymentForOrder("order-123", "user-123", "idemp-key-inflight-1")
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        code: "PAYMENT_CREATION_IN_PROGRESS",
+      });
+    });
+
+    it("should reuse completed active payment on replay with same key", async () => {
+      const completedPayment = {
+        _id: "payment-completed",
+        orderId: "order-123",
+        gatewayOrderId: "order_rzp_completed",
+        status: "created",
+        idempotencyKey: "idemp-key-replay-1",
+      };
+
+      paymentRepository.findByOrderIdAndIdempotencyKey.mockResolvedValue(completedPayment);
+
+      const result = await createPaymentForOrder("order-123", "user-123", "idemp-key-replay-1");
+
+      expect(result).toBe(completedPayment);
+      expect(paymentRepository.create).not.toHaveBeenCalled();
+      expect(razorpayProvider.createOrder).not.toHaveBeenCalled();
+    });
+
+    it("should reject creation with 409 ACTIVE_PAYMENT_EXISTS when active payment exists with a different key", async () => {
+      paymentRepository.findByOrderIdAndIdempotencyKey.mockResolvedValue(null);
+      paymentRepository.findActiveByOrderId.mockResolvedValue({
+        _id: "payment-other-key",
+        orderId: "order-123",
+        gatewayOrderId: "order_rzp_other",
+        status: "created",
+        idempotencyKey: "different-key-123",
+      });
+
+      await expect(
+        createPaymentForOrder("order-123", "user-123", "new-attempt-key")
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        code: "ACTIVE_PAYMENT_EXISTS",
+      });
+    });
+
+    it("should permit fresh creation attempt when historical payment failed (no key poisoning)", async () => {
+      paymentRepository.findByOrderIdAndIdempotencyKey.mockResolvedValue({
+        _id: "payment-failed-history",
+        status: "failed",
+        gatewayOrderId: null,
+      });
+      paymentRepository.findActiveByOrderId.mockResolvedValue(null);
+
+      const newPayment = {
+        _id: "payment-fresh",
+        orderId: "order-123",
+        customerId: "customer-123",
+        status: "created",
+        gatewayOrderId: null,
+      };
+
+      const updatedPayment = {
+        ...newPayment,
+        gatewayOrderId: "order_rzp_new",
+      };
+
+      paymentRepository.create.mockResolvedValue(newPayment);
+      razorpayProvider.createOrder.mockResolvedValue({
+        id: "order_rzp_new",
+        status: "created",
+      });
+      paymentRepository.updateById.mockResolvedValue(updatedPayment);
+
+      const result = await createPaymentForOrder("order-123", "user-123", "retry-after-fail");
+
+      expect(result).toEqual(updatedPayment);
+      expect(paymentRepository.create).toHaveBeenCalledTimes(1);
+    });
+
+    it("should handle E11000 race and return 409 PAYMENT_CREATION_IN_PROGRESS if winner is still in flight", async () => {
+      paymentRepository.findByOrderIdAndIdempotencyKey.mockResolvedValue(null);
+      paymentRepository.findActiveByOrderId.mockResolvedValueOnce(null);
+
+      const duplicateError = new Error("E11000 duplicate key error");
+      duplicateError.code = 11000;
+      paymentRepository.create.mockRejectedValue(duplicateError);
+
+      paymentRepository.findActiveByOrderId.mockResolvedValueOnce({
+        _id: "payment-winner",
+        orderId: "order-123",
+        status: "created",
+        gatewayOrderId: null,
+      });
+
+      await expect(
+        createPaymentForOrder("order-123", "user-123", "racing-key-1")
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        code: "PAYMENT_CREATION_IN_PROGRESS",
+      });
+    });
+
+    it("should handle E11000 race and return completed payment if winner finished with same key", async () => {
+      paymentRepository.findByOrderIdAndIdempotencyKey.mockResolvedValue(null);
+      paymentRepository.findActiveByOrderId.mockResolvedValueOnce(null);
+
+      const duplicateError = new Error("E11000 duplicate key error");
+      duplicateError.code = 11000;
+      paymentRepository.create.mockRejectedValue(duplicateError);
+
+      const winnerPayment = {
+        _id: "payment-winner",
+        orderId: "order-123",
+        status: "created",
+        gatewayOrderId: "order_rzp_winner",
+        idempotencyKey: "racing-same-key",
+      };
+
+      paymentRepository.findActiveByOrderId.mockResolvedValueOnce(winnerPayment);
+
+      const result = await createPaymentForOrder("order-123", "user-123", "racing-same-key");
+
+      expect(result).toBe(winnerPayment);
+    });
+
+    it("should reject creation with 409 ORDER_ALREADY_PAID if order paymentStatus is paid", async () => {
+      orderRepository.findById.mockResolvedValue({
+        ...order,
+        paymentStatus: "paid",
+      });
+
+      await expect(
+        createPaymentForOrder("order-123", "user-123", "any-valid-key")
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        code: "ORDER_ALREADY_PAID",
+      });
+    });
+
+    it("should reject creation with 409 ORDER_NOT_PAYABLE if order status is cancelled", async () => {
+      orderRepository.findById.mockResolvedValue({
+        ...order,
+        status: "cancelled",
+      });
+
+      await expect(
+        createPaymentForOrder("order-123", "user-123", "any-valid-key")
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        code: "ORDER_NOT_PAYABLE",
+      });
+    });
   });
 });
 

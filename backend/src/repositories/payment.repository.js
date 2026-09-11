@@ -81,6 +81,35 @@ const findByIdempotencyKey = async (
   }).session(options.session || null);
 };
 
+const findByOrderIdAndIdempotencyKey = async (
+  orderId,
+  gateway,
+  idempotencyKey,
+  options = {}
+) => {
+  if (!idempotencyKey) {
+    return null;
+  }
+
+  return Payment.findOne({
+    orderId,
+    gateway,
+    idempotencyKey,
+  }).session(options.session || null);
+};
+
+const findActiveByOrderId = async (
+  orderId,
+  options = {}
+) => {
+  return Payment.findOne({
+    orderId,
+    status: {
+      $in: ["created", "pending", "authorized"],
+    },
+  }).session(options.session || null);
+};
+
 const updateById = async (
   id,
   data,
@@ -181,6 +210,30 @@ const releaseRefundReservation = async (
   );
 };
 
+const cancelPendingPayment = async (
+  paymentId,
+  options = {}
+) => {
+  return Payment.findOneAndUpdate(
+    {
+      _id: paymentId,
+      status: {
+        $in: ["created", "pending", "authorized"],
+      },
+    },
+    {
+      $set: {
+        status: "cancelled",
+      },
+    },
+    {
+      new: true,
+      runValidators: true,
+      session: options.session,
+    }
+  );
+};
+
 module.exports = {
   create,
   findById,
@@ -189,7 +242,10 @@ module.exports = {
   findByGatewayOrderId,
   findByGatewayPaymentId,
   findByIdempotencyKey,
+  findByOrderIdAndIdempotencyKey,
+  findActiveByOrderId,
   updateById,
   reserveRefundAmount,
   releaseRefundReservation,
+  cancelPendingPayment,
 };
