@@ -148,6 +148,19 @@ const orderItemSchema = new mongoose.Schema(
       minlength: 3,
       maxlength: 3,
     },
+
+    inventoryStatus: {
+      type: String,
+      enum: ["reserved", "released", "deducted"],
+      default: "reserved",
+      required: true,
+      index: true,
+    },
+
+    inventoryReleasedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     _id: true,
@@ -262,6 +275,23 @@ const orderSchema = new mongoose.Schema(
       default: "unfulfilled",
       required: true,
       index: true,
+    },
+
+    inventoryStatus: {
+      type: String,
+      enum: [
+        "reserved",
+        "partially_released",
+        "released",
+        "deducted",
+      ],
+      default: "reserved",
+      index: true,
+    },
+
+    inventoryReleasedAt: {
+      type: Date,
+      default: null,
     },
 
     currency: {

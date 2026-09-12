@@ -1,5 +1,6 @@
 const inventoryRepository = require("../repositories/inventory.repository");
 const warehouseRepository = require("../repositories/warehouse.repository");
+const inventoryTransactionRepository = require("../repositories/inventory-transaction.repository");
 const inventoryTransactionService = require("./inventory-transaction.service");
 
 const ProductVariant = require("../models/ProductVariant");
@@ -146,65 +147,97 @@ const adjustStock = async (
     );
   }
 
-  return withTransaction(async (session) => {
-    const inventory =
-      await inventoryRepository.findById(
-        inventoryId,
-        { session }
-      );
+  try {
+    return await withTransaction(async (session) => {
+      const inventory =
+        await inventoryRepository.findById(
+          inventoryId,
+          { session }
+        );
 
-    if (!inventory) {
-      throw new AppError(
-        "Inventory record not found",
-        404,
-        "INVENTORY_NOT_FOUND"
-      );
-    }
+      if (!inventory) {
+        throw new AppError(
+          "Inventory record not found",
+          404,
+          "INVENTORY_NOT_FOUND"
+        );
+      }
 
-    const onHandBefore = inventory.onHand;
-    const reservedBefore = inventory.reserved;
+      if (transactionContext.idempotencyKey) {
+        const existingTx =
+          await inventoryTransactionRepository.findByIdempotencyKey(
+            transactionContext.idempotencyKey,
+            { session }
+          );
 
-    const updatedInventory =
-      await inventoryRepository.adjustStock(
-        inventoryId,
+        if (existingTx) {
+          return inventory;
+        }
+      }
+
+      const onHandBefore = inventory.onHand;
+      const reservedBefore = inventory.reserved;
+
+      const updatedInventory =
+        await inventoryRepository.adjustStock(
+          inventoryId,
+          quantity,
+          { session }
+        );
+
+      if (!updatedInventory) {
+        throw new AppError(
+          "Stock adjustment would reduce on-hand stock below reserved stock",
+          409,
+          "INVALID_STOCK_ADJUSTMENT"
+        );
+      }
+
+      await inventoryTransactionService.createTransaction({
+        productVariantId:
+          updatedInventory.productVariantId,
+        warehouseId:
+          updatedInventory.warehouseId,
+        type: "adjustment",
         quantity,
-        { session }
-      );
+        onHandBefore,
+        onHandAfter: updatedInventory.onHand,
+        reservedBefore,
+        reservedAfter: updatedInventory.reserved,
+        referenceType:
+          transactionContext.referenceType || null,
+        referenceId:
+          transactionContext.referenceId || null,
+        idempotencyKey:
+          transactionContext.idempotencyKey || null,
+        actorUserId:
+          transactionContext.actorUserId || null,
+        notes:
+          transactionContext.notes || null,
+        session,
+      });
 
-    if (!updatedInventory) {
-      throw new AppError(
-        "Stock adjustment would reduce on-hand stock below reserved stock",
-        409,
-        "INVALID_STOCK_ADJUSTMENT"
-      );
+      return updatedInventory;
+    });
+  } catch (error) {
+    const isIdempotencyConflict =
+      (error?.code === 11000 || error?.message?.includes("E11000")) &&
+      transactionContext.idempotencyKey &&
+      (error?.keyPattern?.idempotencyKey ||
+        error?.message?.includes("idempotencyKey"));
+
+    if (isIdempotencyConflict) {
+      const existingTx =
+        await inventoryTransactionRepository.findByIdempotencyKey(
+          transactionContext.idempotencyKey
+        );
+      if (existingTx) {
+        return inventoryRepository.findById(inventoryId);
+      }
     }
 
-    await inventoryTransactionService.createTransaction({
-      productVariantId:
-        updatedInventory.productVariantId,
-      warehouseId:
-        updatedInventory.warehouseId,
-      type: "adjustment",
-      quantity,
-      onHandBefore,
-      onHandAfter: updatedInventory.onHand,
-      reservedBefore,
-      reservedAfter: updatedInventory.reserved,
-      referenceType:
-        transactionContext.referenceType || null,
-      referenceId:
-        transactionContext.referenceId || null,
-      idempotencyKey:
-        transactionContext.idempotencyKey || null,
-      actorUserId:
-        transactionContext.actorUserId || null,
-      notes:
-        transactionContext.notes || null,
-      session,
-    });
-
-    return updatedInventory;
-  });
+    throw error;
+  }
 };
 
 const reserveStockInTransaction = async (
@@ -241,6 +274,18 @@ const reserveStockInTransaction = async (
       404,
       "INVENTORY_NOT_FOUND"
     );
+  }
+
+  if (transactionContext.idempotencyKey) {
+    const existingTx =
+      await inventoryTransactionRepository.findByIdempotencyKey(
+        transactionContext.idempotencyKey,
+        { session }
+      );
+
+    if (existingTx) {
+      return inventory;
+    }
   }
 
   const onHandBefore = inventory.onHand;
@@ -316,65 +361,34 @@ const reserveStock = async (
     );
   }
 
-  return withTransaction(async (session) => {
-    const inventory =
-      await inventoryRepository.findById(
-        inventoryId,
-        { session }
-      );
-
-    if (!inventory) {
-      throw new AppError(
-        "Inventory record not found",
-        404,
-        "INVENTORY_NOT_FOUND"
-      );
-    }
-
-    const onHandBefore = inventory.onHand;
-    const reservedBefore = inventory.reserved;
-
-    const reservedInventory =
-      await inventoryRepository.reserveAvailableStock(
+  try {
+    return await withTransaction(async (session) => {
+      return reserveStockInTransaction(
         inventoryId,
         quantity,
-        { session }
+        transactionContext,
+        session
       );
+    });
+  } catch (error) {
+    const isIdempotencyConflict =
+      (error?.code === 11000 || error?.message?.includes("E11000")) &&
+      transactionContext.idempotencyKey &&
+      (error?.keyPattern?.idempotencyKey ||
+        error?.message?.includes("idempotencyKey"));
 
-    if (!reservedInventory) {
-      throw new AppError(
-        "Insufficient available stock",
-        409,
-        "INSUFFICIENT_STOCK"
-      );
+    if (isIdempotencyConflict) {
+      const existingTx =
+        await inventoryTransactionRepository.findByIdempotencyKey(
+          transactionContext.idempotencyKey
+        );
+      if (existingTx) {
+        return inventoryRepository.findById(inventoryId);
+      }
     }
 
-    await inventoryTransactionService.createTransaction({
-      productVariantId:
-        reservedInventory.productVariantId,
-      warehouseId:
-        reservedInventory.warehouseId,
-      type: "reservation",
-      quantity,
-      onHandBefore,
-      onHandAfter: reservedInventory.onHand,
-      reservedBefore,
-      reservedAfter: reservedInventory.reserved,
-      referenceType:
-        transactionContext.referenceType || null,
-      referenceId:
-        transactionContext.referenceId || null,
-      idempotencyKey:
-        transactionContext.idempotencyKey || null,
-      actorUserId:
-        transactionContext.actorUserId || null,
-      notes:
-        transactionContext.notes || null,
-      session,
-    });
-
-    return reservedInventory;
-  });
+    throw error;
+  }
 };
 
 const releaseStock = async (
@@ -390,65 +404,34 @@ const releaseStock = async (
     );
   }
 
-  return withTransaction(async (session) => {
-    const inventory =
-      await inventoryRepository.findById(
-        inventoryId,
-        { session }
-      );
-
-    if (!inventory) {
-      throw new AppError(
-        "Inventory record not found",
-        404,
-        "INVENTORY_NOT_FOUND"
-      );
-    }
-
-    const onHandBefore = inventory.onHand;
-    const reservedBefore = inventory.reserved;
-
-    const releasedInventory =
-      await inventoryRepository.releaseReservedStock(
+  try {
+    return await withTransaction(async (session) => {
+      return releaseStockInTransaction(
         inventoryId,
         quantity,
-        { session }
+        transactionContext,
+        session
       );
+    });
+  } catch (error) {
+    const isIdempotencyConflict =
+      (error?.code === 11000 || error?.message?.includes("E11000")) &&
+      transactionContext.idempotencyKey &&
+      (error?.keyPattern?.idempotencyKey ||
+        error?.message?.includes("idempotencyKey"));
 
-    if (!releasedInventory) {
-      throw new AppError(
-        "Cannot release more stock than currently reserved",
-        409,
-        "INVALID_STOCK_RELEASE"
-      );
+    if (isIdempotencyConflict) {
+      const existingTx =
+        await inventoryTransactionRepository.findByIdempotencyKey(
+          transactionContext.idempotencyKey
+        );
+      if (existingTx) {
+        return inventoryRepository.findById(inventoryId);
+      }
     }
 
-    await inventoryTransactionService.createTransaction({
-      productVariantId:
-        releasedInventory.productVariantId,
-      warehouseId:
-        releasedInventory.warehouseId,
-      type: "release",
-      quantity: -quantity,
-      onHandBefore,
-      onHandAfter: releasedInventory.onHand,
-      reservedBefore,
-      reservedAfter: releasedInventory.reserved,
-      referenceType:
-        transactionContext.referenceType || null,
-      referenceId:
-        transactionContext.referenceId || null,
-      idempotencyKey:
-        transactionContext.idempotencyKey || null,
-      actorUserId:
-        transactionContext.actorUserId || null,
-      notes:
-        transactionContext.notes || null,
-      session,
-    });
-
-    return releasedInventory;
-  });
+    throw error;
+  }
 };
 
 const releaseStockInTransaction = async (
@@ -489,6 +472,18 @@ const releaseStockInTransaction = async (
 
   const onHandBefore = inventory.onHand;
   const reservedBefore = inventory.reserved;
+
+  if (transactionContext.idempotencyKey) {
+    const existingTx =
+      await inventoryTransactionRepository.findByIdempotencyKey(
+        transactionContext.idempotencyKey,
+        { session }
+      );
+
+    if (existingTx) {
+      return inventory;
+    }
+  }
 
   const releasedInventory =
     await inventoryRepository.releaseReservedStock(
@@ -547,65 +542,34 @@ const deductReservedStock = async (
     );
   }
 
-  return withTransaction(async (session) => {
-    const inventory =
-      await inventoryRepository.findById(
-        inventoryId,
-        { session }
-      );
-
-    if (!inventory) {
-      throw new AppError(
-        "Inventory record not found",
-        404,
-        "INVENTORY_NOT_FOUND"
-      );
-    }
-
-    const onHandBefore = inventory.onHand;
-    const reservedBefore = inventory.reserved;
-
-    const deductedInventory =
-      await inventoryRepository.deductReservedStock(
+  try {
+    return await withTransaction(async (session) => {
+      return deductReservedStockInTransaction(
         inventoryId,
         quantity,
-        { session }
+        transactionContext,
+        session
       );
+    });
+  } catch (error) {
+    const isIdempotencyConflict =
+      (error?.code === 11000 || error?.message?.includes("E11000")) &&
+      transactionContext.idempotencyKey &&
+      (error?.keyPattern?.idempotencyKey ||
+        error?.message?.includes("idempotencyKey"));
 
-    if (!deductedInventory) {
-      throw new AppError(
-        "Cannot deduct more stock than currently reserved",
-        409,
-        "INVALID_STOCK_DEDUCTION"
-      );
+    if (isIdempotencyConflict) {
+      const existingTx =
+        await inventoryTransactionRepository.findByIdempotencyKey(
+          transactionContext.idempotencyKey
+        );
+      if (existingTx) {
+        return inventoryRepository.findById(inventoryId);
+      }
     }
 
-    await inventoryTransactionService.createTransaction({
-      productVariantId:
-        deductedInventory.productVariantId,
-      warehouseId:
-        deductedInventory.warehouseId,
-      type: "sale",
-      quantity: -quantity,
-      onHandBefore,
-      onHandAfter: deductedInventory.onHand,
-      reservedBefore,
-      reservedAfter: deductedInventory.reserved,
-      referenceType:
-        transactionContext.referenceType || null,
-      referenceId:
-        transactionContext.referenceId || null,
-      idempotencyKey:
-        transactionContext.idempotencyKey || null,
-      actorUserId:
-        transactionContext.actorUserId || null,
-      notes:
-        transactionContext.notes || null,
-      session,
-    });
-
-    return deductedInventory;
-  });
+    throw error;
+  }
 };
 
 const deductReservedStockInTransaction = async (
@@ -642,6 +606,18 @@ const deductReservedStockInTransaction = async (
       404,
       "INVENTORY_NOT_FOUND"
     );
+  }
+
+  if (transactionContext.idempotencyKey) {
+    const existingTx =
+      await inventoryTransactionRepository.findByIdempotencyKey(
+        transactionContext.idempotencyKey,
+        { session }
+      );
+
+    if (existingTx) {
+      return inventory;
+    }
   }
 
   const onHandBefore = inventory.onHand;

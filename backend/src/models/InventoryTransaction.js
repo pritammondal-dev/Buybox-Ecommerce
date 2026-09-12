@@ -83,7 +83,6 @@ const inventoryTransactionSchema = new mongoose.Schema(
       default: null,
       trim: true,
       maxlength: 150,
-      index: true,
     },
 
     actorUserId: {
@@ -116,6 +115,17 @@ inventoryTransactionSchema.index({
   warehouseId: 1,
   createdAt: -1,
 });
+
+inventoryTransactionSchema.index(
+  { idempotencyKey: 1 },
+  {
+    name: "inventoryTransaction_idempotencyKey_unique",
+    unique: true,
+    partialFilterExpression: {
+      idempotencyKey: { $type: "string" },
+    },
+  }
+);
 
 inventoryTransactionSchema.index({
   idempotencyKey: 1,

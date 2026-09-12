@@ -4,6 +4,7 @@ jest.mock("../src/repositories/order.repository");
 jest.mock("../src/repositories/cart.repository");
 jest.mock("../src/repositories/payment.repository");
 jest.mock("../src/repositories/inventory.repository");
+jest.mock("../src/repositories/shipment.repository");
 jest.mock("../src/services/inventory.service");
 jest.mock("../src/services/notification.service");
 jest.mock("../src/services/notification-outbox.service");
@@ -21,6 +22,7 @@ const orderRepository = require("../src/repositories/order.repository");
 const cartRepository = require("../src/repositories/cart.repository");
 const paymentRepository = require("../src/repositories/payment.repository");
 const inventoryRepository = require("../src/repositories/inventory.repository");
+const shipmentRepository = require("../src/repositories/shipment.repository");
 const inventoryService = require("../src/services/inventory.service");
 const Customer = require("../src/models/Customer");
 const User = require("../src/models/User");
@@ -45,6 +47,8 @@ describe("Promotion Engine Review & Regression Test Suite", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     withTransaction.mockImplementation(async (callback) => callback({}));
+    shipmentRepository.findByOrderId.mockResolvedValue([]);
+    shipmentRepository.updateById.mockResolvedValue({});
     Customer.findOne.mockResolvedValue({
       _id: new mongoose.Types.ObjectId(customerId),
       userId,

@@ -85,6 +85,14 @@ const createTransaction = async ({
       );
 
     if (existing) {
+      if (session) {
+        const error = new Error(
+          `E11000 duplicate key error collection: inventorytransactions index: inventoryTransaction_idempotencyKey_unique dup key: { idempotencyKey: "${idempotencyKey}" }`
+        );
+        error.code = 11000;
+        error.keyPattern = { idempotencyKey: 1 };
+        throw error;
+      }
       return existing;
     }
   }
@@ -109,11 +117,16 @@ const createTransaction = async ({
       { session }
     );
   } catch (error) {
-    if (error?.code === 11000 && idempotencyKey) {
+    const isIdempotencyConflict =
+      error?.code === 11000 &&
+      idempotencyKey &&
+      (error?.keyPattern?.idempotencyKey ||
+        error?.message?.includes("idempotencyKey"));
+
+    if (!session && isIdempotencyConflict) {
       const existing =
         await inventoryTransactionRepository.findByIdempotencyKey(
-          idempotencyKey,
-          { session }
+          idempotencyKey
         );
 
       if (existing) {

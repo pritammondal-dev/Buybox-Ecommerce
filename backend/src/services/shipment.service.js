@@ -588,6 +588,7 @@ const createShipment = async ({
 const synchronizeOrderForShipmentStatus =
   async ({
     order,
+    shipment = null,
     shipmentStatus,
     session,
   }) => {
@@ -621,6 +622,30 @@ const synchronizeOrderForShipmentStatus =
       if (
         order.status === "processing"
       ) {
+        const updatedItems = (order.items || []).map((orderItem) => {
+          const matchingShipmentItem = shipment?.items
+            ? shipment.items.find(
+                (si) =>
+                  si.productVariantId?.toString() ===
+                    orderItem.productVariantId?.toString() &&
+                  orderItem.warehouseId?.toString() ===
+                    shipment.warehouseId?.toString()
+              )
+            : null;
+          if (matchingShipmentItem) {
+            const itemObj = orderItem.toObject ? orderItem.toObject() : { ...orderItem };
+            itemObj.inventoryStatus = "deducted";
+            return itemObj;
+          }
+          return orderItem;
+        });
+
+        await orderRepository.updateById(
+          order._id,
+          { items: updatedItems },
+          { session }
+        );
+
         return orderService
           .transitionOrderStatus(
             order._id,
@@ -719,19 +744,52 @@ const synchronizeOrderForShipmentStatus =
     if (
       shipmentStatus === "cancelled"
     ) {
+      const currentOrder =
+        await orderRepository.findById(
+          order._id,
+          { session }
+        );
+
+      if (!currentOrder || currentOrder.status === "cancelled") {
+        return currentOrder || order;
+      }
+
       if (
         [
           "confirmed",
           "processing",
-        ].includes(order.status)
+        ].includes(currentOrder.status)
       ) {
         const cancelledOrder =
           await orderService
             .transitionOrderStatus(
-              order._id,
+              currentOrder._id,
               "cancelled",
               { session }
             );
+
+        const updatedItems = (currentOrder.items || []).map((orderItem) => {
+          const matchingShipmentItem = shipment?.items
+            ? shipment.items.find(
+                (si) =>
+                  si.productVariantId?.toString() ===
+                    orderItem.productVariantId?.toString() &&
+                  orderItem.warehouseId?.toString() ===
+                    shipment.warehouseId?.toString()
+              )
+            : null;
+          if (matchingShipmentItem) {
+            const itemObj = orderItem.toObject ? orderItem.toObject() : { ...orderItem };
+            itemObj.inventoryStatus = "released";
+            itemObj.inventoryReleasedAt = new Date();
+            return itemObj;
+          }
+          return orderItem;
+        });
+
+        const allItemsReleased = updatedItems.every(
+          (item) => item.inventoryStatus === "released" || item.inventoryStatus === "deducted"
+        );
 
         const updatedOrder =
           await orderRepository
@@ -740,6 +798,9 @@ const synchronizeOrderForShipmentStatus =
               {
                 fulfillmentStatus:
                   "cancelled",
+                items: updatedItems,
+                inventoryStatus: allItemsReleased ? "released" : "partially_released",
+                inventoryReleasedAt: allItemsReleased ? new Date() : null,
               },
               { session }
             );
@@ -755,13 +816,7 @@ const synchronizeOrderForShipmentStatus =
         return updatedOrder;
       }
 
-      if (
-        order.status === "cancelled"
-      ) {
-        return order;
-      }
-
-      return order;
+      return currentOrder;
     }
 
     if (
@@ -867,7 +922,7 @@ const releaseShipmentInventory = async ({
             shipment._id.toString(),
 
           idempotencyKey:
-            `shipment-cancelled-${shipment._id.toString()}-${item.productVariantId.toString()}`,
+            `order-reservation-release-${shipment.orderId.toString()}-${item.productVariantId.toString()}-${shipment.warehouseId.toString()}`,
 
           notes:
             "Reserved stock released when shipment was cancelled",
@@ -973,6 +1028,7 @@ const transitionShipmentStatus =
         await synchronizeOrderForShipmentStatus(
           {
             order,
+            shipment,
             shipmentStatus:
               nextStatus,
             session,
@@ -1004,15 +1060,38 @@ const transitionShipmentStatus =
       if (
         nextStatus === "picked_up"
       ) {
-        await deductShipmentInventory({
-          shipment,
-          session,
-        });
+        if (order && order.status === "cancelled") {
+          throw new AppError(
+            "Cannot ship an already cancelled order",
+            409,
+            "ORDER_ALREADY_CANCELLED"
+          );
+        }
+
+        if (shipment.inventoryStatus === "released") {
+          throw new AppError(
+            "Cannot pick up shipment whose inventory was already released",
+            409,
+            "SHIPMENT_INVENTORY_ALREADY_RELEASED"
+          );
+        }
+
+        if (shipment.inventoryStatus !== "deducted") {
+          await deductShipmentInventory({
+            shipment,
+            session,
+          });
+        }
       }
 
       /*
        * Reserved inventory is released when a shipment
        * is cancelled before pickup.
+       *
+       * Guarantees reservation lifecycle idempotency:
+       * Stock is only released if this shipment's reservation
+       * has not already been released and the order was not
+       * already cancelled (which would have already released it).
        */
       if (
         nextStatus === "cancelled" &&
@@ -1023,15 +1102,41 @@ const transitionShipmentStatus =
           shipment.status
         )
       ) {
-        await releaseShipmentInventory({
-          shipment,
-          session,
-        });
+        const isOrderAlreadyCancelled = Boolean(
+          order && order.status === "cancelled"
+        );
+
+        if (!isOrderAlreadyCancelled) {
+          const claimedShipment =
+            await shipmentRepository.claimReservationRelease(
+              shipment._id,
+              { session }
+            );
+
+          if (claimedShipment) {
+            await releaseShipmentInventory({
+              shipment,
+              session,
+            });
+          }
+        }
       }
 
       const update = {
         status: nextStatus,
       };
+
+      if (nextStatus === "cancelled") {
+        update.inventoryStatus = "released";
+        if (!shipment.inventoryReleasedAt) {
+          update.inventoryReleasedAt = new Date();
+        }
+        if (!shipment.cancelledAt) {
+          update.cancelledAt = new Date();
+        }
+      } else if (nextStatus === "picked_up") {
+        update.inventoryStatus = "deducted";
+      }
 
       if (
         trackingNumber !==
@@ -1106,6 +1211,7 @@ const transitionShipmentStatus =
       await synchronizeOrderForShipmentStatus(
         {
           order,
+          shipment,
           shipmentStatus:
             nextStatus,
           session,
@@ -1120,6 +1226,17 @@ const transitionShipmentStatus =
         await session.abortTransaction();
       } catch (abortError) {
         // Preserve original error.
+      }
+
+      const isIdempotencyConflict =
+        (error?.code === 11000 || error?.message?.includes("E11000")) &&
+        (error?.keyPattern?.idempotencyKey || error?.message?.includes("idempotencyKey"));
+
+      if (isIdempotencyConflict) {
+        const freshShipment = await shipmentRepository.findById(shipmentId);
+        if (freshShipment) {
+          return freshShipment;
+        }
       }
 
       throw error;

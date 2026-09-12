@@ -63,6 +63,23 @@ const shipmentSchema = new mongoose.Schema(
       index: true,
     },
 
+    inventoryStatus: {
+      type: String,
+      enum: [
+        "reserved",
+        "released",
+        "deducted",
+      ],
+      default: "reserved",
+      required: true,
+      index: true,
+    },
+
+    inventoryReleasedAt: {
+      type: Date,
+      default: null,
+    },
+
     carrier: {
       type: String,
       default: null,

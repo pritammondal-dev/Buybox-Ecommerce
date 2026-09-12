@@ -101,6 +101,27 @@ const updateById = async (
   );
 };
 
+const claimReservationRelease = async (shipmentId, options = {}) => {
+  return Shipment.findOneAndUpdate(
+    {
+      _id: shipmentId,
+      inventoryStatus: "reserved",
+      status: { $in: ["created", "ready_to_ship"] },
+    },
+    {
+      $set: {
+        inventoryStatus: "released",
+        inventoryReleasedAt: new Date(),
+      },
+    },
+    {
+      new: true,
+      runValidators: true,
+      session: options.session,
+    }
+  );
+};
+
 module.exports = {
   create,
   findById,
@@ -112,5 +133,6 @@ module.exports = {
   findByVendorId,
   findByWarehouseId,
   updateById,
+  claimReservationRelease,
 };
 

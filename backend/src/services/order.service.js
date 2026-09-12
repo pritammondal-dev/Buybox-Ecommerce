@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const mongoose = require("mongoose");
 
 const orderRepository = require("../repositories/order.repository");
 const cartRepository = require("../repositories/cart.repository");
@@ -7,6 +8,7 @@ const inventoryRepository = require("../repositories/inventory.repository");
 const paymentRepository = require("../repositories/payment.repository");
 const couponRepository = require("../repositories/coupon.repository");
 const couponRedemptionRepository = require("../repositories/coupon-redemption.repository");
+const shipmentRepository = require("../repositories/shipment.repository");
 
 const inventoryService = require("./inventory.service");
 const couponService = require("./coupon.service");
@@ -1198,23 +1200,25 @@ const cancelOrder = async (orderId, options = {}) => {
 
   let wasAlreadyCancelled = false;
 
-  const cancelledOrder = await withTransaction(
-    async (session) => {
-      wasAlreadyCancelled = false;
+  let cancelledOrder;
+  try {
+    cancelledOrder = await withTransaction(
+      async (session) => {
+        wasAlreadyCancelled = false;
 
-      const currentOrder =
-        await orderRepository.findById(
-          orderId,
-          { session }
-        );
+        const currentOrder =
+          await orderRepository.findById(
+            orderId,
+            { session }
+          );
 
-      if (!currentOrder) {
-        throw new AppError(
-          "Order not found",
-          404,
-          "ORDER_NOT_FOUND"
-        );
-      }
+        if (!currentOrder) {
+          throw new AppError(
+            "Order not found",
+            404,
+            "ORDER_NOT_FOUND"
+          );
+        }
 
       if (currentOrder.status === "cancelled") {
         wasAlreadyCancelled = true;
@@ -1222,6 +1226,13 @@ const cancelOrder = async (orderId, options = {}) => {
       }
 
       for (const item of currentOrder.items) {
+        if (
+          item.inventoryStatus === "released" ||
+          item.inventoryStatus === "deducted"
+        ) {
+          continue;
+        }
+
         const inventory =
           await inventoryRepository.findByVariantAndWarehouse(
             item.productVariantId,
@@ -1243,11 +1254,43 @@ const cancelOrder = async (orderId, options = {}) => {
           {
             referenceType: "order",
             referenceId: currentOrder.orderNumber,
+            idempotencyKey: `order-reservation-release-${currentOrder._id.toString()}-${item.productVariantId.toString()}-${item.warehouseId.toString()}`,
             notes:
               "Inventory released due to order cancellation",
           },
           session
         );
+
+        item.inventoryStatus = "released";
+        item.inventoryReleasedAt = new Date();
+      }
+
+      const shipments = mongoose.Types.ObjectId.isValid(orderId)
+        ? await shipmentRepository.findByOrderId(orderId, { session })
+        : [];
+
+      for (const shipment of shipments) {
+        if (["created", "ready_to_ship"].includes(shipment.status)) {
+          await shipmentRepository.updateById(
+            shipment._id,
+            {
+              status: "cancelled",
+              cancelledAt: new Date(),
+              inventoryStatus: "released",
+              inventoryReleasedAt: new Date(),
+            },
+            { session }
+          );
+        } else if (shipment.inventoryStatus === "reserved") {
+          await shipmentRepository.updateById(
+            shipment._id,
+            {
+              inventoryStatus: "released",
+              inventoryReleasedAt: new Date(),
+            },
+            { session }
+          );
+        }
       }
 
       const currentPayment =
@@ -1318,16 +1361,33 @@ const cancelOrder = async (orderId, options = {}) => {
         }
       }
 
-      return transitionOrderStatus(
-        orderId,
-        "cancelled",
-        {
-          session,
-          paymentStatus: orderPaymentStatus,
-        }
-      );
+        return transitionOrderStatus(
+          orderId,
+          "cancelled",
+          {
+            session,
+            paymentStatus: orderPaymentStatus,
+            inventoryStatus: "released",
+            inventoryReleasedAt: new Date(),
+            items: currentOrder.items,
+          }
+        );
+      }
+    );
+  } catch (error) {
+    const isIdempotencyConflict =
+      (error?.code === 11000 || error?.message?.includes("E11000")) &&
+      (error?.keyPattern?.idempotencyKey || error?.message?.includes("idempotencyKey"));
+
+    if (isIdempotencyConflict) {
+      const freshOrder = await orderRepository.findById(orderId, options);
+      if (freshOrder && freshOrder.status === "cancelled") {
+        return freshOrder;
+      }
     }
-  );
+
+    throw error;
+  }
 
   if (!wasAlreadyCancelled) {
     await sendOrderStatusNotification({
@@ -1387,6 +1447,18 @@ const transitionOrderStatus = async (
   if (nextStatus === "cancelled") {
     update.cancelledAt = new Date();
     update.cancellationStatus = "completed";
+  }
+
+  if (options.inventoryStatus) {
+    update.inventoryStatus = options.inventoryStatus;
+  }
+
+  if (options.inventoryReleasedAt) {
+    update.inventoryReleasedAt = options.inventoryReleasedAt;
+  }
+
+  if (options.items) {
+    update.items = options.items;
   }
 
   if (
