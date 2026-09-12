@@ -54,6 +54,9 @@ describe("Task 8B.5.11 — Durable Receipt-Based Orphan Recovery", () => {
 
     Customer.findOne.mockResolvedValue(mockCustomer);
     orderRepository.findById.mockResolvedValue(mockOrder);
+    orderRepository.transitionStatusIfCurrent.mockImplementation((id, expectedStatus, data) => {
+      return Promise.resolve({ ...mockOrder, ...data });
+    });
     orderService.markOrderPaymentCaptured.mockResolvedValue({
       _id: orderId,
       status: "confirmed",

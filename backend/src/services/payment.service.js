@@ -327,7 +327,8 @@ const handleActivePayment = async ({
 const createPaymentForOrder = async (
   orderId,
   userId,
-  idempotencyKey
+  idempotencyKey,
+  options = {}
 ) => {
   const customer = await validateCustomer(userId);
 
@@ -335,7 +336,8 @@ const createPaymentForOrder = async (
     validateIdempotencyKey(idempotencyKey);
 
   const order = await orderRepository.findById(
-    orderId
+    orderId,
+    options
   );
 
   if (!order) {
@@ -370,6 +372,14 @@ const createPaymentForOrder = async (
       order.status
     )
   ) {
+    throw new AppError(
+      "Payment cannot be created for this order",
+      409,
+      "ORDER_NOT_PAYABLE"
+    );
+  }
+
+  if (order.status !== "pending") {
     throw new AppError(
       "Payment cannot be created for this order",
       409,
@@ -439,23 +449,54 @@ const createPaymentForOrder = async (
     order.orderNumber
   );
 
+  /*
+   * Atomically guard that the order is still pending before creating payment.
+   * If expiration claimed/cancelled the order concurrently, transitionStatusIfCurrent
+   * returns null and payment creation aborts before any Payment or gateway order is created.
+   */
+  const guardedOrder = await orderRepository.transitionStatusIfCurrent(
+    order._id,
+    "pending",
+    { updatedAt: new Date() },
+    options
+  );
+
+  if (!guardedOrder) {
+    const freshOrder = await orderRepository.findById(order._id, options);
+    if (freshOrder?.paymentStatus === "paid") {
+      throw new AppError(
+        "Order has already been paid",
+        409,
+        "ORDER_ALREADY_PAID"
+      );
+    }
+    throw new AppError(
+      "Payment cannot be created for this order",
+      409,
+      "ORDER_NOT_PAYABLE"
+    );
+  }
+
   let payment;
 
   try {
-    payment = await paymentRepository.create({
-      orderId: order._id,
-      customerId: customer._id,
-      gateway: PAYMENT_GATEWAYS.RAZORPAY,
-      gatewayOrderId: null,
-      gatewayPaymentId: null,
-      amount: order.grandTotal,
-      currency: order.currency,
-      status: "created",
-      receipt,
-      idempotencyKey:
-        normalizedIdempotencyKey,
-      metadata: {},
-    });
+    payment = await paymentRepository.create(
+      {
+        orderId: order._id,
+        customerId: customer._id,
+        gateway: PAYMENT_GATEWAYS.RAZORPAY,
+        gatewayOrderId: null,
+        gatewayPaymentId: null,
+        amount: order.grandTotal,
+        currency: order.currency,
+        status: "created",
+        receipt,
+        idempotencyKey:
+          normalizedIdempotencyKey,
+        metadata: {},
+      },
+      options
+    );
   } catch (error) {
     if (error?.code === 11000) {
       const active =

@@ -45,6 +45,9 @@ describe("Task 8B.5.5 — Active Payment Reuse & Razorpay Payment Listing", () =
 
     Customer.findOne.mockResolvedValue(mockCustomer);
     orderRepository.findById.mockResolvedValue(mockOrder);
+    orderRepository.transitionStatusIfCurrent.mockImplementation((id, expectedStatus, data) => {
+      return Promise.resolve({ ...mockOrder, ...data });
+    });
   });
 
   describe("Provider: fetchOrderPayments", () => {

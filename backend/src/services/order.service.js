@@ -1397,6 +1397,242 @@ const cancelOrder = async (orderId, options = {}) => {
 
   return cancelledOrder;
 };
+
+const expirePendingOrder = async (orderId, options = {}) => {
+  const initialOrder = await orderRepository.findById(orderId, options);
+
+  if (!initialOrder) {
+    throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
+  }
+
+  if (initialOrder.status === "cancelled") {
+    return initialOrder;
+  }
+
+  if (initialOrder.status !== "pending") {
+    throw new AppError(
+      `Only pending orders can be expired, order is ${initialOrder.status}`,
+      409,
+      "ORDER_NOT_PENDING"
+    );
+  }
+
+  let wasAlreadyCancelled = false;
+  let expiredOrder;
+
+  try {
+    expiredOrder = await withTransaction(async (session) => {
+      wasAlreadyCancelled = false;
+
+      const currentOrder = await orderRepository.findById(orderId, { session });
+
+      if (!currentOrder) {
+        throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
+      }
+
+      if (currentOrder.status === "cancelled") {
+        wasAlreadyCancelled = true;
+        return currentOrder;
+      }
+
+      if (currentOrder.status !== "pending") {
+        throw new AppError(
+          `Order status changed to ${currentOrder.status}. Cannot expire.`,
+          409,
+          "ORDER_NOT_PENDING"
+        );
+      }
+
+      // Re-read and inspect all payments associated with this order inside the session
+      const payments = await paymentRepository.findByOrderId(orderId, { session });
+
+      const hasCaptured = payments.some(
+        (p) => p.status === "captured" || p.status === "paid"
+      );
+      if (hasCaptured) {
+        throw new AppError(
+          "Payment was captured. Cannot expire order.",
+          409,
+          "PAYMENT_STATE_CONFLICT"
+        );
+      }
+
+      const hasAuthorized = payments.some((p) => p.status === "authorized");
+      if (hasAuthorized) {
+        throw new AppError(
+          "Payment is authorized. Cannot expire order.",
+          409,
+          "PAYMENT_STATE_CONFLICT"
+        );
+      }
+
+      // Atomically cancel any active uncompleted created/pending payments
+      for (const payment of payments) {
+        if (["created", "pending"].includes(payment.status)) {
+          const cancelledPayment =
+            typeof paymentRepository.cancelUncompletedPayment === "function"
+              ? await paymentRepository.cancelUncompletedPayment(payment._id, { session })
+              : await paymentRepository.cancelPendingPayment(payment._id, { session });
+
+          if (!cancelledPayment) {
+            throw new AppError(
+              "Payment state changed concurrently during expiration.",
+              409,
+              "PAYMENT_STATE_CONFLICT"
+            );
+          }
+        }
+      }
+
+      // Atomically claim the pending order before ANY inventory release
+      const initialCancellationUpdate = {
+        status: "cancelled",
+        cancelledAt: new Date(),
+        cancellationStatus: "completed",
+        paymentStatus: "failed",
+        inventoryStatus: "released",
+        inventoryReleasedAt: new Date(),
+      };
+
+      const claimedOrder = await orderRepository.transitionStatusIfCurrent(
+        orderId,
+        "pending",
+        initialCancellationUpdate,
+        { session }
+      );
+
+      if (!claimedOrder) {
+        const freshOrder = await orderRepository.findById(orderId, { session });
+        if (freshOrder && freshOrder.status === "cancelled") {
+          wasAlreadyCancelled = true;
+          return freshOrder;
+        }
+
+        throw new AppError(
+          `Order status changed concurrently to ${freshOrder?.status || "unknown"}. Cannot expire.`,
+          409,
+          "ORDER_NOT_PENDING"
+        );
+      }
+
+      // Release reserved inventory using canonical idempotency keys
+      for (const item of currentOrder.items) {
+        if (
+          item.inventoryStatus === "released" ||
+          item.inventoryStatus === "deducted"
+        ) {
+          continue;
+        }
+
+        const inventory = await inventoryRepository.findByVariantAndWarehouse(
+          item.productVariantId,
+          item.warehouseId,
+          { session }
+        );
+
+        if (!inventory) {
+          throw new AppError(
+            `Inventory record not found for SKU ${item.sku}`,
+            404,
+            "INVENTORY_NOT_FOUND"
+          );
+        }
+
+        await inventoryService.releaseStockInTransaction(
+          inventory._id,
+          item.quantity,
+          {
+            referenceType: "order",
+            referenceId: currentOrder.orderNumber,
+            idempotencyKey: `order-reservation-release-${currentOrder._id.toString()}-${item.productVariantId.toString()}-${item.warehouseId.toString()}`,
+            notes: "Inventory released due to order expiration",
+          },
+          session
+        );
+
+        item.inventoryStatus = "released";
+        item.inventoryReleasedAt = new Date();
+      }
+
+      // Update items on the claimed order
+      await orderRepository.updateById(
+        orderId,
+        { items: currentOrder.items },
+        { session }
+      );
+
+      // Cancel and release any associated shipments
+      const shipments = mongoose.Types.ObjectId.isValid(orderId)
+        ? await shipmentRepository.findByOrderId(orderId, { session })
+        : [];
+
+      for (const shipment of shipments) {
+        if (["created", "ready_to_ship"].includes(shipment.status)) {
+          await shipmentRepository.updateById(
+            shipment._id,
+            {
+              status: "cancelled",
+              cancelledAt: new Date(),
+              inventoryStatus: "released",
+              inventoryReleasedAt: new Date(),
+            },
+            { session }
+          );
+        } else if (shipment.inventoryStatus === "reserved") {
+          await shipmentRepository.updateById(
+            shipment._id,
+            {
+              inventoryStatus: "released",
+              inventoryReleasedAt: new Date(),
+            },
+            { session }
+          );
+        }
+      }
+
+      // Rollback coupon redemption idempotently if coupon applied
+      if (currentOrder.couponId) {
+        const rollbackRedemption =
+          await couponRedemptionRepository.deleteByOrderId(
+            currentOrder._id,
+            { session }
+          );
+
+        if (rollbackRedemption) {
+          await couponRepository.decrementUsage(
+            currentOrder.couponId,
+            { session }
+          );
+        }
+      }
+
+      claimedOrder.items = currentOrder.items;
+      return claimedOrder;
+    });
+  } catch (error) {
+    const isIdempotencyConflict =
+      (error?.code === 11000 || error?.message?.includes("E11000")) &&
+      (error?.keyPattern?.idempotencyKey || error?.message?.includes("idempotencyKey"));
+
+    if (isIdempotencyConflict) {
+      const freshOrder = await orderRepository.findById(orderId, options);
+      if (freshOrder && freshOrder.status === "cancelled") {
+        return freshOrder;
+      }
+    }
+
+    throw error;
+  }
+
+  if (!wasAlreadyCancelled) {
+    await sendOrderStatusNotification({
+      order: expiredOrder,
+    });
+  }
+
+  return expiredOrder;
+};
+
 const transitionOrderStatus = async (
   orderId,
   nextStatus,
@@ -1603,6 +1839,7 @@ module.exports = {
   getCustomerOrders,
   transitionOrderStatus,
   cancelOrder,
+  expirePendingOrder,
   markOrderPaymentCaptured,
 };
 

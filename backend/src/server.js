@@ -25,6 +25,11 @@ const {
   stopPaymentReconciliationScheduler,
 } = require("./workers/payment-reconciliation.worker");
 
+const {
+  runOrderExpirationScheduler,
+  stopOrderExpirationScheduler,
+} = require("./workers/order-expiration.worker");
+
 const PORT = env.PORT;
 
 const startServer = async () => {
@@ -33,6 +38,7 @@ const startServer = async () => {
   runNotificationDispatcher();
   runCartAbandonmentScheduler();
   runPaymentReconciliationScheduler();
+  runOrderExpirationScheduler();
 
   logger.info("Notification queue worker initialized");
 
@@ -60,6 +66,7 @@ const startServer = async () => {
     stopNotificationDispatcher();
     stopCartAbandonmentScheduler();
     stopPaymentReconciliationScheduler();
+    stopOrderExpirationScheduler();
 
     try {
       await stopNotificationQueueWorker();

@@ -83,6 +83,24 @@ EMAIL_VERIFICATION_BASE_URL: z
     .int()
     .positive()
     .default(50),
+
+  ORDER_EXPIRATION_TIMEOUT_MINUTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(30),
+
+  ORDER_EXPIRATION_SCAN_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(60000),
+
+  ORDER_EXPIRATION_BATCH_SIZE: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(50),
 });
 
 const env = envSchema.parse(process.env);

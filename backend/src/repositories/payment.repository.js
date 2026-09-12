@@ -234,6 +234,30 @@ const cancelPendingPayment = async (
   );
 };
 
+const cancelUncompletedPayment = async (
+  paymentId,
+  options = {}
+) => {
+  return Payment.findOneAndUpdate(
+    {
+      _id: paymentId,
+      status: {
+        $in: ["created", "pending"],
+      },
+    },
+    {
+      $set: {
+        status: "cancelled",
+      },
+    },
+    {
+      new: true,
+      runValidators: true,
+      session: options.session,
+    }
+  );
+};
+
 const linkOrphanGatewayOrderId = async (
   paymentId,
   gatewayOrderId,
@@ -328,4 +352,5 @@ module.exports = {
   reserveRefundAmount,
   releaseRefundReservation,
   cancelPendingPayment,
+  cancelUncompletedPayment,
 };

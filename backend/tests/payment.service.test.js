@@ -21,6 +21,9 @@ const {
 describe("Payment Service", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    orderRepository.transitionStatusIfCurrent.mockImplementation((id, expectedStatus, data) => {
+      return Promise.resolve({ _id: id, status: expectedStatus, ...data });
+    });
   });
 
   it("should create a Razorpay payment order successfully", async () => {

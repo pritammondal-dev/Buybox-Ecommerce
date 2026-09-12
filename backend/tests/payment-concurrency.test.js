@@ -47,6 +47,9 @@ describe("Task 8B.4 — Concurrent Payment Creation API & Lifecycle Hardening", 
 
     Customer.findOne.mockResolvedValue(mockCustomer);
     orderRepository.findById.mockResolvedValue(mockOrder);
+    orderRepository.transitionStatusIfCurrent.mockImplementation((id, expectedStatus, data) => {
+      return Promise.resolve({ ...mockOrder, ...data });
+    });
   });
 
   describe("API Authentication & Idempotency Key Validation", () => {
