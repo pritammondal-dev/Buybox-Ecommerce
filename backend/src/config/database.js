@@ -4,7 +4,12 @@ const logger = require("./logger");
 
 const connectDatabase = async () => {
   try {
-    const connection = await mongoose.connect(env.MONGODB_URI);
+    const autoIndex =
+      env.NODE_ENV === "development" || env.NODE_ENV === "test";
+
+    const connection = await mongoose.connect(env.MONGODB_URI, {
+      autoIndex,
+    });
 
     logger.info(
   {

@@ -2,7 +2,7 @@ const { z } = require("zod");
 
 const envSchema = z.object({
   NODE_ENV: z
-    .enum(["development", "test", "production"])
+    .enum(["development", "test", "staging", "production"])
     .default("development"),
 
   PORT: z.coerce
