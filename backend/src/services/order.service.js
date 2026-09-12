@@ -518,12 +518,36 @@ const reserveInventoryForOrderItems =
         );
       }
 
+      /*
+       * Sort candidate warehouses deterministically:
+       * 1. Available stock descending (prioritizes warehouse with deepest stock)
+       * 2. Warehouse ID ascending (stable tie-breaker)
+       */
+      const sortedInventories = [...inventories].sort((a, b) => {
+        const availA = Math.max(
+          (Number(a.onHand) || 0) - (Number(a.reserved) || 0),
+          0
+        );
+        const availB = Math.max(
+          (Number(b.onHand) || 0) - (Number(b.reserved) || 0),
+          0
+        );
+
+        if (availB !== availA) {
+          return availB - availA;
+        }
+
+        return (a.warehouseId?.toString() || "").localeCompare(
+          b.warehouseId?.toString() || ""
+        );
+      });
+
       let reservedInventory = null;
 
-      for (const inventory of inventories) {
+      for (const inventory of sortedInventories) {
         const available =
-          inventory.onHand -
-          inventory.reserved;
+          (Number(inventory.onHand) || 0) -
+          (Number(inventory.reserved) || 0);
 
         if (
           available < item.quantity
@@ -531,23 +555,32 @@ const reserveInventoryForOrderItems =
           continue;
         }
 
-        reservedInventory =
-          await inventoryService
-            .reserveStockInTransaction(
-              inventory._id,
-              item.quantity,
-              {
-                referenceType: "order",
-                referenceId: orderNumber,
-                actorUserId: userId,
-                notes:
-                  "Inventory reserved during checkout",
-              },
-              session
-            );
+        try {
+          reservedInventory =
+            await inventoryService
+              .reserveStockInTransaction(
+                inventory._id,
+                item.quantity,
+                {
+                  referenceType: "order",
+                  referenceId: orderNumber,
+                  actorUserId: userId,
+                  idempotencyKey: `order-reservation-${orderNumber}-${item.productVariantId.toString()}`,
+                  notes:
+                    "Inventory reserved during checkout",
+                },
+                session
+              );
 
-        if (reservedInventory) {
-          break;
+          if (reservedInventory) {
+            break;
+          }
+        } catch (error) {
+          if (error?.code === "INSUFFICIENT_STOCK") {
+            // Warehouse lost stock to concurrent reservation; try next candidate
+            continue;
+          }
+          throw error;
         }
       }
 
