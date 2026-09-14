@@ -53,6 +53,20 @@ const PERMISSIONS = Object.freeze({
 
   ANALYTICS_READ: "analytics:read",
   ANALYTICS_READ_OWN: "analytics:read_own",
+
+  ROLES_READ: "roles:read",
+  ROLES_MANAGE: "roles:manage",
+
+  PERMISSIONS_READ: "permissions:read",
+  PERMISSIONS_MANAGE: "permissions:manage",
+
+  EMPLOYEES_READ: "employees:read",
+  EMPLOYEES_MANAGE: "employees:manage",
+
+  WORK_ASSIGNMENTS_READ: "work_assignments:read",
+  WORK_ASSIGNMENTS_MANAGE: "work_assignments:manage",
+
+  AUDIT_LOGS_READ: "audit_logs:read",
 });
 
 module.exports = {
