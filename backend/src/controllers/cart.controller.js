@@ -11,11 +11,11 @@ const getCart = async (req, res) => {
 };
 
 const addItem = async (req, res) => {
-  const { productVariantId, quantity } = req.body;
+  const { productVariantId, productId, quantity } = req.body;
 
   const cart = await cartService.addItem(
     req.user.id,
-    productVariantId,
+    { productVariantId, productId },
     quantity
   );
 
@@ -25,6 +25,7 @@ const addItem = async (req, res) => {
     data: cart,
   });
 };
+
 
 const updateItemQuantity = async (req, res) => {
   const { productVariantId, quantity } = req.body;

@@ -22,8 +22,42 @@ app.use(
   })
 );
 
+const env = require("./config/env");
+
+const devOriginRegex = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
+const allowedOriginsList = env.CORS_ALLOWED_ORIGINS
+  ? env.CORS_ALLOWED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
+  : ["http://localhost:3000", "http://127.0.0.1:3000"];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    if (env.NODE_ENV !== "production" && devOriginRegex.test(origin)) {
+      return callback(null, true);
+    }
+
+    if (allowedOriginsList.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(null, false);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "Idempotency-Key",
+  ],
+};
+
 app.use(helmet());
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(compression());
 app.use(cookieParser());
 
@@ -47,14 +81,16 @@ app.use(
   })
 );
 
-app.use(
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    limit: 100,
-    standardHeaders: true,
-    legacyHeaders: false,
-  })
-);
+if (process.env.NODE_ENV === "production") {
+  app.use(
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      limit: 100,
+      standardHeaders: true,
+      legacyHeaders: false,
+    })
+  );
+}
 
 app.get("/health", (req, res) => {
   return sendSuccess(res, {

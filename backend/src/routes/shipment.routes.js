@@ -46,6 +46,11 @@ router.get(
   shipmentController.getMyShipmentById
 );
 
+router.get(
+  "/tracking/:trackingNumber",
+  shipmentController.getShipmentByTrackingNumber
+);
+
 /*
  * ============================================================
  * VENDOR SELF-SERVICE
@@ -141,13 +146,6 @@ router.get(
   shipmentController.getShipmentsByWarehouseId
 );
 
-router.get(
-  "/tracking/:trackingNumber",
-  requirePermissions(
-    PERMISSIONS.SHIPMENTS_READ
-  ),
-  shipmentController.getShipmentByTrackingNumber
-);
 
 /*
  * ============================================================

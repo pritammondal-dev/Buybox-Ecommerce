@@ -101,6 +101,10 @@ EMAIL_VERIFICATION_BASE_URL: z
     .int()
     .positive()
     .default(50),
+
+  CORS_ALLOWED_ORIGINS: z
+    .string()
+    .default("http://localhost:3000,http://127.0.0.1:3000"),
 });
 
 const env = envSchema.parse(process.env);

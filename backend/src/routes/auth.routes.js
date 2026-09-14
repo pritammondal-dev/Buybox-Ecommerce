@@ -7,6 +7,7 @@ const { registerSchema } = require("../validators/auth/register.validator");
 const { loginSchema } = require("../validators/auth/login.validator");
 const {
   refreshSchema,
+  validateRefreshToken,
 } = require("../validators/auth/refresh.validator");
 const authenticate = require("../middlewares/authentication.middleware");
 const {
@@ -32,13 +33,13 @@ router.post(
 
 router.post(
   "/refresh",
-  validate(refreshSchema),
+  validateRefreshToken,
   authController.refresh
 );
 
 router.post(
   "/logout",
-  validate(refreshSchema),
+  validateRefreshToken,
   authController.logout
 );
 

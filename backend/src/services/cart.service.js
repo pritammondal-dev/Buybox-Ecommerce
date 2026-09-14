@@ -118,6 +118,119 @@ const validateVariant = async (productVariantId) => {
   return variant;
 };
 
+const resolveAndValidateVariant = async ({ productVariantId, productId }) => {
+  if (productVariantId) {
+    if (!mongoose.Types.ObjectId.isValid(productVariantId)) {
+      throw new AppError(
+        "Invalid product variant ID",
+        400,
+        "INVALID_PRODUCT_VARIANT_ID"
+      );
+    }
+
+    const variant = await ProductVariant.findOne({
+      _id: productVariantId,
+      isActive: true,
+      deletedAt: null,
+    });
+
+    if (!variant) {
+      throw new AppError(
+        "Product variant not found or unavailable",
+        404,
+        "PRODUCT_VARIANT_NOT_FOUND"
+      );
+    }
+
+    const product = await Product.findOne({
+      _id: variant.productId,
+      status: "active",
+      deletedAt: null,
+    });
+
+    if (!product) {
+      throw new AppError(
+        "Product is not available",
+        400,
+        "PRODUCT_UNAVAILABLE"
+      );
+    }
+
+    if (typeof variant.stockQuantity === "number" && variant.stockQuantity <= 0) {
+      throw new AppError(
+        "Product variant is out of stock",
+        400,
+        "OUT_OF_STOCK"
+      );
+    }
+
+    return variant;
+  }
+
+  if (productId) {
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
+      throw new AppError(
+        "Invalid product ID",
+        400,
+        "INVALID_PRODUCT_ID"
+      );
+    }
+
+    const product = await Product.findOne({
+      _id: productId,
+      status: "active",
+      deletedAt: null,
+    });
+
+    if (!product) {
+      throw new AppError(
+        "Product not found or unavailable",
+        404,
+        "PRODUCT_NOT_FOUND"
+      );
+    }
+
+    const activeVariants = await ProductVariant.find({
+      productId: product._id,
+      isActive: true,
+      deletedAt: null,
+    });
+
+    if (!activeVariants || activeVariants.length === 0) {
+      throw new AppError(
+        "Product has no purchasable variants",
+        400,
+        "NO_PURCHASABLE_VARIANT"
+      );
+    }
+
+    if (activeVariants.length === 1) {
+      const singleVariant = activeVariants[0];
+      if (typeof singleVariant.stockQuantity === "number" && singleVariant.stockQuantity <= 0) {
+        throw new AppError(
+          "Product variant is out of stock",
+          400,
+          "OUT_OF_STOCK"
+        );
+      }
+      return singleVariant;
+    }
+
+    throw new AppError(
+      "Product has multiple variants. Please specify a productVariantId.",
+      400,
+      "VARIANT_SELECTION_REQUIRED"
+    );
+  }
+
+  throw new AppError(
+    "Either productVariantId or productId must be provided",
+    400,
+    "MISSING_PRODUCT_IDENTIFIER"
+  );
+};
+
+
 const createEmptyCart = async (
   customerId,
   currency = DEFAULT_CURRENCY,
@@ -314,7 +427,7 @@ const recalculateCart = async (cart) => {
 
 const addItem = async (
   userId,
-  productVariantId,
+  variantOrProduct,
   quantity,
   storeId = null
 ) => {
@@ -335,7 +448,24 @@ const addItem = async (
   }
 
   const customer = await validateCustomer(userId);
-  const variant = await validateVariant(productVariantId);
+
+  let targetVariantId;
+  let targetProductId;
+  if (
+    variantOrProduct &&
+    typeof variantOrProduct === "object" &&
+    !(variantOrProduct instanceof mongoose.Types.ObjectId)
+  ) {
+    targetVariantId = variantOrProduct.productVariantId;
+    targetProductId = variantOrProduct.productId;
+  } else {
+    targetVariantId = variantOrProduct;
+  }
+
+  const variant = await resolveAndValidateVariant({
+    productVariantId: targetVariantId,
+    productId: targetProductId,
+  });
 
   let cart = await cartRepository.findActiveByCustomer(
     customer._id,
@@ -388,7 +518,7 @@ const addItem = async (
 
   const existingItem = cart.items.find(
     (item) =>
-      item.productVariantId.toString() === productVariantId
+      item.productVariantId.toString() === variant._id.toString()
   );
 
   if (existingItem) {

@@ -1,0 +1,709 @@
+"use client";
+
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
+import { X, ChevronLeft, ChevronRight, SlidersHorizontal, RefreshCw, Search, ArrowRight } from "lucide-react";
+import { toast } from "sonner";
+import { productService } from "../../../services/product.service.js";
+import { categoryService } from "../../../services/category.service.js";
+import { brandService } from "../../../services/brand.service.js";
+import { useCart } from "../../../hooks/useCart.js";
+import { useWishlist } from "../../../hooks/useWishlist.js";
+import { ProductCard } from "../ProductCard.jsx";
+import { SortSelect } from "../SortSelect.jsx";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../ui/Sheet.jsx";
+import { Checkbox } from "../../ui/Checkbox.jsx";
+import { Button } from "../../ui/Button.jsx";
+import { cn } from "../../../utils/cn.js";
+
+const isObjectId = (str) => typeof str === "string" && /^[0-9a-fA-F]{24}$/.test(str);
+
+export function ShopCatalog({
+  initialCategoryId = null,
+  initialCategoryName = null,
+  initialSearchQuery = null,
+  pageTitle = "All Products",
+  pageDescription = "Explore our collection of high-performance audio, tech & electronics with genuine manufacturer warranty.",
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // URL query state as single source of truth
+  const currentSearch = searchParams.get("search") || initialSearchQuery || "";
+  const currentSort = searchParams.get("sort") || "newest";
+  const currentPage = Math.max(1, Number(searchParams.get("page")) || 1);
+  const currentCategory = searchParams.get("category") || initialCategoryId || "";
+  const currentBrand = searchParams.get("brand") || "";
+
+  // Component states
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [brands, setBrands] = useState([]);
+  const [pagination, setPagination] = useState({ page: 1, limit: 16, total: 0, totalPages: 1 });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isError, setIsError] = useState(false);
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+
+  // Cart & Wishlist hooks
+  const { addItem: addCartItem } = useCart();
+  const { isInWishlist, addItem: addWishlistItem, removeItem: removeWishlistItem } = useWishlist();
+
+  // Load Categories and Brands once
+  useEffect(() => {
+    let isMounted = true;
+    Promise.allSettled([
+      categoryService.getCategories({ limit: 50 }),
+      brandService.getBrands({ limit: 50 }),
+    ]).then(([catRes, brandRes]) => {
+      if (!isMounted) return;
+      if (catRes.status === "fulfilled") {
+        const catData = catRes.value?.data?.categories || catRes.value?.data || [];
+        setCategories(Array.isArray(catData) ? catData : []);
+      }
+      if (brandRes.status === "fulfilled") {
+        const brandData = brandRes.value?.data?.brands || brandRes.value?.data || [];
+        setBrands(Array.isArray(brandData) ? brandData : []);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Resolve Category & Brand to valid MongoDB ObjectIds for backend query
+  const resolvedCategory = useMemo(() => {
+    if (!currentCategory) return null;
+    return (
+      categories.find(
+        (c) =>
+          c._id === currentCategory ||
+          c.id === currentCategory ||
+          c.slug === currentCategory
+      ) || null
+    );
+  }, [currentCategory, categories]);
+
+  const resolvedBrand = useMemo(() => {
+    if (!currentBrand) return null;
+    return (
+      brands.find(
+        (b) =>
+          b._id === currentBrand ||
+          b.id === currentBrand ||
+          b.slug === currentBrand
+      ) || null
+    );
+  }, [currentBrand, brands]);
+
+  const backendCategoryId = useMemo(() => {
+    if (resolvedCategory) return resolvedCategory._id || resolvedCategory.id;
+    if (isObjectId(currentCategory)) return currentCategory;
+    return null;
+  }, [resolvedCategory, currentCategory]);
+
+  const backendBrandId = useMemo(() => {
+    if (resolvedBrand) return resolvedBrand._id || resolvedBrand.id;
+    if (isObjectId(currentBrand)) return currentBrand;
+    return null;
+  }, [resolvedBrand, currentBrand]);
+
+  // Synchronize URL with filter changes
+  const updateUrl = useCallback((updates, shouldResetPage = true) => {
+    const params = new URLSearchParams(searchParams.toString());
+
+    Object.entries(updates).forEach(([key, val]) => {
+      if (val === null || val === undefined || val === "") {
+        params.delete(key);
+      } else {
+        params.set(key, String(val));
+      }
+    });
+
+    if (shouldResetPage && !("page" in updates)) {
+      params.set("page", "1");
+    }
+
+    const qs = params.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  // Fetch Products based on authoritative backend contract
+  useEffect(() => {
+    let isCancelled = false;
+
+    const params = {
+      page: currentPage,
+      limit: 16,
+      status: "active",
+    };
+
+    if (currentSearch) {
+      params.search = currentSearch;
+    }
+
+    if (backendCategoryId) {
+      params.categoryId = backendCategoryId;
+    }
+
+    if (backendBrandId) {
+      params.brandId = backendBrandId;
+    }
+
+    productService
+      .getProducts(params)
+      .then((res) => {
+        if (isCancelled) return;
+        const productList = res?.data?.products || (Array.isArray(res?.data) ? res.data : []);
+        const meta = res?.meta || {};
+
+        // Authoritative sort: backend defaults to newest ({ createdAt: -1 })
+        // Apply client-side sorting refinements on the retrieved results
+        const sortedList = [...productList];
+        if (currentSort === "price_asc") {
+          sortedList.sort((a, b) => {
+            const pA = Number(a.price?.$numberDecimal || a.price || 0);
+            const pB = Number(b.price?.$numberDecimal || b.price || 0);
+            return pA - pB;
+          });
+        } else if (currentSort === "price_desc") {
+          sortedList.sort((a, b) => {
+            const pA = Number(a.price?.$numberDecimal || a.price || 0);
+            const pB = Number(b.price?.$numberDecimal || b.price || 0);
+            return pB - pA;
+          });
+        } else if (currentSort === "rating_desc") {
+          sortedList.sort((a, b) => (b.ratingAverage || 0) - (a.ratingAverage || 0));
+        } else if (currentSort === "featured") {
+          sortedList.sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
+        }
+
+        setProducts(sortedList);
+        setPagination({
+          page: Number(meta.page) || currentPage,
+          limit: Number(meta.limit) || 16,
+          total: Number(meta.total) || sortedList.length,
+          totalPages: Number(meta.totalPages) || Math.max(1, Math.ceil((Number(meta.total) || sortedList.length) / 16)),
+        });
+        setIsLoading(false);
+      })
+      .catch(() => {
+        if (isCancelled) return;
+        setIsError(true);
+        setIsLoading(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentPage, currentSearch, backendCategoryId, backendBrandId, currentSort, retryCount]);
+
+  // Filter change handlers
+  const handleCategoryToggle = (catIdentifier) => {
+    setIsLoading(true);
+    const isCurrentlySelected =
+      currentCategory === catIdentifier ||
+      (resolvedCategory && (resolvedCategory._id === catIdentifier || resolvedCategory.slug === catIdentifier));
+
+    updateUrl({ category: isCurrentlySelected ? null : catIdentifier });
+  };
+
+  const handleBrandToggle = (brandIdentifier) => {
+    setIsLoading(true);
+    const isCurrentlySelected =
+      currentBrand === brandIdentifier ||
+      (resolvedBrand && (resolvedBrand._id === brandIdentifier || resolvedBrand.slug === brandIdentifier));
+
+    updateUrl({ brand: isCurrentlySelected ? null : brandIdentifier });
+  };
+
+  const handleSortChange = (newSort) => {
+    setIsLoading(true);
+    updateUrl({ sort: newSort === "newest" ? null : newSort }, false);
+  };
+
+  const handleRetry = () => {
+    setIsLoading(true);
+    setIsError(false);
+    setRetryCount((prev) => prev + 1);
+  };
+
+  const handleClearAll = () => {
+    setIsLoading(true);
+    router.push(pathname);
+  };
+
+  const handlePageChange = (newPage) => {
+    if (newPage < 1 || newPage > pagination.totalPages) return;
+    setIsLoading(true);
+    updateUrl({ page: String(newPage) }, false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // Cart & Wishlist actions
+  const handleWishlistToggle = async (product, isWishlisted) => {
+    const id = product._id || product.id;
+    try {
+      if (isWishlisted) {
+        await addWishlistItem(id);
+        toast.success("Added to wishlist", {
+          description: `${product.name} saved.`,
+        });
+      } else {
+        await removeWishlistItem(id);
+        toast.info("Removed from wishlist", {
+          description: `${product.name} removed.`,
+        });
+      }
+    } catch {
+      toast.error("Could not update wishlist.");
+    }
+  };
+
+  const handleAddToCart = async (product) => {
+    try {
+      const productId = product._id || product.id;
+      const productVariantId =
+        product.productVariantId ||
+        product.defaultVariantId ||
+        undefined;
+      await addCartItem({
+        ...(productVariantId ? { productVariantId } : {}),
+        productId,
+        quantity: 1,
+        itemSnapshot: {
+          name: product.name,
+          price: product.price,
+          image: product.images?.[0]?.url || product.image || null,
+          sku: product.sku,
+        },
+      });
+      toast.success("Added to cart", {
+        description: `${product.name} added to your cart.`,
+      });
+    } catch {
+      toast.error("Could not add item to cart.");
+    }
+  };
+
+  const hasActiveFilters = Boolean(
+    currentSearch || currentCategory || currentBrand || (currentSort && currentSort !== "newest")
+  );
+  const activeFilterCount =
+    (currentSearch ? 1 : 0) + (currentCategory ? 1 : 0) + (currentBrand ? 1 : 0);
+
+  // Filter content component reused in Desktop Sidebar and Mobile Sheet
+  const FilterContent = (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between pb-3 border-b">
+        <h3 className="text-sm font-extrabold uppercase tracking-wider text-foreground">
+          Filters
+        </h3>
+        {activeFilterCount > 0 && (
+          <button
+            type="button"
+            onClick={handleClearAll}
+            className="text-xs font-bold text-[#007A55] hover:underline cursor-pointer"
+          >
+            Clear all ({activeFilterCount})
+          </button>
+        )}
+      </div>
+
+      {/* Categories */}
+      {categories.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Categories
+            </h4>
+            {currentCategory && (
+              <button
+                type="button"
+                onClick={() => updateUrl({ category: null })}
+                className="text-[11px] font-semibold text-muted-foreground hover:text-red-600 cursor-pointer"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+            {categories.map((cat) => {
+              const identifier = cat.slug || cat._id || cat.id;
+              const isChecked =
+                currentCategory === cat.slug ||
+                currentCategory === cat._id ||
+                currentCategory === cat.id ||
+                (resolvedCategory &&
+                  (resolvedCategory._id === cat._id || resolvedCategory.slug === cat.slug));
+
+              return (
+                <div key={cat._id || cat.id} className="flex items-center gap-2.5">
+                  <Checkbox
+                    id={`filter-cat-${cat._id || cat.id}`}
+                    checked={Boolean(isChecked)}
+                    onChange={() => handleCategoryToggle(identifier)}
+                  />
+                  <label
+                    htmlFor={`filter-cat-${cat._id || cat.id}`}
+                    className={cn(
+                      "flex-1 cursor-pointer text-xs font-medium hover:text-[#007A55] transition-colors",
+                      isChecked ? "text-[#007A55] font-bold" : "text-slate-700"
+                    )}
+                  >
+                    {cat.name}
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Brands */}
+      {brands.length > 0 && (
+        <div className="space-y-3 pt-4 border-t">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Brands
+            </h4>
+            {currentBrand && (
+              <button
+                type="button"
+                onClick={() => updateUrl({ brand: null })}
+                className="text-[11px] font-semibold text-muted-foreground hover:text-red-600 cursor-pointer"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+            {brands.map((brand) => {
+              const identifier = brand.slug || brand._id || brand.id;
+              const isChecked =
+                currentBrand === brand.slug ||
+                currentBrand === brand._id ||
+                currentBrand === brand.id ||
+                (resolvedBrand &&
+                  (resolvedBrand._id === brand._id || resolvedBrand.slug === brand.slug));
+
+              return (
+                <div key={brand._id || brand.id} className="flex items-center gap-2.5">
+                  <Checkbox
+                    id={`filter-brand-${brand._id || brand.id}`}
+                    checked={Boolean(isChecked)}
+                    onChange={() => handleBrandToggle(identifier)}
+                  />
+                  <label
+                    htmlFor={`filter-brand-${brand._id || brand.id}`}
+                    className={cn(
+                      "flex-1 cursor-pointer text-xs font-medium hover:text-[#007A55] transition-colors",
+                      isChecked ? "text-[#007A55] font-bold" : "text-slate-700"
+                    )}
+                  >
+                    {brand.name}
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Trust & Guarantee Perks */}
+      <div className="rounded-xl bg-slate-50 p-4 border text-xs text-slate-600 space-y-2">
+        <p className="font-bold text-slate-900">Why Shop Buybox?</p>
+        <p className="text-[11px] leading-relaxed">
+          ✓ 100% Genuine Certified Gear<br />
+          ✓ 7-Day Hassle-Free Returns<br />
+          ✓ Verified Manufacturer Warranty
+        </p>
+      </div>
+    </div>
+  );
+
+  const displayTitle = initialCategoryName || resolvedCategory?.name || pageTitle;
+
+  return (
+    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+      {/* Breadcrumbs */}
+      <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Link href="/" className="hover:text-[#007A55] transition-colors">
+          Home
+        </Link>
+        <span>/</span>
+        {currentCategory && (
+          <>
+            <Link href="/shop" className="hover:text-[#007A55] transition-colors">
+              Shop
+            </Link>
+            <span>/</span>
+          </>
+        )}
+        <span className="font-semibold text-foreground truncate max-w-xs">{displayTitle}</span>
+      </nav>
+
+      {/* Header Banner */}
+      <div className="mb-8 rounded-2xl bg-[#FFF8D6] p-6 sm:p-8 border border-amber-200/60 shadow-xs">
+        <span className="text-[11px] font-extrabold uppercase tracking-widest text-[#007A55]">
+          Curated Catalog
+        </span>
+        <h1 className="mt-1 text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-slate-950">
+          {displayTitle}
+        </h1>
+        <p className="mt-2 max-w-2xl text-xs sm:text-sm text-slate-700 leading-relaxed">
+          {pageDescription}
+        </p>
+      </div>
+
+      {/* Filter and Sort Toolbar */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b pb-4">
+        {/* Mobile Filter Trigger & Results count */}
+        <div className="flex items-center gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setMobileFilterOpen(true)}
+            className="flex items-center gap-2 rounded-full border-border text-xs font-bold lg:hidden"
+          >
+            <SlidersHorizontal className="size-3.5 text-[#007A55]" />
+            Filters {activeFilterCount > 0 && `(${activeFilterCount})`}
+          </Button>
+
+          <p className="text-xs font-medium text-muted-foreground">
+            {isLoading
+              ? "Searching products..."
+              : `Showing ${products.length} of ${pagination.total} products`}
+            {currentSearch && (
+              <span className="font-bold text-foreground"> for &quot;{currentSearch}&quot;</span>
+            )}
+          </p>
+        </div>
+
+        {/* Sort Select */}
+        <div className="flex items-center gap-3">
+          <SortSelect
+            value={currentSort}
+            onChange={handleSortChange}
+          />
+        </div>
+      </div>
+
+      {/* Active Filter Chips */}
+      {hasActiveFilters && (
+        <div className="mb-6 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">Active:</span>
+
+          {currentSearch && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-800">
+              <span>Keyword: <strong>{currentSearch}</strong></span>
+              <button
+                type="button"
+                onClick={() => updateUrl({ search: null })}
+                aria-label="Remove search filter"
+                className="cursor-pointer hover:text-red-600 transition-colors p-0.5"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          )}
+
+          {currentCategory && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-[#007A55]">
+              <span>Category: <strong>{resolvedCategory?.name || currentCategory}</strong></span>
+              <button
+                type="button"
+                onClick={() => updateUrl({ category: null })}
+                aria-label="Remove category filter"
+                className="cursor-pointer hover:text-red-600 transition-colors p-0.5"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          )}
+
+          {currentBrand && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-800">
+              <span>Brand: <strong>{resolvedBrand?.name || currentBrand}</strong></span>
+              <button
+                type="button"
+                onClick={() => updateUrl({ brand: null })}
+                aria-label="Remove brand filter"
+                className="cursor-pointer hover:text-red-600 transition-colors p-0.5"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          )}
+
+          <button
+            type="button"
+            onClick={handleClearAll}
+            className="text-xs font-bold text-red-600 hover:underline cursor-pointer ml-1"
+          >
+            Clear all
+          </button>
+        </div>
+      )}
+
+      {/* Main Catalog Grid with Desktop Sidebar */}
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-4">
+        {/* Desktop Left Filter Sidebar */}
+        <aside className="hidden lg:block lg:col-span-1">
+          <div className="sticky top-28 rounded-2xl border bg-white p-5 shadow-xs">
+            {FilterContent}
+          </div>
+        </aside>
+
+        {/* Product Grid Area */}
+        <div className="lg:col-span-3">
+          {isLoading ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-3 sm:gap-4">
+              {Array.from({ length: 9 }).map((_, i) => (
+                <ProductCard key={`skeleton-${i}`} isLoading />
+              ))}
+            </div>
+          ) : isError ? (
+            <div className="rounded-2xl border border-red-100 bg-red-50/50 p-8 text-center my-6">
+              <p className="text-sm font-bold text-red-700">Failed to load catalog products</p>
+              <p className="text-xs text-red-600 mt-1">Please check your network and try again.</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRetry}
+                className="mt-4 rounded-full font-bold gap-1.5"
+              >
+                <RefreshCw className="size-3.5" />
+                Retry
+              </Button>
+            </div>
+          ) : products.length === 0 ? (
+            <div className="my-12 rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-8 sm:p-12 text-center">
+              <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 mb-4">
+                <Search className="size-6 stroke-[2]" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">No matching products found</h3>
+              <p className="mt-2 text-xs sm:text-sm text-muted-foreground max-w-md mx-auto">
+                {currentSearch
+                  ? `We couldn't find any products matching "${currentSearch}". Try checking your spelling or adjusting your filters.`
+                  : "No products match the selected filters. Try broadening your criteria."}
+              </p>
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                {hasActiveFilters && (
+                  <Button
+                    type="button"
+                    onClick={handleClearAll}
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full font-bold text-xs"
+                  >
+                    Clear All Filters
+                  </Button>
+                )}
+                <Link
+                  href="/shop"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#007A55] px-4 py-2 text-xs font-bold text-white hover:bg-[#006346] transition-colors shadow-xs"
+                >
+                  <span>Browse All Products</span>
+                  <ArrowRight className="size-3.5" />
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-3 sm:gap-4 md:gap-5">
+                {products.map((product) => {
+                  const id = product.id || product._id;
+                  const isWishlisted = isInWishlist(id);
+
+                  return (
+                    <ProductCard
+                      key={id}
+                      product={product}
+                      isWishlisted={isWishlisted}
+                      onWishlistToggle={(val) => handleWishlistToggle(product, val)}
+                      onAddToCart={() => handleAddToCart(product)}
+                    />
+                  );
+                })}
+              </div>
+
+              {/* Pagination Bar */}
+              {pagination.totalPages > 1 && (
+                <div className="mt-12 flex items-center justify-center gap-2 border-t pt-6">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={pagination.page <= 1}
+                    onClick={() => handlePageChange(pagination.page - 1)}
+                    className="rounded-full size-9 p-0 cursor-pointer disabled:cursor-not-allowed"
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft className="size-4" />
+                  </Button>
+
+                  {Array.from({ length: pagination.totalPages }).map((_, index) => {
+                    const pageNumber = index + 1;
+                    const isCurrent = pageNumber === pagination.page;
+
+                    return (
+                      <button
+                        key={pageNumber}
+                        type="button"
+                        onClick={() => handlePageChange(pageNumber)}
+                        aria-current={isCurrent ? "page" : undefined}
+                        className={`size-9 rounded-full text-xs font-bold transition-colors cursor-pointer ${
+                          isCurrent
+                            ? "bg-[#007A55] text-white shadow-xs"
+                            : "bg-white text-slate-700 border hover:border-[#007A55] hover:text-[#007A55]"
+                        }`}
+                      >
+                        {pageNumber}
+                      </button>
+                    );
+                  })}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={pagination.page >= pagination.totalPages}
+                    onClick={() => handlePageChange(pagination.page + 1)}
+                    className="rounded-full size-9 p-0 cursor-pointer disabled:cursor-not-allowed"
+                    aria-label="Next page"
+                  >
+                    <ChevronRight className="size-4" />
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Mobile Slide-out Filter Sheet */}
+      <Sheet open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
+        <SheetContent side="left" className="w-[310px] p-5 overflow-y-auto">
+          <SheetHeader className="mb-4">
+            <SheetTitle>Filter Products</SheetTitle>
+          </SheetHeader>
+          {FilterContent}
+          <div className="mt-6 pt-4 border-t">
+            <Button
+              className="w-full rounded-full bg-[#007A55] text-white font-bold text-xs py-2.5 hover:bg-[#006346] cursor-pointer"
+              onClick={() => setMobileFilterOpen(false)}
+            >
+              Apply Filters
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}
+
+export default ShopCatalog;

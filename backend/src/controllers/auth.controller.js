@@ -50,7 +50,7 @@ const login = asyncHandler(async (req, res) => {
 
 const refresh = asyncHandler(async (req, res) => {
   const refreshToken =
-    req.cookies.refreshToken || req.body.refreshToken;
+    req.refreshToken || req.cookies?.refreshToken || req.body?.refreshToken;
 
   if (!refreshToken) {
     throw new AppError(
@@ -83,7 +83,7 @@ const refresh = asyncHandler(async (req, res) => {
 
 const logout = asyncHandler(async (req, res) => {
   const refreshToken =
-  req.cookies.refreshToken || req.body.refreshToken;
+    req.refreshToken || req.cookies?.refreshToken || req.body?.refreshToken;
 
   const {
     verifyRefreshToken,

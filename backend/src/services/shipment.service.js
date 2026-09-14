@@ -16,6 +16,12 @@ const AppError = require("../errors/AppError");
 const {
   canTransitionShipmentStatus,
 } = require("../constants/shipping.constants");
+const {
+  ROLE_PERMISSIONS,
+} = require("../constants/role-permissions.constants");
+const {
+  PERMISSIONS,
+} = require("../constants/permissions.constants");
 
 /*
  * ============================================================
@@ -1312,7 +1318,7 @@ const getShipmentsByWarehouseId =
   };
 
 const getShipmentByTrackingNumber =
-  async (trackingNumber) => {
+  async (trackingNumber, requestingUser = null) => {
     if (
       typeof trackingNumber !==
         "string" ||
@@ -1337,6 +1343,55 @@ const getShipmentByTrackingNumber =
         404,
         "SHIPMENT_NOT_FOUND"
       );
+    }
+
+    if (requestingUser) {
+      const userPermissions =
+        ROLE_PERMISSIONS[requestingUser.role] || [];
+      const isPrivileged =
+        requestingUser.role === "admin" ||
+        requestingUser.role === "manager" ||
+        userPermissions.includes(PERMISSIONS.SHIPMENTS_READ);
+
+      if (isPrivileged) {
+        return shipment;
+      }
+
+      const customer = await Customer.findOne({
+        userId: requestingUser.id || requestingUser._id,
+        isActive: true,
+        deletedAt: null,
+      });
+
+      if (
+        !customer ||
+        shipment.customerId?.toString() !== customer._id.toString()
+      ) {
+        throw new AppError(
+          "Shipment not found",
+          404,
+          "SHIPMENT_NOT_FOUND"
+        );
+      }
+
+      const raw = shipment.toObject ? shipment.toObject() : { ...shipment };
+      return {
+        _id: raw._id,
+        shipmentNumber: raw.shipmentNumber,
+        trackingNumber: raw.trackingNumber,
+        status: raw.status,
+        carrier: raw.carrier,
+        serviceLevel: raw.serviceLevel,
+        trackingUrl: raw.trackingUrl,
+        shippingAddress: raw.shippingAddress,
+        items: raw.items,
+        shippedAt: raw.shippedAt,
+        deliveredAt: raw.deliveredAt,
+        cancelledAt: raw.cancelledAt,
+        returnedAt: raw.returnedAt,
+        createdAt: raw.createdAt,
+        updatedAt: raw.updatedAt,
+      };
     }
 
     return shipment;

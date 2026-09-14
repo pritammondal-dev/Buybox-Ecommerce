@@ -177,7 +177,8 @@ const getShipmentByTrackingNumber = async (
 ) => {
   const shipment =
     await shipmentService.getShipmentByTrackingNumber(
-      req.params.trackingNumber
+      req.params.trackingNumber,
+      req.user
     );
 
   return apiResponse.sendSuccess(res, {
