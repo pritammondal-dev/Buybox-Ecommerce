@@ -38,6 +38,7 @@ const storefrontMediaRoutes = require("./storefront-media.routes");
 const storefrontPublicationRoutes = require("./storefront-publication.routes");
 const wishlistRoutes = require("./wishlist.routes");
 const analyticsRoutes = require("./analytics.routes");
+const governanceRoutes = require("./governance.routes");
 
 const router = express.Router();
 
@@ -86,5 +87,6 @@ router.use("/storefront/announcement-bars",storefrontAnnouncementBarRoutes);
 router.use("/storefront/media",storefrontMediaRoutes);
 router.use("/storefront/publications",storefrontPublicationRoutes);
 router.use("/analytics", analyticsRoutes);
+router.use("/admin/governance", governanceRoutes);
 
 module.exports = router;
