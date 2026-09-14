@@ -21,7 +21,7 @@ A comprehensive audit of the entire Buybox Express application tree discovered *
 | Category Code | Classification Name | Description | Endpoint Count | Percentage |
 | :--- | :--- | :--- | :--- | :--- |
 | **A** | **Already Dynamic** | Operational routes verified and dynamically enforced in Phase 1D (Batch 1) | **17** | 6.5% |
-| **B** | **Safe Next Migration** | 61 routes migrated & verified in Batch 2A; 21 remaining in Batch 2B | **82** (61 Migrated / 21 Pending) | 31.3% |
+| **B** | **Safe Next Migration** | 61 routes migrated & verified in Batch 2A, 3 in Batch 2B; 18 remaining in Batch 2 | **82** (64 Migrated / 18 Pending) | 31.3% |
 | **C** | **Permission + Ownership** | Vendor self-service / mutations requiring dynamic permissions preserving resource ownership (Batch 3) | **19** | 7.3% |
 | **D** | **Permission + Scope** | Platform actor routes requiring WorkAssignment `requireScope()` enforcement (Batch 4) | **20** | 7.6% |
 | **E** | **Complex / Deferred** | Double-entry finance ledger, settlements, payouts, stock adjustments, refunds (Batch 5) | **22** | 8.4% |
@@ -277,9 +277,9 @@ The table below lists every production route discovered in the backend.
 | `POST` | `/api/v1/tax/preview` | customer | `none` | `none` | Customer session context | `authenticate` | `authenticate` | Public / Customer |
 | `GET` | `/api/v1/tax/rules` | employee/platform actor | `tax:read` | `none` | None (Platform Catalog/Marketing Read) | `authenticate + requirePermissions(tax:read)` | `authenticate + requirePermissions(tax:read)` | Batch 1 (Phase 1D) |
 | `GET` | `/api/v1/tax/rules/:id` | employee/platform actor | `tax:read` | `none` | None (Platform Catalog/Marketing Read) | `authenticate + requirePermissions(tax:read)` | `authenticate + requirePermissions(tax:read)` | Batch 1 (Phase 1D) |
-| `POST` | `/api/v1/tax/rules` | employee/platform actor | `tax:manage` | `none` | None (Platform Admin/Operational) | `authenticate + requirePermissions(tax:manage)` | `authenticate + requirePermissions(tax:manage)` | Batch 2 (Safe Permission) |
-| `PUT` | `/api/v1/tax/rules/:id` | employee/platform actor | `tax:manage` | `none` | None (Platform Admin/Operational) | `authenticate + requirePermissions(tax:manage)` | `authenticate + requirePermissions(tax:manage)` | Batch 2 (Safe Permission) |
-| `DELETE` | `/api/v1/tax/rules/:id` | employee/platform actor | `tax:manage` | `none` | None (Platform Admin/Operational) | `authenticate + requirePermissions(tax:manage)` | `authenticate + requirePermissions(tax:manage)` | Batch 2 (Safe Permission) |
+| `POST` | `/api/v1/tax/rules` | employee/platform actor | `tax:manage` | `none` | None (Platform Admin/Operational) | `authenticate + requirePermissions(tax:manage)` | `authenticate + requirePermissions(tax:manage)` | Batch 2B (Migrated & Verified) |
+| `PUT` | `/api/v1/tax/rules/:id` | employee/platform actor | `tax:manage` | `none` | None (Platform Admin/Operational) | `authenticate + requirePermissions(tax:manage)` | `authenticate + requirePermissions(tax:manage)` | Batch 2B (Migrated & Verified) |
+| `DELETE` | `/api/v1/tax/rules/:id` | employee/platform actor | `tax:manage` | `none` | None (Platform Admin/Operational) | `authenticate + requirePermissions(tax:manage)` | `authenticate + requirePermissions(tax:manage)` | Batch 2B (Migrated & Verified) |
 
 ### Domain: CAMPAIGNS (8 endpoints)
 
@@ -649,9 +649,10 @@ The remaining production endpoints should be migrated in the following strictly 
 
 ### Batch 2 — Safe Permission Migration (82 Endpoints)
 > [!NOTE]
-> **Batch 2A Migration Status (COMPLETED):**
-> 61 endpoints (55 Storefront Admin Operations + 6 CMS Page Mutations) were formally migrated and verified in Batch 2A under dynamic PBAC with 87 passing integration tests (`backend/tests/batch2a-storefront-cms-authorization.test.js`).
-> The remaining 21 Batch 2 endpoints will be migrated in Batch 2B.
+> **Batch 2A & 2B Migration Status (COMPLETED):**
+> - **Batch 2A (Completed):** 61 endpoints (55 Storefront Admin Operations + 6 CMS Page Mutations) were formally migrated and verified in Batch 2A under dynamic PBAC with 88 passing integration tests (`backend/tests/batch2a-storefront-cms-authorization.test.js`).
+> - **Batch 2B (Completed):** 3 endpoints (Tax Rule Mutations) were formally migrated and verified in Batch 2B under dynamic PBAC with 33 passing integration tests (`backend/tests/batch2b-tax-authorization.test.js`).
+> Cumulative Batch 2 migrated: 64 endpoints. The remaining 18 Batch 2 endpoints will be migrated in subsequent sub-batches.
 
 #### Batch 2A — Storefront & CMS Operations (61 Endpoints — MIGRATED & VERIFIED)
 - **Scope:** Operational and management routes with clear, static permission mappings and zero scope complexity.
@@ -669,7 +670,7 @@ The remaining production endpoints should be migrated in the following strictly 
     - SEO: 3 (`POST /`, `GET /admin`, `PATCH /:id`)
     - Settings: 3 (`POST /`, `GET /admin`, `PATCH /`)
   - **CMS Page Mutations (6 endpoints):** `POST /cms/pages`, `PATCH /cms/pages/:pageId`, `PATCH /cms/pages/:pageId/publish`, `PATCH /cms/pages/:pageId/unpublish`, `PATCH /cms/pages/:pageId/archive`, `DELETE /cms/pages/:pageId` (`settings:manage`)
-  - **Tax Rule Mutations (3 endpoints):** `POST /tax/rules`, `PUT /tax/rules/:id`, `DELETE /tax/rules/:id` (`tax:manage`)
+  - **Tax Rule Mutations (3 endpoints — MIGRATED & VERIFIED in Batch 2B):** `POST /tax/rules`, `PUT /tax/rules/:id`, `DELETE /tax/rules/:id` (`tax:manage`)
   - **Coupon Mutations (4 endpoints):** `POST /coupons`, `PATCH /coupons/:couponId`, `PATCH /coupons/:couponId/activate`, `PATCH /coupons/:couponId/deactivate` (`coupons:manage`)
   - **Coupon Redemptions Creation (1 endpoint):** `POST /coupon-redemptions` (`coupons:manage`)
   - **Campaign Mutations (6 endpoints):** `POST /campaigns`, `PATCH /campaigns/:campaignId`, `PATCH /campaigns/:campaignId/schedule`, `PATCH /campaigns/:campaignId/activate`, `PATCH /campaigns/:campaignId/deactivate`, `PATCH /campaigns/:campaignId/status` (`campaigns:manage`)
