@@ -9,7 +9,10 @@ const EmployeePermissionGrant = require("../src/models/EmployeePermissionGrant")
 const EmployeePermissionRestriction = require("../src/models/EmployeePermissionRestriction");
 const {
   ROLE_PERMISSIONS,
+  GOVERNANCE_PERMISSIONS,
+  OPERATIONAL_PERMISSIONS,
 } = require("../src/constants/role-permissions.constants");
+const { PERMISSIONS } = require("../src/constants/permissions.constants");
 const {
   getEffectivePermissions,
   hasPermission,
@@ -855,7 +858,16 @@ describe("Phase 1C — Effective Permission Resolver & Versioned Authorization",
         "/test/protected-perm",
         authenticate,
         requirePermissions("test:sensitive:action"),
-        (req, res) => res.status(200).json({ success: true, user: req.user }),
+        (req, res) =>
+          res.status(200).json({ success: true, user: req.user, auth: req.auth }),
+      );
+
+      testApp.get(
+        "/test/governance-perm",
+        authenticate,
+        requirePermissions("roles:manage"),
+        (req, res) =>
+          res.status(200).json({ success: true, user: req.user, auth: req.auth }),
       );
 
       testApp.get(
@@ -1130,6 +1142,155 @@ describe("Phase 1C — Effective Permission Resolver & Versioned Authorization",
 
       expect(resForbidden.status).toBe(403);
       expect(resForbidden.body.code).toBe("INSUFFICIENT_ROLE");
+    });
+  });
+
+  describe("12. Phase 1D — Legacy Fallback Correction & Governance Segregation", () => {
+    const express = require("express");
+    const request = require("supertest");
+    const authenticate = require("../src/middlewares/authentication.middleware");
+    const {
+      requirePermissions,
+    } = require("../src/middlewares/authorization.middleware");
+    const errorHandler = require("../src/middlewares/error.middleware");
+    const { ROLES } = require("../src/constants/auth.constants");
+
+    let testApp;
+
+    beforeAll(() => {
+      testApp = express();
+      testApp.use(express.json());
+
+      testApp.get(
+        "/test/governance-perm",
+        authenticate,
+        requirePermissions("roles:manage"),
+        (req, res) =>
+          res.status(200).json({ success: true, user: req.user, auth: req.auth }),
+      );
+
+      testApp.use(errorHandler);
+    });
+
+    it("1. Legacy admin fallback contains strictly the 37 operational permissions", () => {
+      const adminPerms = ROLE_PERMISSIONS[ROLES.ADMIN];
+      expect(adminPerms).toHaveLength(37);
+
+      // Verify that every governance permission is strictly absent
+      expect(adminPerms).not.toContain(PERMISSIONS.ROLES_MANAGE);
+      expect(adminPerms).not.toContain(PERMISSIONS.PERMISSIONS_MANAGE);
+      expect(adminPerms).not.toContain(PERMISSIONS.EMPLOYEES_MANAGE);
+      expect(adminPerms).not.toContain(PERMISSIONS.WORK_ASSIGNMENTS_MANAGE);
+      expect(adminPerms).not.toContain(PERMISSIONS.AUDIT_LOGS_READ);
+      expect(adminPerms).not.toContain(PERMISSIONS.ROLES_READ);
+      expect(adminPerms).not.toContain(PERMISSIONS.PERMISSIONS_READ);
+      expect(adminPerms).not.toContain(PERMISSIONS.EMPLOYEES_READ);
+      expect(adminPerms).not.toContain(PERMISSIONS.WORK_ASSIGNMENTS_READ);
+
+      // Verify all 9 governance permissions are excluded
+      for (const govPerm of GOVERNANCE_PERMISSIONS) {
+        expect(adminPerms).not.toContain(govPerm);
+      }
+    });
+
+    it("2. Legacy super_admin fallback retains all 46 permissions (operational + governance)", () => {
+      const superAdminPerms = ROLE_PERMISSIONS[ROLES.SUPER_ADMIN];
+      expect(superAdminPerms).toHaveLength(46);
+
+      // Verify every governance permission is present
+      for (const govPerm of GOVERNANCE_PERMISSIONS) {
+        expect(superAdminPerms).toContain(govPerm);
+      }
+    });
+
+    it("3. Legacy admin caller without Employee profile is rejected on governance endpoints", async () => {
+      const legacyAdminUser = await User.create({
+        firstName: "Legacy",
+        lastName: "Admin",
+        email: `legacy_admin_${Date.now()}@test-auth-resolver.com`,
+        password: "Password123!",
+        role: "admin",
+        isActive: true,
+      });
+
+      const token = generateAccessToken({
+        sub: legacyAdminUser._id.toString(),
+        role: "admin",
+        authVersion: 1,
+        permissionVersion: 1,
+      });
+
+      const res = await request(testApp)
+        .get("/test/governance-perm")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe("INSUFFICIENT_PERMISSIONS");
+    });
+
+    it("4. Legacy super_admin caller without Employee profile succeeds on governance endpoints", async () => {
+      const legacySuperAdminUser = await User.create({
+        firstName: "Legacy",
+        lastName: "SuperAdmin",
+        email: `legacy_superadmin_${Date.now()}@test-auth-resolver.com`,
+        password: "Password123!",
+        role: "super_admin",
+        isActive: true,
+      });
+
+      const token = generateAccessToken({
+        sub: legacySuperAdminUser._id.toString(),
+        role: "super_admin",
+        authVersion: 1,
+        permissionVersion: 1,
+      });
+
+      const res = await request(testApp)
+        .get("/test/governance-perm")
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.auth.isPlatformActor).toBe(true);
+      expect(res.body.auth.effectivePermissions).toContain("roles:manage");
+    });
+
+    it("5. Dynamic seed system_admin role is operational-only and system_super_admin has all permissions", () => {
+      const { SYSTEM_ROLES } = require("../src/seeds/rbac.seed");
+      const systemAdmin = SYSTEM_ROLES.find((r) => r.slug === "system_admin");
+      const systemSuperAdmin = SYSTEM_ROLES.find((r) => r.slug === "system_super_admin");
+
+      expect(systemAdmin).toBeDefined();
+      expect(systemAdmin.permissions).toHaveLength(37);
+      for (const govPerm of GOVERNANCE_PERMISSIONS) {
+        expect(systemAdmin.permissions).not.toContain(govPerm);
+      }
+
+      expect(systemSuperAdmin).toBeDefined();
+      expect(systemSuperAdmin.permissions).toHaveLength(46);
+      for (const govPerm of GOVERNANCE_PERMISSIONS) {
+        expect(systemSuperAdmin.permissions).toContain(govPerm);
+      }
+    });
+
+    it("6. Customer and vendor static permissions remain unchanged", () => {
+      expect(ROLE_PERMISSIONS[ROLES.CUSTOMER]).toEqual([
+        PERMISSIONS.PRODUCTS_READ,
+        PERMISSIONS.ORDERS_READ,
+        PERMISSIONS.REVIEWS_READ,
+      ]);
+
+      expect(ROLE_PERMISSIONS[ROLES.VENDOR]).toContain(PERMISSIONS.PRODUCTS_READ);
+      expect(ROLE_PERMISSIONS[ROLES.VENDOR]).toContain(PERMISSIONS.PRODUCTS_CREATE);
+      expect(ROLE_PERMISSIONS[ROLES.VENDOR]).toContain(PERMISSIONS.PRODUCTS_UPDATE);
+      expect(ROLE_PERMISSIONS[ROLES.VENDOR]).toContain(PERMISSIONS.INVENTORY_READ);
+      expect(ROLE_PERMISSIONS[ROLES.VENDOR]).toContain(PERMISSIONS.INVENTORY_MANAGE);
+      expect(ROLE_PERMISSIONS[ROLES.VENDOR]).toContain(PERMISSIONS.ORDERS_READ);
+      expect(ROLE_PERMISSIONS[ROLES.VENDOR]).toContain(PERMISSIONS.REVIEWS_READ);
+      expect(ROLE_PERMISSIONS[ROLES.VENDOR]).toContain(PERMISSIONS.REVIEWS_MANAGE);
+      expect(ROLE_PERMISSIONS[ROLES.VENDOR]).toContain(PERMISSIONS.SHIPMENTS_READ_OWN);
+      expect(ROLE_PERMISSIONS[ROLES.VENDOR]).toContain(PERMISSIONS.SHIPMENTS_MANAGE_OWN);
+      expect(ROLE_PERMISSIONS[ROLES.VENDOR]).toContain(PERMISSIONS.ANALYTICS_READ_OWN);
     });
   });
 });

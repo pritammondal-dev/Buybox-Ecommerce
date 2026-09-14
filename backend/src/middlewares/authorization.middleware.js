@@ -33,6 +33,10 @@ const requirePermissions = (...requiredPermissions) => {
             ),
           );
         }
+        req.auth = {
+          effectivePermissions,
+          isPlatformActor: !["customer", "vendor"].includes(req.user.role),
+        };
         return next();
       } catch (err) {
         return next(err);
@@ -61,6 +65,10 @@ const requirePermissions = (...requiredPermissions) => {
               ),
             );
           }
+          req.auth = {
+            effectivePermissions,
+            isPlatformActor: !["customer", "vendor"].includes(req.user.role),
+          };
           return next();
         }
       } catch (err) {
@@ -85,6 +93,11 @@ const requirePermissions = (...requiredPermissions) => {
         ),
       );
     }
+
+    req.auth = {
+      effectivePermissions: userPermissions,
+      isPlatformActor: !["customer", "vendor"].includes(req.user.role),
+    };
 
     next();
   };

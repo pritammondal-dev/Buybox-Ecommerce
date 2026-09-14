@@ -1,6 +1,22 @@
 const { ROLES } = require("./auth.constants");
 const { PERMISSIONS } = require("./permissions.constants");
 
+const GOVERNANCE_PERMISSIONS = Object.freeze([
+  PERMISSIONS.ROLES_READ,
+  PERMISSIONS.ROLES_MANAGE,
+  PERMISSIONS.PERMISSIONS_READ,
+  PERMISSIONS.PERMISSIONS_MANAGE,
+  PERMISSIONS.EMPLOYEES_READ,
+  PERMISSIONS.EMPLOYEES_MANAGE,
+  PERMISSIONS.WORK_ASSIGNMENTS_READ,
+  PERMISSIONS.WORK_ASSIGNMENTS_MANAGE,
+  PERMISSIONS.AUDIT_LOGS_READ,
+]);
+
+const OPERATIONAL_PERMISSIONS = Object.freeze(
+  Object.values(PERMISSIONS).filter((p) => !GOVERNANCE_PERMISSIONS.includes(p))
+);
+
 const ROLE_PERMISSIONS = Object.freeze({
   [ROLES.CUSTOMER]: [
     PERMISSIONS.PRODUCTS_READ,
@@ -86,12 +102,16 @@ const ROLE_PERMISSIONS = Object.freeze({
     PERMISSIONS.ANALYTICS_READ,
   ],
 
-  [ROLES.ADMIN]: Object.values(PERMISSIONS),
+  // Admin possesses all 37 operational permissions (governance permissions excluded)
+  [ROLES.ADMIN]: OPERATIONAL_PERMISSIONS,
 
+  // Super Admin possesses ALL 46 permissions (operational + governance)
   [ROLES.SUPER_ADMIN]: Object.values(PERMISSIONS),
 });
 
 module.exports = {
   ROLE_PERMISSIONS,
+  GOVERNANCE_PERMISSIONS,
+  OPERATIONAL_PERMISSIONS,
 };
 
