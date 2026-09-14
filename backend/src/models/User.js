@@ -60,6 +60,18 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
+    authVersion: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
+
+    permissionVersion: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
   },
   {
     timestamps: true,

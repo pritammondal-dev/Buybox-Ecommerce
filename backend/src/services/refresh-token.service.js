@@ -115,6 +115,8 @@ if (storedToken.revokedAt) {
   const newAccessToken = generateAccessToken({
     sub: user._id.toString(),
     role: user.role,
+    authVersion: user.authVersion || 1,
+    permissionVersion: user.permissionVersion || 1,
   });
 
   const newRefreshToken = generateRefreshToken({

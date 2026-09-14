@@ -6,6 +6,8 @@ const env = require("../config/env");
 const generateAccessToken = (payload = {}) => {
   return jwt.sign(
     {
+      authVersion: payload.authVersion ?? 1,
+      permissionVersion: payload.permissionVersion ?? 1,
       ...payload,
       type: "access",
     },

@@ -414,6 +414,8 @@ const loginUser = async ({
   const accessToken = generateAccessToken({
     sub: user._id.toString(),
     role: user.role,
+    authVersion: user.authVersion || 1,
+    permissionVersion: user.permissionVersion || 1,
   });
 
   const refreshToken = generateRefreshToken({
