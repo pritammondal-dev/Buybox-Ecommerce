@@ -461,10 +461,10 @@ describe("Phase 1B.1 — Dynamic RBAC/PBAC Foundation", () => {
   });
 
   describe("9. RBAC Seeding Idempotency", () => {
-    it("seeds all 46 permissions and 6 system roles idempotently", async () => {
+    it("seeds all 47 permissions and 6 system roles idempotently", async () => {
       // First seed run
       const result1 = await seedRbac();
-      expect(result1.permissionsSeeded).toBe(46);
+      expect(result1.permissionsSeeded).toBe(47);
       expect(result1.rolesSeeded).toBe(6);
       expect(result1.mappingsSeeded).toBeGreaterThan(50);
 
@@ -472,7 +472,7 @@ describe("Phase 1B.1 — Dynamic RBAC/PBAC Foundation", () => {
       const roleCount1 = await Role.countDocuments();
       const mappingCount1 = await RolePermission.countDocuments();
 
-      expect(permCount1).toBe(46);
+      expect(permCount1).toBe(47);
       expect(roleCount1).toBe(6);
 
       // Verify system_admin does NOT have RBAC governance permissions
@@ -494,14 +494,14 @@ describe("Phase 1B.1 — Dynamic RBAC/PBAC Foundation", () => {
 
       // Second seed run (verify complete idempotency)
       const result2 = await seedRbac();
-      expect(result2.permissionsSeeded).toBe(46);
+      expect(result2.permissionsSeeded).toBe(47);
       expect(result2.rolesSeeded).toBe(6);
 
       const permCount2 = await Permission.countDocuments();
       const roleCount2 = await Role.countDocuments();
       const mappingCount2 = await RolePermission.countDocuments();
 
-      expect(permCount2).toBe(46);
+      expect(permCount2).toBe(47);
       expect(roleCount2).toBe(6);
       expect(mappingCount2).toBe(mappingCount1);
     });

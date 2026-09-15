@@ -222,6 +222,7 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
       await mongoose.connect(TEST_MONGODB_URI);
     }
     await getOrCreatePermission(PERMISSIONS.REVIEWS_MANAGE);
+    await getOrCreatePermission(PERMISSIONS.REVIEWS_MODERATE);
     await getOrCreatePermission(PERMISSIONS.VENDORS_READ);
   });
 
@@ -247,7 +248,7 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
   // 1. Router Stack Mechanical Reconciliation
   // ---------------------------------------------------------------------------
   describe("1. Router Stack Mechanical Reconciliation", () => {
-    test("reconciliation: review.routes.js mounts PATCH /:reviewId/moderate with authenticate and requirePermissions(reviews:manage)", () => {
+    test("reconciliation: review.routes.js mounts PATCH /:reviewId/moderate with authenticate and requirePermissions(reviews:moderate)", () => {
       const reviewRoutes = require("../src/routes/review.routes");
       expect(reviewRoutes).toBeDefined();
 
@@ -343,7 +344,7 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
   // 3. Unauthorized Access Denial (403)
   // ---------------------------------------------------------------------------
   describe("3. Unauthorized Access Denial (403)", () => {
-    test("unauthorized access: employee without reviews:manage is rejected with 403 on PATCH /reviews/:reviewId/moderate", async () => {
+    test("unauthorized access: employee without reviews:moderate is rejected with 403 on PATCH /reviews/:reviewId/moderate", async () => {
       const { token } = await createTestEmployee();
       const res = await dispatchRequest(
         "PATCH",
@@ -367,12 +368,12 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
   // 4. Authorized Access via Dynamic Roles
   // ---------------------------------------------------------------------------
   describe("4. Authorized Access via Dynamic Roles", () => {
-    test("authorized access: employee with active dynamic role containing reviews:manage passes authorization on PATCH /reviews/:reviewId/moderate", async () => {
+    test("authorized access: employee with active dynamic role containing reviews:moderate passes authorization on PATCH /reviews/:reviewId/moderate", async () => {
       const { employee, token } = await createTestEmployee();
       await assignRoleWithPermissions(
         employee._id,
         `test_batch2f_mod_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        [PERMISSIONS.REVIEWS_MANAGE]
+        [PERMISSIONS.REVIEWS_MODERATE]
       );
 
       const res = await dispatchRequest(
@@ -436,9 +437,9 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
   // 6. Dynamic PBAC Lifecycles & Dominance
   // ---------------------------------------------------------------------------
   describe("6. Dynamic PBAC Lifecycles & Dominance", () => {
-    test("direct grant: direct EmployeePermissionGrant grants reviews:manage without an assigned role", async () => {
+    test("direct grant: direct EmployeePermissionGrant grants reviews:moderate without an assigned role", async () => {
       const { employee, token } = await createTestEmployee();
-      const perm = await getOrCreatePermission(PERMISSIONS.REVIEWS_MANAGE);
+      const perm = await getOrCreatePermission(PERMISSIONS.REVIEWS_MODERATE);
 
       await EmployeePermissionGrant.create({
         employeeId: employee._id,
@@ -472,14 +473,14 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
       expect(res.body.success).toBe(true);
     });
 
-    test("restriction dominance: direct restriction overrides role and direct grant for reviews:manage", async () => {
+    test("restriction dominance: direct restriction overrides role and direct grant for reviews:moderate", async () => {
       const { employee, token } = await createTestEmployee();
-      const perm = await getOrCreatePermission(PERMISSIONS.REVIEWS_MANAGE);
+      const perm = await getOrCreatePermission(PERMISSIONS.REVIEWS_MODERATE);
 
       await assignRoleWithPermissions(
         employee._id,
         `test_batch2f_dom_rev_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        [PERMISSIONS.REVIEWS_MANAGE]
+        [PERMISSIONS.REVIEWS_MODERATE]
       );
 
       await EmployeePermissionGrant.create({
@@ -537,9 +538,9 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
       expect(res.body.code).toBe("INSUFFICIENT_PERMISSIONS");
     });
 
-    test("expired grant: expired direct grant excludes reviews:manage and yields 403", async () => {
+    test("expired grant: expired direct grant excludes reviews:moderate and yields 403", async () => {
       const { employee, token } = await createTestEmployee();
-      const perm = await getOrCreatePermission(PERMISSIONS.REVIEWS_MANAGE);
+      const perm = await getOrCreatePermission(PERMISSIONS.REVIEWS_MODERATE);
 
       await EmployeePermissionGrant.create({
         employeeId: employee._id,
@@ -574,14 +575,14 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
       expect(res.body.code).toBe("INSUFFICIENT_PERMISSIONS");
     });
 
-    test("expired restriction: expired restriction on reviews:manage no longer blocks active role", async () => {
+    test("expired restriction: expired restriction on reviews:moderate no longer blocks active role", async () => {
       const { employee, token } = await createTestEmployee();
-      const perm = await getOrCreatePermission(PERMISSIONS.REVIEWS_MANAGE);
+      const perm = await getOrCreatePermission(PERMISSIONS.REVIEWS_MODERATE);
 
       await assignRoleWithPermissions(
         employee._id,
         `test_batch2f_exprestr_rev_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        [PERMISSIONS.REVIEWS_MANAGE]
+        [PERMISSIONS.REVIEWS_MODERATE]
       );
 
       // Restriction expired in past
@@ -658,12 +659,12 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
   // 7. Employee Lifecycle Status Gates
   // ---------------------------------------------------------------------------
   describe("7. Employee Lifecycle Status Gates", () => {
-    test("lifecycle: suspended employee is denied reviews:manage access with 403", async () => {
+    test("lifecycle: suspended employee is denied reviews:moderate access with 403", async () => {
       const { employee, token } = await createTestEmployee({ status: "suspended" });
       await assignRoleWithPermissions(
         employee._id,
         `test_batch2f_susp_rev_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        [PERMISSIONS.REVIEWS_MANAGE]
+        [PERMISSIONS.REVIEWS_MODERATE]
       );
 
       const res = await dispatchRequest(
@@ -689,12 +690,12 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
       expect(res.body.code).toBe("INSUFFICIENT_PERMISSIONS");
     });
 
-    test("lifecycle: terminated employee is denied reviews:manage access with 403", async () => {
+    test("lifecycle: terminated employee is denied reviews:moderate access with 403", async () => {
       const { employee, token } = await createTestEmployee({ status: "terminated" });
       await assignRoleWithPermissions(
         employee._id,
         `test_batch2f_term_rev_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        [PERMISSIONS.REVIEWS_MANAGE]
+        [PERMISSIONS.REVIEWS_MODERATE]
       );
 
       const res = await dispatchRequest(
@@ -725,7 +726,7 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
       await assignRoleWithPermissions(
         employee._id,
         `test_batch2f_inact_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        [PERMISSIONS.REVIEWS_MANAGE, PERMISSIONS.VENDORS_READ]
+        [PERMISSIONS.REVIEWS_MODERATE, PERMISSIONS.VENDORS_READ]
       );
 
       // Deactivate user in DB
@@ -750,14 +751,14 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
   // 8. Dynamic Version Staleness & Invalidation
   // ---------------------------------------------------------------------------
   describe("8. Dynamic Version Staleness & Invalidation", () => {
-    test("permission version staleness: DB recalculation resolves newly granted reviews:manage permission dynamically", async () => {
+    test("permission version staleness: DB recalculation resolves newly granted reviews:moderate permission dynamically", async () => {
       const { user, employee, token } = await createTestEmployee();
 
       // Assign permission in DB after token issuance
       await assignRoleWithPermissions(
         employee._id,
         `test_batch2f_pv_rev_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        [PERMISSIONS.REVIEWS_MANAGE]
+        [PERMISSIONS.REVIEWS_MODERATE]
       );
 
       // Increment employee permissionVersion in DB to signal staleness
@@ -796,7 +797,7 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
       await assignRoleWithPermissions(
         employee._id,
         `test_batch2f_av_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        [PERMISSIONS.REVIEWS_MANAGE, PERMISSIONS.VENDORS_READ]
+        [PERMISSIONS.REVIEWS_MODERATE, PERMISSIONS.VENDORS_READ]
       );
 
       // Invalidate session in DB
@@ -847,9 +848,9 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
       expect(res.body.code).toBe("INSUFFICIENT_PERMISSIONS");
     });
 
-    test("vendor employee isolation: employee with vendor role lacking reviews:manage is rejected with 403 on PATCH /reviews/:reviewId/moderate", async () => {
+    test("vendor employee isolation: employee with vendor role lacking reviews:moderate is rejected with 403 on PATCH /reviews/:reviewId/moderate", async () => {
       const { employee, token } = await createTestEmployee({ userRole: ROLES.VENDOR });
-      // Employee record exists, but employee has no reviews:manage role
+      // Employee record exists, but employee has no reviews:moderate role
       const res = await dispatchRequest(
         "PATCH",
         `/api/v1/reviews/${testId}/moderate`,
@@ -865,7 +866,7 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
       await assignRoleWithPermissions(
         employee._id,
         `test_batch2f_admin_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        [PERMISSIONS.REVIEWS_MANAGE, PERMISSIONS.VENDORS_READ]
+        [PERMISSIONS.REVIEWS_MODERATE, PERMISSIONS.VENDORS_READ]
       );
 
       const resMod = await dispatchRequest(
@@ -886,7 +887,7 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
       await assignRoleWithPermissions(
         employee._id,
         `test_batch2f_sa_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        [PERMISSIONS.REVIEWS_MANAGE, PERMISSIONS.VENDORS_READ]
+        [PERMISSIONS.REVIEWS_MODERATE, PERMISSIONS.VENDORS_READ]
       );
 
       const resMod = await dispatchRequest(
@@ -912,7 +913,7 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
       await assignRoleWithPermissions(
         employee._id,
         `test_batch2f_biz1_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        [PERMISSIONS.REVIEWS_MANAGE]
+        [PERMISSIONS.REVIEWS_MODERATE]
       );
 
       const { review } = await createTestReview({ status: "pending" });
@@ -940,7 +941,7 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
       await assignRoleWithPermissions(
         employee._id,
         `test_batch2f_biz2_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        [PERMISSIONS.REVIEWS_MANAGE]
+        [PERMISSIONS.REVIEWS_MODERATE]
       );
 
       const { review } = await createTestReview({ status: "pending" });
@@ -970,7 +971,7 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
       await assignRoleWithPermissions(
         employee._id,
         `test_batch2f_biz3_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        [PERMISSIONS.REVIEWS_MANAGE]
+        [PERMISSIONS.REVIEWS_MODERATE]
       );
 
       const { review } = await createTestReview({ status: "pending" });
@@ -992,7 +993,7 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
       await assignRoleWithPermissions(
         employee._id,
         `test_batch2f_biz4_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        [PERMISSIONS.REVIEWS_MANAGE]
+        [PERMISSIONS.REVIEWS_MODERATE]
       );
 
       const { review } = await createTestReview({ status: "pending" });
@@ -1013,7 +1014,7 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
       await assignRoleWithPermissions(
         employee._id,
         `test_batch2f_biz5_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        [PERMISSIONS.REVIEWS_MANAGE]
+        [PERMISSIONS.REVIEWS_MODERATE]
       );
 
       const res = await dispatchRequest(
@@ -1033,7 +1034,7 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
       await assignRoleWithPermissions(
         employee._id,
         `test_batch2f_biz6_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        [PERMISSIONS.REVIEWS_MANAGE]
+        [PERMISSIONS.REVIEWS_MODERATE]
       );
 
       const nonExistentId = new mongoose.Types.ObjectId().toString();

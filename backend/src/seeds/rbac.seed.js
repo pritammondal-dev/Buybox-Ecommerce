@@ -4,8 +4,8 @@ const Permission = require("../models/Permission");
 const RolePermission = require("../models/RolePermission");
 
 /**
- * 46 Atomic Permission Definitions
- * 37 Existing Operational Permissions + 9 Dynamic RBAC Management Permissions
+ * 47 Atomic Permission Definitions
+ * 38 Existing Operational Permissions + 9 Dynamic RBAC Management Permissions
  */
 const PERMISSION_DEFINITIONS = [
   // Products (4)
@@ -208,7 +208,7 @@ const PERMISSION_DEFINITIONS = [
     description: "Create, modify, and schedule marketing campaigns",
   },
 
-  // Reviews (2)
+  // Reviews (3)
   {
     slug: PERMISSIONS.REVIEWS_READ,
     name: "Read Reviews",
@@ -219,7 +219,13 @@ const PERMISSION_DEFINITIONS = [
     slug: PERMISSIONS.REVIEWS_MANAGE,
     name: "Manage Reviews",
     module: "reviews",
-    description: "Moderate, approve, and respond to product reviews",
+    description: "Respond to customer reviews for own products",
+  },
+  {
+    slug: PERMISSIONS.REVIEWS_MODERATE,
+    name: "Moderate Reviews",
+    module: "reviews",
+    description: "Approve, reject, or hide customer reviews platform-wide",
   },
 
   // Support Tickets (2)
@@ -395,6 +401,7 @@ const SYSTEM_ROLES = [
       PERMISSIONS.VENDORS_READ,
       PERMISSIONS.REVIEWS_READ,
       PERMISSIONS.REVIEWS_MANAGE,
+      PERMISSIONS.REVIEWS_MODERATE,
       PERMISSIONS.SUPPORT_TICKETS_READ,
       PERMISSIONS.SUPPORT_TICKETS_MANAGE,
       PERMISSIONS.PAYMENTS_READ,
@@ -416,7 +423,7 @@ const SYSTEM_ROLES = [
     description: "Platform operational administrator",
     isSystem: true,
     isActive: true,
-    // All 37 operational platform permissions (excludes Super Admin governance permissions)
+    // All 38 operational platform permissions (excludes Super Admin governance permissions)
     permissions: [
       PERMISSIONS.PRODUCTS_READ,
       PERMISSIONS.PRODUCTS_CREATE,
@@ -449,6 +456,7 @@ const SYSTEM_ROLES = [
       PERMISSIONS.CAMPAIGNS_MANAGE,
       PERMISSIONS.REVIEWS_READ,
       PERMISSIONS.REVIEWS_MANAGE,
+      PERMISSIONS.REVIEWS_MODERATE,
       PERMISSIONS.SUPPORT_TICKETS_READ,
       PERMISSIONS.SUPPORT_TICKETS_MANAGE,
       PERMISSIONS.TAX_READ,
@@ -463,7 +471,7 @@ const SYSTEM_ROLES = [
     description: "Supreme platform governance and security authority",
     isSystem: true,
     isActive: true,
-    // ALL 46 permissions: 37 operational + 9 RBAC governance
+    // ALL 47 permissions: 38 operational + 9 RBAC governance
     permissions: Object.values(PERMISSIONS),
   },
 ];

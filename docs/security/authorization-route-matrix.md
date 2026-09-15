@@ -311,7 +311,7 @@ The table below lists every production route discovered in the backend.
 | `GET` | `/api/v1/reviews/:reviewId` | customer | `none` | `none` | Customer owns resource via req.user.id | `authenticate` | `authenticate` | Public / Customer |
 | `GET` | `/api/v1/reviews/product/:productId` | public | `none` | `none` | None (Public) | `None (Public)` | `None (Public)` | Public / Customer |
 | `PATCH` | `/api/v1/reviews/:reviewId` | customer | `none` | `none` | Customer owns resource via req.user.id | `authenticate` | `authenticate` | Public / Customer |
-| `PATCH` | `/api/v1/reviews/:reviewId/moderate` | employee/platform actor | `reviews:manage` | `none` | None (Platform Admin/Operational) | `authenticate + requirePermissions(reviews:manage)` | `authenticate + requirePermissions(reviews:manage)` | Batch 2F (Migrated & Verified) |
+| `PATCH` | `/api/v1/reviews/:reviewId/moderate` | employee/platform actor | `reviews:moderate` | `none` | None (Platform Admin/Operational) | `authenticate + requirePermissions(reviews:moderate)` | `authenticate + requirePermissions(reviews:moderate)` | Batch 2F / 3B-0 (Hardened) |
 | `PATCH` | `/api/v1/reviews/:reviewId/vendor-response` | vendor | `reviews:manage` | `vendor` | Vendor owns product being reviewed | `authenticate + requirePermissions(reviews:manage)` | `authenticate + requirePermissions(reviews:manage)` | Batch 3 (Ownership-Preserving) |
 | `POST` | `/api/v1/reviews/:reviewId/helpful` | customer | `none` | `none` | Customer vote uniqueness tracking | `authenticate` | `authenticate` | Public / Customer |
 
@@ -680,7 +680,7 @@ The remaining production endpoints should be migrated in the following strictly 
   - **Coupon Redemptions Creation (1 endpoint — MIGRATED & VERIFIED in Batch 2C):** `POST /coupon-redemptions` (`coupons:manage`)
   - **Campaign Mutations (6 endpoints — MIGRATED & VERIFIED in Batch 2D):** `POST /campaigns`, `PATCH /campaigns/:campaignId`, `PATCH /campaigns/:campaignId/schedule`, `PATCH /campaigns/:campaignId/activate`, `PATCH /campaigns/:campaignId/deactivate`, `PATCH /campaigns/:campaignId/status` (`campaigns:manage`)
   - **Campaign Performance Mutations (2 endpoints — MIGRATED & VERIFIED in Batch 2E):** `POST /campaign-performance/campaign/:campaignId`, `PATCH /campaign-performance/:performanceId/increment` (`campaigns:manage`)
-  - **Review Moderation (1 endpoint — MIGRATED & VERIFIED in Batch 2F):** `PATCH /reviews/:reviewId/moderate` (`reviews:manage`)
+  - **Review Moderation (1 endpoint — MIGRATED & VERIFIED in Batch 2F, HARDENED in Batch 3B-0):** `PATCH /reviews/:reviewId/moderate` (`reviews:moderate`)
   - **Platform Vendor Listing (1 endpoint — MIGRATED & VERIFIED in Batch 2F):** `GET /vendors` (`vendors:read`)
   - **Platform Warehouse Creation (1 endpoint — MIGRATED & VERIFIED in Batch 2G):** `POST /warehouses` (`warehouses:manage`)
   - **Non-scoped Shipment Retrieval (2 endpoints — MIGRATED & VERIFIED in Batch 2G):** `GET /shipments/:shipmentId`, `GET /shipments/order/:orderId` (`shipments:read`)

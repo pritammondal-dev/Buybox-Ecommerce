@@ -80,6 +80,7 @@ const ROLE_PERMISSIONS = Object.freeze({
 
     PERMISSIONS.REVIEWS_READ,
     PERMISSIONS.REVIEWS_MANAGE,
+    PERMISSIONS.REVIEWS_MODERATE,
 
     PERMISSIONS.SUPPORT_TICKETS_READ,
     PERMISSIONS.SUPPORT_TICKETS_MANAGE,
@@ -102,10 +103,10 @@ const ROLE_PERMISSIONS = Object.freeze({
     PERMISSIONS.ANALYTICS_READ,
   ],
 
-  // Admin possesses all 37 operational permissions (governance permissions excluded)
+  // Admin possesses all 38 operational permissions (governance permissions excluded)
   [ROLES.ADMIN]: OPERATIONAL_PERMISSIONS,
 
-  // Super Admin possesses ALL 46 permissions (operational + governance)
+  // Super Admin possesses ALL 47 permissions (operational + governance)
   [ROLES.SUPER_ADMIN]: Object.values(PERMISSIONS),
 });
 

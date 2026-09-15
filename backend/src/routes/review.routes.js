@@ -16,6 +16,7 @@ const {
   reviewIdParamsSchema,
   productIdParamsSchema,
 } = require("../validators/review/review.validator");
+const { PERMISSIONS } = require("../constants/permissions.constants");
 
 const router = express.Router();
 
@@ -50,7 +51,7 @@ router.patch(
 router.patch(
   "/:reviewId/moderate",
   authenticate,
-  requirePermissions("reviews:manage"),
+  requirePermissions(PERMISSIONS.REVIEWS_MODERATE),
   validate(reviewIdParamsSchema, "params"),
   validate(moderateReviewSchema),
   reviewController.moderateReview
@@ -59,7 +60,7 @@ router.patch(
 router.patch(
   "/:reviewId/vendor-response",
   authenticate,
-  requirePermissions("reviews:manage"),
+  requirePermissions(PERMISSIONS.REVIEWS_MANAGE),
   validate(reviewIdParamsSchema, "params"),
   validate(vendorResponseSchema),
   reviewController.addVendorResponse
