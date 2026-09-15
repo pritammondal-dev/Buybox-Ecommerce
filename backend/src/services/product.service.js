@@ -353,4 +353,6 @@ module.exports = {
   updateProduct,
   deleteProduct,
   getVendorIdByUserId,
+  resolveActorVendorId,
+  ensureProductOwnership,
 };

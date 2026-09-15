@@ -1,22 +1,9 @@
 const productVariantRepository = require("../repositories/product-variant.repository");
 const productRepository = require("../repositories/product.repository");
+const {
+  ensureProductOwnership,
+} = require("./product.service");
 const AppError = require("../errors/AppError");
-
-const PRIVILEGED_ROLES = [
-  "admin",
-  "super_admin",
-  "manager",
-];
-
-const canManageProduct = (product, actor) => {
-  if (PRIVILEGED_ROLES.includes(actor.role)) {
-    return true;
-  }
-
-  return (
-    product.vendorId.toString() === actor.id.toString()
-  );
-};
 
 const createProductVariant = async ({
   data,
@@ -34,13 +21,7 @@ const createProductVariant = async ({
     );
   }
 
-  if (!canManageProduct(product, actor)) {
-    throw new AppError(
-      "You do not own this product",
-      403,
-      "PRODUCT_OWNERSHIP_REQUIRED"
-    );
-  }
+  await ensureProductOwnership(product, actor);
 
   const existingSku =
     await productVariantRepository.findBySku(data.sku);
@@ -83,13 +64,7 @@ const getProductVariant = async ({
     );
   }
 
-  if (!canManageProduct(product, actor)) {
-    throw new AppError(
-      "You do not own this product",
-      403,
-      "PRODUCT_OWNERSHIP_REQUIRED"
-    );
-  }
+  await ensureProductOwnership(product, actor);
 
   return variant;
 };
@@ -110,13 +85,7 @@ const listProductVariants = async ({
     );
   }
 
-  if (!canManageProduct(product, actor)) {
-    throw new AppError(
-      "You do not own this product",
-      403,
-      "PRODUCT_OWNERSHIP_REQUIRED"
-    );
-  }
+  await ensureProductOwnership(product, actor);
 
   return productVariantRepository.findByProductId(
     productId
@@ -151,13 +120,7 @@ const updateProductVariant = async ({
     );
   }
 
-  if (!canManageProduct(product, actor)) {
-    throw new AppError(
-      "You do not own this product",
-      403,
-      "PRODUCT_OWNERSHIP_REQUIRED"
-    );
-  }
+  await ensureProductOwnership(product, actor);
 
   if (data.sku && data.sku !== variant.sku) {
     const existingSku =
@@ -174,9 +137,14 @@ const updateProductVariant = async ({
     }
   }
 
+  const safeData = {
+    ...data,
+  };
+  delete safeData.productId;
+
   return productVariantRepository.updateById(
     id,
-    data
+    safeData
   );
 };
 
@@ -207,13 +175,7 @@ const deleteProductVariant = async ({
     );
   }
 
-  if (!canManageProduct(product, actor)) {
-    throw new AppError(
-      "You do not own this product",
-      403,
-      "PRODUCT_OWNERSHIP_REQUIRED"
-    );
-  }
+  await ensureProductOwnership(product, actor);
 
   return productVariantRepository.softDeleteById(id);
 };
