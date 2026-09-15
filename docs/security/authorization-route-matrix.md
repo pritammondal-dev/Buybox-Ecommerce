@@ -21,7 +21,7 @@ A comprehensive audit of the entire Buybox Express application tree discovered *
 | Category Code | Classification Name | Description | Endpoint Count | Percentage |
 | :--- | :--- | :--- | :--- | :--- |
 | **A** | **Already Dynamic** | Operational routes verified and dynamically enforced in Phase 1D (Batch 1) | **17** | 6.5% |
-| **B** | **Safe Next Migration** | 61 routes migrated & verified in Batch 2A, 3 in Batch 2B, 5 in Batch 2C, 6 in Batch 2D; 7 remaining in Batch 2 | **82** (75 Migrated / 7 Pending) | 31.3% |
+| **B** | **Safe Next Migration** | 61 routes migrated & verified in Batch 2A, 3 in Batch 2B, 5 in Batch 2C, 6 in Batch 2D, 2 in Batch 2E; 5 remaining in Batch 2 | **82** (77 Migrated / 5 Pending) | 31.3% |
 | **C** | **Permission + Ownership** | Vendor self-service / mutations requiring dynamic permissions preserving resource ownership (Batch 3) | **19** | 7.3% |
 | **D** | **Permission + Scope** | Platform actor routes requiring WorkAssignment `requireScope()` enforcement (Batch 4) | **20** | 7.6% |
 | **E** | **Complex / Deferred** | Double-entry finance ledger, settlements, payouts, stock adjustments, refunds (Batch 5) | **22** | 8.4% |
@@ -299,9 +299,9 @@ The table below lists every production route discovered in the backend.
 | Method | Route | Actor | Permission | Scope | Ownership/Domain Check | Current Guard | Target Guard | Migration Batch |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `GET` | `/api/v1/campaign-performance/campaign/:campaignId` | employee/platform actor | `campaigns:read` | `none` | None (Platform Catalog/Marketing Read) | `authenticate + requirePermissions(campaigns:read)` | `authenticate + requirePermissions(campaigns:read)` | Batch 1 (Phase 1D) |
-| `POST` | `/api/v1/campaign-performance/campaign/:campaignId` | employee/platform actor | `campaigns:manage` | `none` | None (Platform Admin/Operational) | `authenticate + requirePermissions(campaigns:manage)` | `authenticate + requirePermissions(campaigns:manage)` | Batch 2 (Safe Permission) |
+| `POST` | `/api/v1/campaign-performance/campaign/:campaignId` | employee/platform actor | `campaigns:manage` | `none` | None (Platform Admin/Operational) | `authenticate + requirePermissions(campaigns:manage)` | `authenticate + requirePermissions(campaigns:manage)` | Batch 2E (Migrated & Verified) |
 | `GET` | `/api/v1/campaign-performance/:performanceId` | employee/platform actor | `campaigns:read` | `none` | None (Platform Catalog/Marketing Read) | `authenticate + requirePermissions(campaigns:read)` | `authenticate + requirePermissions(campaigns:read)` | Batch 1 (Phase 1D) |
-| `PATCH` | `/api/v1/campaign-performance/:performanceId/increment` | employee/platform actor | `campaigns:manage` | `none` | None (Platform Admin/Operational) | `authenticate + requirePermissions(campaigns:manage)` | `authenticate + requirePermissions(campaigns:manage)` | Batch 2 (Safe Permission) |
+| `PATCH` | `/api/v1/campaign-performance/:performanceId/increment` | employee/platform actor | `campaigns:manage` | `none` | None (Platform Admin/Operational) | `authenticate + requirePermissions(campaigns:manage)` | `authenticate + requirePermissions(campaigns:manage)` | Batch 2E (Migrated & Verified) |
 
 ### Domain: REVIEWS (7 endpoints)
 
@@ -649,12 +649,13 @@ The remaining production endpoints should be migrated in the following strictly 
 
 ### Batch 2 — Safe Permission Migration (82 Endpoints)
 > [!NOTE]
-> **Batch 2A, 2B, 2C & 2D Migration Status (COMPLETED):**
+> **Batch 2A, 2B, 2C, 2D & 2E Migration Status (COMPLETED):**
 > - **Batch 2A (Completed):** 61 endpoints (55 Storefront Admin Operations + 6 CMS Page Mutations) were formally migrated and verified in Batch 2A under dynamic PBAC with 88 passing integration tests (`backend/tests/batch2a-storefront-cms-authorization.test.js`).
 > - **Batch 2B (Completed):** 3 endpoints (Tax Rule Mutations) were formally migrated and verified in Batch 2B under dynamic PBAC with 33 passing integration tests (`backend/tests/batch2b-tax-authorization.test.js`).
 > - **Batch 2C (Completed):** 5 endpoints (4 Coupon Mutations + 1 Coupon Redemption Mutation) were formally migrated and verified in Batch 2C under dynamic PBAC with 56 passing integration tests (`backend/tests/batch2c-coupon-authorization.test.js`).
 > - **Batch 2D (Completed):** 6 endpoints (Campaign Mutations) were formally migrated and verified in Batch 2D under dynamic PBAC with 64 passing integration tests (`backend/tests/batch2d-campaign-authorization.test.js`).
-> Cumulative Batch 2 migrated: 75 endpoints. The remaining 7 Batch 2 endpoints will be migrated in subsequent sub-batches.
+> - **Batch 2E (Completed):** 2 endpoints (Campaign Performance Mutations) were formally migrated and verified in Batch 2E under dynamic PBAC with 45 passing integration tests (`backend/tests/batch2e-campaign-performance-authorization.test.js`).
+> Cumulative Batch 2 migrated: 77 endpoints. The remaining 5 Batch 2 endpoints will be migrated in subsequent sub-batches.
 
 #### Batch 2A — Storefront & CMS Operations (61 Endpoints — MIGRATED & VERIFIED)
 - **Scope:** Operational and management routes with clear, static permission mappings and zero scope complexity.
@@ -676,7 +677,7 @@ The remaining production endpoints should be migrated in the following strictly 
   - **Coupon Mutations (4 endpoints — MIGRATED & VERIFIED in Batch 2C):** `POST /coupons`, `PATCH /coupons/:couponId`, `PATCH /coupons/:couponId/activate`, `PATCH /coupons/:couponId/deactivate` (`coupons:manage`)
   - **Coupon Redemptions Creation (1 endpoint — MIGRATED & VERIFIED in Batch 2C):** `POST /coupon-redemptions` (`coupons:manage`)
   - **Campaign Mutations (6 endpoints — MIGRATED & VERIFIED in Batch 2D):** `POST /campaigns`, `PATCH /campaigns/:campaignId`, `PATCH /campaigns/:campaignId/schedule`, `PATCH /campaigns/:campaignId/activate`, `PATCH /campaigns/:campaignId/deactivate`, `PATCH /campaigns/:campaignId/status` (`campaigns:manage`)
-  - **Campaign Performance Mutations (2 endpoints):** `POST /campaign-performance/campaign/:campaignId`, `PATCH /campaign-performance/:performanceId/increment` (`campaigns:manage`)
+  - **Campaign Performance Mutations (2 endpoints — MIGRATED & VERIFIED in Batch 2E):** `POST /campaign-performance/campaign/:campaignId`, `PATCH /campaign-performance/:performanceId/increment` (`campaigns:manage`)
   - **Review Moderation (1 endpoint):** `PATCH /reviews/:reviewId/moderate` (`reviews:manage`)
   - **Platform Vendor Listing (1 endpoint):** `GET /vendors` (`vendors:read`)
   - **Platform Warehouse Creation (1 endpoint):** `POST /warehouses` (`warehouses:manage`)
