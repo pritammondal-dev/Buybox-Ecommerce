@@ -19,8 +19,8 @@ const {
 } = require("../validators/shipping/update-shipment-status.validator");
 
 const {
-  orderIdSchema,
-} = require("../validators/order/order-id.validator");
+  shipmentOrderIdSchema,
+} = require("../validators/shipping/shipment-order-id.validator");
 
 const {
   PERMISSIONS,
@@ -126,7 +126,7 @@ router.get(
   requirePermissions(
     PERMISSIONS.SHIPMENTS_READ
   ),
-  validate(orderIdSchema, "params"),
+  validate(shipmentOrderIdSchema, "params"),
   shipmentController.getShipmentsByOrderId
 );
 

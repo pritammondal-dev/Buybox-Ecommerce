@@ -21,7 +21,7 @@ A comprehensive audit of the entire Buybox Express application tree discovered *
 | Category Code | Classification Name | Description | Endpoint Count | Percentage |
 | :--- | :--- | :--- | :--- | :--- |
 | **A** | **Already Dynamic** | Operational routes verified and dynamically enforced in Phase 1D (Batch 1) | **17** | 6.5% |
-| **B** | **Safe Next Migration** | 61 routes migrated & verified in Batch 2A, 3 in Batch 2B, 5 in Batch 2C, 6 in Batch 2D, 2 in Batch 2E, 2 in Batch 2F; 3 remaining in Batch 2 | **82** (79 Migrated / 3 Pending) | 31.3% |
+| **B** | **Safe Next Migration** | 61 routes migrated & verified in Batch 2A, 3 in Batch 2B, 5 in Batch 2C, 6 in Batch 2D, 2 in Batch 2E, 2 in Batch 2F, 3 in Batch 2G (Batch 2 Complete) | **82** (82 Migrated / 0 Pending) | 31.3% |
 | **C** | **Permission + Ownership** | Vendor self-service / mutations requiring dynamic permissions preserving resource ownership (Batch 3) | **19** | 7.3% |
 | **D** | **Permission + Scope** | Platform actor routes requiring WorkAssignment `requireScope()` enforcement (Batch 4) | **20** | 7.6% |
 | **E** | **Complex / Deferred** | Double-entry finance ledger, settlements, payouts, stock adjustments, refunds (Batch 5) | **22** | 8.4% |
@@ -220,8 +220,8 @@ The table below lists every production route discovered in the backend.
 | `GET` | `/api/v1/shipments/vendor/my/:shipmentId` | vendor | `shipments:read_own` | `vendor` | Vendor owns resource (product, shipment, or profile) | `authenticate + requirePermissions(shipments:read_own)` | `authenticate + requirePermissions(shipments:read_own)` | Batch 3 (Ownership-Preserving) |
 | `POST` | `/api/v1/shipments/vendor` | vendor | `shipments:manage_own` | `vendor` | Vendor owns resource (product, shipment, or profile) | `authenticate + requirePermissions(shipments:manage_own)` | `authenticate + requirePermissions(shipments:manage_own)` | Batch 3 (Ownership-Preserving) |
 | `PATCH` | `/api/v1/shipments/vendor/:shipmentId/status` | vendor | `shipments:manage_own` | `vendor` | Vendor owns resource (product, shipment, or profile) | `authenticate + requirePermissions(shipments:manage_own)` | `authenticate + requirePermissions(shipments:manage_own)` | Batch 3 (Ownership-Preserving) |
-| `GET` | `/api/v1/shipments/:shipmentId` | employee/platform actor | `shipments:read` | `none` | None (Platform Admin/Operational) | `authenticate + requirePermissions(shipments:read)` | `authenticate + requirePermissions(shipments:read)` | Batch 2 (Safe Permission) |
-| `GET` | `/api/v1/shipments/order/:orderId` | employee/platform actor | `shipments:read` | `none` | None (Platform Admin/Operational) | `authenticate + requirePermissions(shipments:read)` | `authenticate + requirePermissions(shipments:read)` | Batch 2 (Safe Permission) |
+| `GET` | `/api/v1/shipments/:shipmentId` | employee/platform actor | `shipments:read` | `none` | None (Platform Admin/Operational) | `authenticate + requirePermissions(shipments:read)` | `authenticate + requirePermissions(shipments:read)` | Batch 2G (Migrated & Verified) |
+| `GET` | `/api/v1/shipments/order/:orderId` | employee/platform actor | `shipments:read` | `none` | None (Platform Admin/Operational) | `authenticate + requirePermissions(shipments:read)` | `authenticate + requirePermissions(shipments:read)` | Batch 2G (Migrated & Verified) |
 | `GET` | `/api/v1/shipments/vendor/:vendorId` | employee/platform actor | `shipments:read` | `vendor` | Employee WorkAssignment scope check (vendor) | `authenticate + requirePermissions(shipments:read)` | `authenticate + requirePermissions(shipments:read) + requireScope(vendor)` | Batch 4 (Scope-Aware) |
 | `GET` | `/api/v1/shipments/warehouse/:warehouseId` | employee/platform actor | `shipments:read` | `warehouse` | Employee WorkAssignment scope check (warehouse) | `authenticate + requirePermissions(shipments:read)` | `authenticate + requirePermissions(shipments:read) + requireScope(warehouse)` | Batch 4 (Scope-Aware) |
 | `POST` | `/api/v1/shipments` | employee/platform actor | `shipments:manage` | `warehouse` | Employee WorkAssignment scope check (warehouse) | `authenticate + requirePermissions(shipments:manage)` | `authenticate + requirePermissions(shipments:manage) + requireScope(warehouse)` | Batch 4 (Scope-Aware) |
@@ -246,7 +246,7 @@ The table below lists every production route discovered in the backend.
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `GET` | `/api/v1/warehouses` | employee/platform actor | `warehouses:read` | `none` | None (Platform Catalog/Marketing Read) | `authenticate + requirePermissions(warehouses:read)` | `authenticate + requirePermissions(warehouses:read)` | Batch 1 (Phase 1D) |
 | `GET` | `/api/v1/warehouses/:id` | employee/platform actor | `warehouses:read` | `none` | None (Platform Catalog/Marketing Read) | `authenticate + requirePermissions(warehouses:read)` | `authenticate + requirePermissions(warehouses:read)` | Batch 1 (Phase 1D) |
-| `POST` | `/api/v1/warehouses` | employee/platform actor | `warehouses:manage` | `none` | None (Platform Admin/Operational) | `authenticate + requirePermissions(warehouses:manage)` | `authenticate + requirePermissions(warehouses:manage)` | Batch 2 (Safe Permission) |
+| `POST` | `/api/v1/warehouses` | employee/platform actor | `warehouses:manage` | `none` | None (Platform Admin/Operational) | `authenticate + requirePermissions(warehouses:manage)` | `authenticate + requirePermissions(warehouses:manage)` | Batch 2G (Migrated & Verified) |
 | `PATCH` | `/api/v1/warehouses/:id` | employee/platform actor | `warehouses:manage` | `warehouse` | Employee WorkAssignment scope check (warehouse) | `authenticate + requirePermissions(warehouses:manage)` | `authenticate + requirePermissions(warehouses:manage) + requireScope(warehouse)` | Batch 4 (Scope-Aware) |
 | `DELETE` | `/api/v1/warehouses/:id` | employee/platform actor | `warehouses:manage` | `warehouse` | Employee WorkAssignment scope check (warehouse) | `authenticate + requirePermissions(warehouses:manage)` | `authenticate + requirePermissions(warehouses:manage) + requireScope(warehouse)` | Batch 4 (Scope-Aware) |
 
@@ -647,16 +647,17 @@ Inspection of route declarations with URL parameters identified 53 parameters wi
 
 The remaining production endpoints should be migrated in the following strictly sequenced batches:
 
-### Batch 2 — Safe Permission Migration (82 Endpoints)
+### Batch 2 — Safe Permission Migration (82 Endpoints — 100% COMPLETED)
 > [!NOTE]
-> **Batch 2A, 2B, 2C, 2D, 2E & 2F Migration Status (COMPLETED):**
+> **Batch 2 Complete (82 / 82 Endpoints Migrated & Verified):**
 > - **Batch 2A (Completed):** 61 endpoints (55 Storefront Admin Operations + 6 CMS Page Mutations) were formally migrated and verified in Batch 2A under dynamic PBAC with 88 passing integration tests (`backend/tests/batch2a-storefront-cms-authorization.test.js`).
 > - **Batch 2B (Completed):** 3 endpoints (Tax Rule Mutations) were formally migrated and verified in Batch 2B under dynamic PBAC with 33 passing integration tests (`backend/tests/batch2b-tax-authorization.test.js`).
 > - **Batch 2C (Completed):** 5 endpoints (4 Coupon Mutations + 1 Coupon Redemption Mutation) were formally migrated and verified in Batch 2C under dynamic PBAC with 56 passing integration tests (`backend/tests/batch2c-coupon-authorization.test.js`).
 > - **Batch 2D (Completed):** 6 endpoints (Campaign Mutations) were formally migrated and verified in Batch 2D under dynamic PBAC with 64 passing integration tests (`backend/tests/batch2d-campaign-authorization.test.js`).
 > - **Batch 2E (Completed):** 2 endpoints (Campaign Performance Mutations) were formally migrated and verified in Batch 2E under dynamic PBAC with 45 passing integration tests (`backend/tests/batch2e-campaign-performance-authorization.test.js`).
 > - **Batch 2F (Completed):** 2 endpoints (Review Moderation & Platform Vendor Listing) were formally migrated and verified in Batch 2F under dynamic PBAC with 45 passing integration tests (`backend/tests/batch2f-review-vendor-authorization.test.js`).
-> Cumulative Batch 2 migrated: 79 endpoints. The remaining 3 Batch 2 endpoints will be migrated in subsequent sub-batches.
+> - **Batch 2G (Completed):** 3 endpoints (Warehouse Creation & Shipment Operational Retrieval) were formally migrated and verified in Batch 2G under dynamic PBAC with 59 passing integration tests (`backend/tests/batch2g-logistics-authorization.test.js`).
+> Cumulative Batch 2 migrated: **82 / 82 endpoints (100% complete)**. Remaining Batch 2 endpoints: **0**.
 
 #### Batch 2A — Storefront & CMS Operations (61 Endpoints — MIGRATED & VERIFIED)
 - **Scope:** Operational and management routes with clear, static permission mappings and zero scope complexity.
@@ -681,8 +682,8 @@ The remaining production endpoints should be migrated in the following strictly 
   - **Campaign Performance Mutations (2 endpoints — MIGRATED & VERIFIED in Batch 2E):** `POST /campaign-performance/campaign/:campaignId`, `PATCH /campaign-performance/:performanceId/increment` (`campaigns:manage`)
   - **Review Moderation (1 endpoint — MIGRATED & VERIFIED in Batch 2F):** `PATCH /reviews/:reviewId/moderate` (`reviews:manage`)
   - **Platform Vendor Listing (1 endpoint — MIGRATED & VERIFIED in Batch 2F):** `GET /vendors` (`vendors:read`)
-  - **Platform Warehouse Creation (1 endpoint):** `POST /warehouses` (`warehouses:manage`)
-  - **Non-scoped Shipment Retrieval (2 endpoints):** `GET /shipments/:shipmentId`, `GET /shipments/order/:orderId` (`shipments:read`)
+  - **Platform Warehouse Creation (1 endpoint — MIGRATED & VERIFIED in Batch 2G):** `POST /warehouses` (`warehouses:manage`)
+  - **Non-scoped Shipment Retrieval (2 endpoints — MIGRATED & VERIFIED in Batch 2G):** `GET /shipments/:shipmentId`, `GET /shipments/order/:orderId` (`shipments:read`)
 
 ### Batch 3 — Ownership-Preserving Migration (19 Endpoints)
 - **Scope:** Vendor-facing endpoints requiring dynamic permission enforcement combined with vendor resource ownership validation.
