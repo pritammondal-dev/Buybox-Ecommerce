@@ -6,6 +6,11 @@ const authenticate = require("../middlewares/authentication.middleware");
 const {
   requirePermissions,
 } = require("../middlewares/authorization.middleware");
+const { requireScope } = require("../middlewares/scope.middleware");
+const { SCOPE_TYPES } = require("../constants/scope.constants");
+const {
+  resolveSupportTicketScope,
+} = require("../services/scope-authorization.service");
 const validate = require("../middlewares/validate.middleware");
 
 const {
@@ -57,6 +62,14 @@ router.get(
   "/:ticketId",
   requirePermissions(PERMISSIONS.SUPPORT_TICKETS_READ),
   validate(supportTicketIdParamsSchema, "params"),
+  requireScope({
+    scopeType: SCOPE_TYPES.SUPPORT_QUEUE,
+    resolveScopeId: async (req) => {
+      const scope = await resolveSupportTicketScope(req.params.ticketId);
+      return scope?.supportQueue;
+    },
+    allowGlobalPlatformActor: true,
+  }),
   supportTicketController.getTicketById
 );
 
@@ -64,6 +77,14 @@ router.get(
   "/:ticketId/history",
   requirePermissions(PERMISSIONS.SUPPORT_TICKETS_READ),
   validate(supportTicketIdParamsSchema, "params"),
+  requireScope({
+    scopeType: SCOPE_TYPES.SUPPORT_QUEUE,
+    resolveScopeId: async (req) => {
+      const scope = await resolveSupportTicketScope(req.params.ticketId);
+      return scope?.supportQueue;
+    },
+    allowGlobalPlatformActor: true,
+  }),
   supportTicketController.getTicketHistory
 );
 
@@ -72,6 +93,14 @@ router.patch(
   requirePermissions(PERMISSIONS.SUPPORT_TICKETS_MANAGE),
   validate(supportTicketIdParamsSchema, "params"),
   validate(updateSupportTicketSchema),
+  requireScope({
+    scopeType: SCOPE_TYPES.SUPPORT_QUEUE,
+    resolveScopeId: async (req) => {
+      const scope = await resolveSupportTicketScope(req.params.ticketId);
+      return scope?.supportQueue;
+    },
+    allowGlobalPlatformActor: true,
+  }),
   supportTicketController.updateTicket
 );
 
@@ -80,6 +109,14 @@ router.patch(
   requirePermissions(PERMISSIONS.SUPPORT_TICKETS_MANAGE),
   validate(supportTicketIdParamsSchema, "params"),
   validate(assignSupportTicketSchema),
+  requireScope({
+    scopeType: SCOPE_TYPES.SUPPORT_QUEUE,
+    resolveScopeId: async (req) => {
+      const scope = await resolveSupportTicketScope(req.params.ticketId);
+      return scope?.supportQueue;
+    },
+    allowGlobalPlatformActor: true,
+  }),
   supportTicketController.assignTicket
 );
 
@@ -88,6 +125,14 @@ router.patch(
   requirePermissions(PERMISSIONS.SUPPORT_TICKETS_MANAGE),
   validate(supportTicketIdParamsSchema, "params"),
   validate(transitionSupportTicketSchema),
+  requireScope({
+    scopeType: SCOPE_TYPES.SUPPORT_QUEUE,
+    resolveScopeId: async (req) => {
+      const scope = await resolveSupportTicketScope(req.params.ticketId);
+      return scope?.supportQueue;
+    },
+    allowGlobalPlatformActor: true,
+  }),
   supportTicketController.transitionTicketStatus
 );
 

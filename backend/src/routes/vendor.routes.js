@@ -8,6 +8,10 @@ const {
   requireRoles,
 } = require("../middlewares/authorization.middleware");
 
+const validateObjectId = require("../middlewares/validate-object-id.middleware");
+const { requireScope } = require("../middlewares/scope.middleware");
+const { SCOPE_TYPES } = require("../constants/scope.constants");
+
 const {
   createVendorSchema,
 } = require("../validators/vendor/create-vendor.validator");
@@ -66,13 +70,25 @@ router.get(
 
 router.get(
   "/:id",
+  validateObjectId("id"),
   requirePermissions(PERMISSIONS.VENDORS_READ),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
   vendorController.getVendor
 );
 
 router.patch(
   "/:id/status",
+  validateObjectId("id"),
   requirePermissions(PERMISSIONS.VENDORS_MANAGE),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
   validate(updateVendorStatusSchema),
   vendorController.updateVendorStatus
 );

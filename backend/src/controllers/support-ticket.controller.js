@@ -68,7 +68,7 @@ const getTicketById = async (req, res, next) => {
 const listTickets = async (req, res, next) => {
   try {
     const tickets =
-      await supportTicketService.listTickets(req.query);
+      await supportTicketService.listTickets(req.query, req.user);
 
     return sendSuccess(res, {
       message: "Support tickets fetched successfully",

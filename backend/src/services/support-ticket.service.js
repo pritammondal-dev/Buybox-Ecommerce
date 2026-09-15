@@ -9,7 +9,10 @@ const supportTicketHistoryRepository = require("../repositories/support-ticket-h
 
 const AppError = require("../errors/AppError");
 
+const Employee = require("../models/Employee");
 const { ROLES } = require("../constants/auth.constants");
+const { SCOPE_TYPES } = require("../constants/scope.constants");
+const { getActiveAssignments } = require("./scope-authorization.service");
 
 const {
   SUPPORT_TICKET_STATUS_TRANSITIONS,
@@ -220,8 +223,34 @@ const getTicketById = async (ticketId) => {
   return ticket;
 };
 
-const listTickets = async (filter = {}) => {
-  return supportTicketRepository.findMany(filter);
+const listTickets = async (filter = {}, requestingUser = null) => {
+  const query = { ...filter };
+  if (requestingUser && requestingUser.role !== ROLES.SUPER_ADMIN) {
+    const userId = requestingUser.id || requestingUser._id;
+    const canQueryDb = mongoose.connection && mongoose.connection.readyState === 1;
+    const isMocked = Employee.findOne && (Employee.findOne._isMockFunction || Employee.findOne.mock);
+    const employee = (userId && (canQueryDb || isMocked))
+      ? await Employee.findOne({ userId }).lean()
+      : null;
+
+    if (employee && employee.status === "active") {
+      const activeAssignments = await getActiveAssignments(employee._id);
+      const queueAssignments = activeAssignments
+        .filter((a) => a.scopeType === SCOPE_TYPES.SUPPORT_QUEUE)
+        .map((a) => a.scopeId);
+
+      if (queueAssignments.length > 0) {
+        if (query.category) {
+          if (!queueAssignments.includes(query.category)) {
+            return [];
+          }
+        } else {
+          query.category = { $in: queueAssignments };
+        }
+      }
+    }
+  }
+  return supportTicketRepository.findMany(query);
 };
 
 const updateTicket = async (

@@ -4,12 +4,15 @@ const inventoryService = require("../services/inventory.service");
 const {
   ensureInventoryAccess,
   ensureInventoryIdAccess,
+  ensureWarehouseScopeForActor,
 } = require("../services/inventory-access.service");
 
 const createInventory = asyncHandler(async (req, res) => {
   await ensureInventoryAccess({
     user: req.user,
     productVariantId: req.body.productVariantId,
+    warehouseId: req.body.warehouseId,
+    isMutation: true,
   });
 
   const inventory = await inventoryService.createInventory(
@@ -64,6 +67,13 @@ const getVariantInventory = asyncHandler(async (req, res) => {
 });
 
 const getWarehouseInventory = asyncHandler(async (req, res) => {
+  if (!["customer", "vendor"].includes(req.user.role)) {
+    await ensureWarehouseScopeForActor(
+      req.user,
+      req.params.warehouseId
+    );
+  }
+
   const inventory =
     await inventoryService.getWarehouseInventory(
       req.params.warehouseId
@@ -114,6 +124,7 @@ const adjustStock = asyncHandler(async (req, res) => {
   await ensureInventoryIdAccess({
     user: req.user,
     inventory,
+    isMutation: true,
   });
 
   const updatedInventory =
@@ -139,6 +150,7 @@ const reserveStock = asyncHandler(async (req, res) => {
   await ensureInventoryIdAccess({
     user: req.user,
     inventory,
+    isMutation: true,
   });
 
   const updatedInventory =
@@ -164,6 +176,7 @@ const releaseStock = asyncHandler(async (req, res) => {
   await ensureInventoryIdAccess({
     user: req.user,
     inventory,
+    isMutation: true,
   });
 
   const updatedInventory =
@@ -189,6 +202,7 @@ const deductReservedStock = asyncHandler(async (req, res) => {
   await ensureInventoryIdAccess({
     user: req.user,
     inventory,
+    isMutation: true,
   });
 
   const updatedInventory =

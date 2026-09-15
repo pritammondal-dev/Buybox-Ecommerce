@@ -26,6 +26,11 @@ const {
   PERMISSIONS,
 } = require("../constants/permissions.constants");
 
+const validateObjectId = require("../middlewares/validate-object-id.middleware");
+const { requireScope } = require("../middlewares/scope.middleware");
+const { SCOPE_TYPES } = require("../constants/scope.constants");
+const { resolveShipmentScope } = require("../services/scope-authorization.service");
+
 const router = express.Router();
 
 router.use(authenticate);
@@ -132,17 +137,29 @@ router.get(
 
 router.get(
   "/vendor/:vendorId",
+  validateObjectId("vendorId"),
   requirePermissions(
     PERMISSIONS.SHIPMENTS_READ
   ),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.vendorId",
+    allowGlobalPlatformActor: true,
+  }),
   shipmentController.getShipmentsByVendorId
 );
 
 router.get(
   "/warehouse/:warehouseId",
+  validateObjectId("warehouseId"),
   requirePermissions(
     PERMISSIONS.SHIPMENTS_READ
   ),
+  requireScope({
+    scopeType: SCOPE_TYPES.WAREHOUSE,
+    resolveScopeId: "params.warehouseId",
+    allowGlobalPlatformActor: true,
+  }),
   shipmentController.getShipmentsByWarehouseId
 );
 
@@ -163,6 +180,11 @@ router.post(
     PERMISSIONS.SHIPMENTS_MANAGE
   ),
   validate(createShipmentSchema),
+  requireScope({
+    scopeType: SCOPE_TYPES.WAREHOUSE,
+    resolveScopeId: "body.warehouseId",
+    allowGlobalPlatformActor: true,
+  }),
   shipmentController.createShipment
 );
 
@@ -171,9 +193,18 @@ router.post(
  */
 router.patch(
   "/:shipmentId/status",
+  validateObjectId("shipmentId"),
   requirePermissions(
     PERMISSIONS.SHIPMENTS_MANAGE
   ),
+  requireScope({
+    scopeType: SCOPE_TYPES.WAREHOUSE,
+    resolveScopeId: async (req) => {
+      const scope = await resolveShipmentScope(req.params.shipmentId);
+      return scope ? scope.warehouseId : null;
+    },
+    allowGlobalPlatformActor: true,
+  }),
   validate(updateShipmentStatusSchema),
   shipmentController.transitionShipmentStatus
 );
