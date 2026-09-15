@@ -89,11 +89,48 @@ const transitionStatusIfCurrent = async (
   );
 };
 
+const findByVendor = async ({
+  vendorId,
+  filter = {},
+  skip = 0,
+  limit = 20,
+  sort = { createdAt: -1 },
+  options = {},
+} = {}) => {
+  const query = {
+    "items.vendorId": vendorId,
+    ...filter,
+  };
+
+  const [items, total] = await Promise.all([
+    Order.find(query)
+      .session(options.session || null)
+      .sort(sort)
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Order.countDocuments(query).session(options.session || null),
+  ]);
+
+  return { items, total };
+};
+
+const findByIdAndVendor = async (orderId, vendorId, options = {}) => {
+  return Order.findOne({
+    _id: orderId,
+    "items.vendorId": vendorId,
+  })
+    .session(options.session || null)
+    .lean();
+};
+
 module.exports = {
   create,
   findById,
   findByOrderNumber,
   findByCustomer,
+  findByVendor,
+  findByIdAndVendor,
   findByCustomerIdAndIdempotencyKey,
   findEligibleForExpiration,
   transitionStatusIfCurrent,

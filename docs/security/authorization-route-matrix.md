@@ -129,14 +129,18 @@ The table below lists every production route discovered in the backend.
 | `GET` | `/api/v1/vendors/:id` | employee/platform actor | `vendors:read` | `vendor` | Employee WorkAssignment scope check (vendor) | `authenticate + requirePermissions(vendors:read)` | `authenticate + requirePermissions(vendors:read) + requireScope(vendor)` | Batch 4 (Scope-Aware) |
 | `PATCH` | `/api/v1/vendors/:id/status` | employee/platform actor | `vendors:manage` | `vendor` | Employee WorkAssignment scope check (vendor) | `authenticate + requirePermissions(vendors:manage)` | `authenticate + requirePermissions(vendors:manage) + requireScope(vendor)` | Batch 4 (Scope-Aware) |
 
-### Domain: PRODUCTS (6 endpoints)
+### Domain: PRODUCTS (10 endpoints)
 
 | Method | Route | Actor | Permission | Scope | Ownership/Domain Check | Current Guard | Target Guard | Migration Batch |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `GET` | `/api/v1/products` | public | `none` | `none` | None (Public) | `None (Public)` | `None (Public)` | Public / Customer |
 | `GET` | `/api/v1/products/slug/:slug` | public | `none` | `none` | None (Public) | `None (Public)` | `None (Public)` | Public / Customer |
 | `GET` | `/api/v1/products/:id` | public | `none` | `none` | None (Public) | `None (Public)` | `None (Public)` | Public / Customer |
+| `GET` | `/api/v1/products/vendor/my` | vendor | `products:read` | `vendor` | Vendor owns resource (Product.vendorId === Vendor._id) | `authenticate + requirePermissions(products:read)` | `authenticate + requirePermissions(products:read)` | Phase 3B (Vendor Product Lifecycle) |
 | `POST` | `/api/v1/products` | vendor | `products:create` | `vendor` | Vendor owns resource (product, shipment, or profile) | `authenticate + requirePermissions(products:create)` | `authenticate + requirePermissions(products:create)` | Batch 3 (Ownership-Preserving) |
+| `POST` | `/api/v1/products/:id/submit` | vendor | `products:update` | `vendor` | Vendor owns resource (Product.vendorId === Vendor._id) | `authenticate + requirePermissions(products:update)` | `authenticate + requirePermissions(products:update)` | Phase 3B (Vendor Product Lifecycle) |
+| `PATCH` | `/api/v1/products/:id/approve` | employee/platform actor | `products:moderate` | `none` | Platform product approval moderation | `authenticate + requirePermissions(products:moderate)` | `authenticate + requirePermissions(products:moderate)` | Phase 3B (Vendor Product Lifecycle) |
+| `PATCH` | `/api/v1/products/:id/reject` | employee/platform actor | `products:moderate` | `none` | Platform product rejection moderation | `authenticate + requirePermissions(products:moderate)` | `authenticate + requirePermissions(products:moderate)` | Phase 3B (Vendor Product Lifecycle) |
 | `DELETE` | `/api/v1/products/:id` | vendor | `products:delete` | `vendor` | Vendor owns resource (product, shipment, or profile) | `authenticate + requirePermissions(products:delete)` | `authenticate + requirePermissions(products:delete)` | Batch 3 (Ownership-Preserving) |
 | `PATCH` | `/api/v1/products/:id` | vendor | `products:update` | `vendor` | Vendor owns resource (product, shipment, or profile) | `authenticate + requirePermissions(products:update)` | `authenticate + requirePermissions(products:update)` | Batch 3 (Ownership-Preserving) |
 
@@ -190,10 +194,12 @@ The table below lists every production route discovered in the backend.
 | `DELETE` | `/api/v1/wishlist/items/:itemId` | customer | `none` | `none` | Customer owns resource via req.user.id | `authenticate` | `authenticate` | Public / Customer |
 | `DELETE` | `/api/v1/wishlist` | customer | `none` | `none` | Customer owns resource via req.user.id | `authenticate` | `authenticate` | Public / Customer |
 
-### Domain: ORDERS (4 endpoints)
+### Domain: ORDERS (6 endpoints)
 
 | Method | Route | Actor | Permission | Scope | Ownership/Domain Check | Current Guard | Target Guard | Migration Batch |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/api/v1/orders/vendor/my` | vendor | `orders:read_own` | `vendor` | Vendor order items ownership (Order.items[].vendorId === Vendor._id) | `authenticate + requirePermissions(orders:read_own)` | `authenticate + requirePermissions(orders:read_own)` | Phase 3B (Vendor Order Isolation) |
+| `GET` | `/api/v1/orders/vendor/my/:orderId` | vendor | `orders:read_own` | `vendor` | Vendor order items ownership (Order.items[].vendorId === Vendor._id) | `authenticate + requirePermissions(orders:read_own)` | `authenticate + requirePermissions(orders:read_own)` | Phase 3B (Vendor Order Isolation) |
 | `GET` | `/api/v1/orders` | customer | `none` | `none` | Customer owns resource via req.user.id | `authenticate` | `authenticate` | Public / Customer |
 | `GET` | `/api/v1/orders/:id` | customer | `none` | `none` | Customer owns resource via req.user.id | `authenticate` | `authenticate` | Public / Customer |
 | `POST` | `/api/v1/orders/:id/cancel` | customer | `none` | `none` | Customer owns resource via req.user.id | `authenticate` | `authenticate` | Public / Customer |

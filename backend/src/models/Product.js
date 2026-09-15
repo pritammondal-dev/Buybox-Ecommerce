@@ -105,9 +105,44 @@ const productSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["draft", "active", "inactive", "archived"],
+      enum: [
+        "draft",
+        "pending_approval",
+        "active",
+        "rejected",
+        "inactive",
+        "archived",
+      ],
       default: "draft",
       index: true,
+    },
+
+    submittedAt: {
+      type: Date,
+      default: null,
+    },
+
+    approvedAt: {
+      type: Date,
+      default: null,
+    },
+
+    rejectedAt: {
+      type: Date,
+      default: null,
+    },
+
+    moderatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    rejectionReason: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 500,
     },
 
     isFeatured: {

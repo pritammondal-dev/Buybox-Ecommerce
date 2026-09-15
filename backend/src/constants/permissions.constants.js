@@ -3,6 +3,7 @@ const PERMISSIONS = Object.freeze({
   PRODUCTS_CREATE: "products:create",
   PRODUCTS_UPDATE: "products:update",
   PRODUCTS_DELETE: "products:delete",
+  PRODUCTS_MODERATE: "products:moderate",
 
   INVENTORY_READ: "inventory:read",
   INVENTORY_MANAGE: "inventory:manage",
@@ -18,6 +19,7 @@ const PERMISSIONS = Object.freeze({
 
   ORDERS_READ: "orders:read",
   ORDERS_MANAGE: "orders:manage",
+  ORDERS_READ_OWN: "orders:read_own",
 
   USERS_READ: "users:read",
   USERS_MANAGE: "users:manage",

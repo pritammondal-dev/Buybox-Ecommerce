@@ -14,12 +14,12 @@ const routes = require("../src/routes");
 
 describe("Phase 1G — Authorization Migration Readiness Audit & Route Matrix", () => {
   describe("1. Permission Registry & Role Fallback Invariants", () => {
-    test("Canonical permission registry defines exactly 47 permissions (38 operational + 9 governance)", () => {
+    test("Canonical permission registry defines exactly 49 permissions (40 operational + 9 governance)", () => {
       const allPermissions = Object.values(PERMISSIONS);
-      expect(allPermissions).toHaveLength(47);
+      expect(allPermissions).toHaveLength(49);
 
       // Operational permissions count
-      expect(OPERATIONAL_PERMISSIONS).toHaveLength(38);
+      expect(OPERATIONAL_PERMISSIONS).toHaveLength(40);
 
       // Governance permissions count
       expect(GOVERNANCE_PERMISSIONS).toHaveLength(9);
@@ -29,12 +29,12 @@ describe("Phase 1G — Authorization Migration Readiness Audit & Route Matrix", 
         ...OPERATIONAL_PERMISSIONS,
         ...GOVERNANCE_PERMISSIONS,
       ]);
-      expect(combined.size).toBe(47);
+      expect(combined.size).toBe(49);
     });
 
-    test("Admin role retains exactly the 38 operational permissions", () => {
+    test("Admin role retains exactly the 40 operational permissions", () => {
       const adminPerms = ROLE_PERMISSIONS[ROLES.ADMIN];
-      expect(adminPerms).toHaveLength(38);
+      expect(adminPerms).toHaveLength(40);
 
       // No governance permissions in Admin role
       for (const govPerm of GOVERNANCE_PERMISSIONS) {
@@ -42,9 +42,9 @@ describe("Phase 1G — Authorization Migration Readiness Audit & Route Matrix", 
       }
     });
 
-    test("Super Admin role retains all 47 permissions (38 operational + 9 governance)", () => {
+    test("Super Admin role retains all 49 permissions (40 operational + 9 governance)", () => {
       const superAdminPerms = ROLE_PERMISSIONS[ROLES.SUPER_ADMIN];
-      expect(superAdminPerms).toHaveLength(47);
+      expect(superAdminPerms).toHaveLength(49);
 
       for (const p of Object.values(PERMISSIONS)) {
         expect(superAdminPerms).toContain(p);
@@ -53,9 +53,9 @@ describe("Phase 1G — Authorization Migration Readiness Audit & Route Matrix", 
 
     test("Customer, Vendor, Support, and Manager roles retain established compatibility counts", () => {
       expect(ROLE_PERMISSIONS[ROLES.CUSTOMER]).toHaveLength(3);
-      expect(ROLE_PERMISSIONS[ROLES.VENDOR]).toHaveLength(11);
+      expect(ROLE_PERMISSIONS[ROLES.VENDOR]).toHaveLength(12);
       expect(ROLE_PERMISSIONS[ROLES.SUPPORT]).toHaveLength(7);
-      expect(ROLE_PERMISSIONS[ROLES.MANAGER]).toHaveLength(29);
+      expect(ROLE_PERMISSIONS[ROLES.MANAGER]).toHaveLength(30);
     });
 
     test("Scope types registry defines the 4 canonical operational scopes", () => {

@@ -1172,9 +1172,9 @@ describe("Phase 1C — Effective Permission Resolver & Versioned Authorization",
       testApp.use(errorHandler);
     });
 
-    it("1. Legacy admin fallback contains strictly the 38 operational permissions", () => {
+    it("1. Legacy admin fallback contains strictly the 40 operational permissions", () => {
       const adminPerms = ROLE_PERMISSIONS[ROLES.ADMIN];
-      expect(adminPerms).toHaveLength(38);
+      expect(adminPerms).toHaveLength(40);
 
       // Verify that every governance permission is strictly absent
       expect(adminPerms).not.toContain(PERMISSIONS.ROLES_MANAGE);
@@ -1193,9 +1193,9 @@ describe("Phase 1C — Effective Permission Resolver & Versioned Authorization",
       }
     });
 
-    it("2. Legacy super_admin fallback retains all 47 permissions (operational + governance)", () => {
+    it("2. Legacy super_admin fallback retains all 49 permissions (operational + governance)", () => {
       const superAdminPerms = ROLE_PERMISSIONS[ROLES.SUPER_ADMIN];
-      expect(superAdminPerms).toHaveLength(47);
+      expect(superAdminPerms).toHaveLength(49);
 
       // Verify every governance permission is present
       for (const govPerm of GOVERNANCE_PERMISSIONS) {
@@ -1261,13 +1261,13 @@ describe("Phase 1C — Effective Permission Resolver & Versioned Authorization",
       const systemSuperAdmin = SYSTEM_ROLES.find((r) => r.slug === "system_super_admin");
 
       expect(systemAdmin).toBeDefined();
-      expect(systemAdmin.permissions).toHaveLength(38);
+      expect(systemAdmin.permissions).toHaveLength(40);
       for (const govPerm of GOVERNANCE_PERMISSIONS) {
         expect(systemAdmin.permissions).not.toContain(govPerm);
       }
 
       expect(systemSuperAdmin).toBeDefined();
-      expect(systemSuperAdmin.permissions).toHaveLength(47);
+      expect(systemSuperAdmin.permissions).toHaveLength(49);
       for (const govPerm of GOVERNANCE_PERMISSIONS) {
         expect(systemSuperAdmin.permissions).toContain(govPerm);
       }

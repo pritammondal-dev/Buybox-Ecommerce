@@ -15,8 +15,19 @@ const {
 const {
   updateProductSchema,
 } = require("../validators/catalog/update-product.validator");
+const {
+  rejectProductSchema,
+} = require("../validators/catalog/moderate-product.validator");
 
 const router = express.Router();
+
+// Vendor self-service (must precede /:id)
+router.get(
+  "/vendor/my",
+  authenticate,
+  requirePermissions(PERMISSIONS.PRODUCTS_READ),
+  productController.listMyProducts
+);
 
 // Public
 router.get("/", productController.listProducts);
@@ -30,6 +41,28 @@ router.post(
   requirePermissions(PERMISSIONS.PRODUCTS_CREATE),
   validate(createProductSchema),
   productController.createProduct
+);
+
+router.post(
+  "/:id/submit",
+  authenticate,
+  requirePermissions(PERMISSIONS.PRODUCTS_UPDATE),
+  productController.submitProductForApproval
+);
+
+router.patch(
+  "/:id/approve",
+  authenticate,
+  requirePermissions(PERMISSIONS.PRODUCTS_MODERATE),
+  productController.approveProduct
+);
+
+router.patch(
+  "/:id/reject",
+  authenticate,
+  requirePermissions(PERMISSIONS.PRODUCTS_MODERATE),
+  validate(rejectProductSchema),
+  productController.rejectProduct
 );
 
 router.delete(

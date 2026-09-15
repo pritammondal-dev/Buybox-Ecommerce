@@ -82,7 +82,14 @@ const updateProductSchema = z
       .optional(),
 
     status: z
-      .enum(["draft", "active", "inactive", "archived"])
+      .enum([
+        "draft",
+        "pending_approval",
+        "active",
+        "rejected",
+        "inactive",
+        "archived",
+      ])
       .optional(),
 
     isFeatured: z

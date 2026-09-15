@@ -85,7 +85,14 @@ const createProductSchema = z
       .default(DEFAULT_TAX_CATEGORY),
 
     status: z
-      .enum(["draft", "active", "inactive", "archived"])
+      .enum([
+        "draft",
+        "pending_approval",
+        "active",
+        "rejected",
+        "inactive",
+        "archived",
+      ])
       .optional()
       .default("draft"),
 

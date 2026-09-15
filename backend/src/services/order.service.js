@@ -31,6 +31,7 @@ const Product = require("../models/Product");
 const Customer = require("../models/Customer");
 const User = require("../models/User");
 const Order = require("../models/Order");
+const Vendor = require("../models/Vendor");
 
 const AppError = require("../errors/AppError");
 
@@ -1858,6 +1859,159 @@ const markOrderPaymentCaptured = async (
   return updatedOrder;
 };
 
+/**
+ * Resolve the authenticated vendor profile ID from userId.
+ */
+const getVendorIdForOrderService = async (userId) => {
+  const vendor = await Vendor.findOne({
+    userId,
+    isActive: true,
+    deletedAt: null,
+  });
+
+  if (!vendor) {
+    throw new AppError(
+      "Vendor profile not found",
+      404,
+      "VENDOR_NOT_FOUND"
+    );
+  }
+
+  return vendor._id;
+};
+
+/**
+ * Strict multi-vendor order projection.
+ * Filters items strictly to the authenticated vendor, recalculates vendor-scoped
+ * subtotal and item count, minimizes customer fulfillment information, and strips
+ * customer payment secrets, gateway internals, idempotency keys, and platform tax snapshots.
+ */
+const projectVendorOrder = (orderDoc, vendorId) => {
+  const order = orderDoc?.toObject ? orderDoc.toObject() : { ...orderDoc };
+  const targetVendorIdStr = vendorId.toString();
+
+  const vendorItems = (order.items || [])
+    .filter(
+      (item) => item.vendorId && item.vendorId.toString() === targetVendorIdStr
+    )
+    .map((item) => ({
+      _id: item._id,
+      productId: item.productId,
+      productVariantId: item.productVariantId,
+      warehouseId: item.warehouseId,
+      vendorId: item.vendorId,
+      sku: item.sku,
+      productName: item.productName,
+      variantName: item.variantName || "",
+      quantity: item.quantity,
+      unitPrice: item.unitPrice?.toString?.() ?? String(item.unitPrice ?? "0"),
+      discountTotal:
+        item.discountTotal?.toString?.() ?? String(item.discountTotal ?? "0"),
+      taxTotal: item.taxTotal?.toString?.() ?? String(item.taxTotal ?? "0"),
+      lineTotal: item.lineTotal?.toString?.() ?? String(item.lineTotal ?? "0"),
+      currency: item.currency,
+      inventoryStatus: item.inventoryStatus,
+      inventoryReleasedAt: item.inventoryReleasedAt || null,
+    }));
+
+  let subtotalMinor = 0;
+  let vendorItemCount = 0;
+
+  for (const item of vendorItems) {
+    vendorItemCount += item.quantity || 0;
+    try {
+      subtotalMinor += decimalToMinorUnits(item.lineTotal);
+    } catch {
+      // fallback if lineTotal conversion fails
+    }
+  }
+
+  const vendorSubtotal = minorUnitsToDecimalString(subtotalMinor);
+
+  const rawAddress = order.shippingAddress || {};
+  const shippingAddress = {
+    fullName: rawAddress.fullName || "",
+    phone: rawAddress.phone || "",
+    addressLine1: rawAddress.addressLine1 || "",
+    addressLine2: rawAddress.addressLine2 || "",
+    city: rawAddress.city || "",
+    state: rawAddress.state || "",
+    postalCode: rawAddress.postalCode || "",
+    country: rawAddress.country || "IN",
+  };
+
+  return {
+    _id: order._id,
+    orderNumber: order.orderNumber,
+    status: order.status,
+    fulfillmentStatus: order.fulfillmentStatus,
+    currency: order.currency || "INR",
+    items: vendorItems,
+    itemCount: vendorItemCount,
+    subtotal: vendorSubtotal,
+    shippingAddress,
+    placedAt: order.placedAt || null,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+  };
+};
+
+/**
+ * Get all orders containing items belonging to the authenticated vendor.
+ */
+const getVendorOrders = async ({ userId, query = {} }) => {
+  const vendorId = await getVendorIdForOrderService(userId);
+
+  const safePage = Math.max(Number(query.page) || 1, 1);
+  const safeLimit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
+  const skip = (safePage - 1) * safeLimit;
+
+  const filter = {};
+  if (query.status) {
+    filter.status = query.status;
+  }
+
+  const { items: orders, total } = await orderRepository.findByVendor({
+    vendorId,
+    filter,
+    skip,
+    limit: safeLimit,
+    sort: { createdAt: -1 },
+  });
+
+  const items = orders.map((order) => projectVendorOrder(order, vendorId));
+
+  return {
+    items,
+    meta: {
+      page: safePage,
+      limit: safeLimit,
+      total,
+      totalPages: Math.ceil(total / safeLimit),
+    },
+  };
+};
+
+/**
+ * Get single order details projected strictly to the authenticated vendor.
+ * Returns 404 if the order does not exist or contains no items for this vendor.
+ */
+const getVendorOrderById = async ({ orderId, userId }) => {
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    throw new AppError("Invalid order ID", 400, "INVALID_ORDER_ID");
+  }
+
+  const vendorId = await getVendorIdForOrderService(userId);
+
+  const order = await orderRepository.findByIdAndVendor(orderId, vendorId);
+
+  if (!order) {
+    throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
+  }
+
+  return projectVendorOrder(order, vendorId);
+};
+
 module.exports = {
   decimalToMinorUnits,
   minorUnitsToDecimalString,
@@ -1870,6 +2024,9 @@ module.exports = {
   createOrderFromCurrentCart,
   getOrderById,
   getCustomerOrders,
+  getVendorOrders,
+  getVendorOrderById,
+  projectVendorOrder,
   transitionOrderStatus,
   cancelOrder,
   expirePendingOrder,

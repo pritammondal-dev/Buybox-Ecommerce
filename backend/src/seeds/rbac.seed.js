@@ -4,11 +4,11 @@ const Permission = require("../models/Permission");
 const RolePermission = require("../models/RolePermission");
 
 /**
- * 47 Atomic Permission Definitions
- * 38 Existing Operational Permissions + 9 Dynamic RBAC Management Permissions
+ * 49 Atomic Permission Definitions
+ * 40 Existing Operational Permissions + 9 Dynamic RBAC Management Permissions
  */
 const PERMISSION_DEFINITIONS = [
-  // Products (4)
+  // Products (5)
   {
     slug: PERMISSIONS.PRODUCTS_READ,
     name: "Read Products",
@@ -32,6 +32,12 @@ const PERMISSION_DEFINITIONS = [
     name: "Delete Products",
     module: "products",
     description: "Soft-delete products from the catalog",
+  },
+  {
+    slug: PERMISSIONS.PRODUCTS_MODERATE,
+    name: "Moderate Products",
+    module: "products",
+    description: "Approve, reject, or flag vendor product listings",
   },
 
   // Inventory (2)
@@ -88,7 +94,7 @@ const PERMISSION_DEFINITIONS = [
     description: "Create and update shipments for own vendor orders",
   },
 
-  // Orders (2)
+  // Orders (3)
   {
     slug: PERMISSIONS.ORDERS_READ,
     name: "Read Orders",
@@ -100,6 +106,12 @@ const PERMISSION_DEFINITIONS = [
     name: "Manage Orders",
     module: "orders",
     description: "Update order status and handle cancellations",
+  },
+  {
+    slug: PERMISSIONS.ORDERS_READ_OWN,
+    name: "Read Own Orders",
+    module: "orders",
+    description: "View orders and order items belonging to the authenticated vendor",
   },
 
   // Users (2)
@@ -356,6 +368,7 @@ const SYSTEM_ROLES = [
       PERMISSIONS.INVENTORY_READ,
       PERMISSIONS.INVENTORY_MANAGE,
       PERMISSIONS.ORDERS_READ,
+      PERMISSIONS.ORDERS_READ_OWN,
       PERMISSIONS.REVIEWS_READ,
       PERMISSIONS.REVIEWS_MANAGE,
       PERMISSIONS.SHIPMENTS_READ_OWN,
@@ -389,6 +402,7 @@ const SYSTEM_ROLES = [
       PERMISSIONS.PRODUCTS_READ,
       PERMISSIONS.PRODUCTS_CREATE,
       PERMISSIONS.PRODUCTS_UPDATE,
+      PERMISSIONS.PRODUCTS_MODERATE,
       PERMISSIONS.INVENTORY_READ,
       PERMISSIONS.INVENTORY_MANAGE,
       PERMISSIONS.WAREHOUSES_READ,
@@ -423,12 +437,13 @@ const SYSTEM_ROLES = [
     description: "Platform operational administrator",
     isSystem: true,
     isActive: true,
-    // All 38 operational platform permissions (excludes Super Admin governance permissions)
+    // All 40 operational platform permissions (excludes Super Admin governance permissions)
     permissions: [
       PERMISSIONS.PRODUCTS_READ,
       PERMISSIONS.PRODUCTS_CREATE,
       PERMISSIONS.PRODUCTS_UPDATE,
       PERMISSIONS.PRODUCTS_DELETE,
+      PERMISSIONS.PRODUCTS_MODERATE,
       PERMISSIONS.INVENTORY_READ,
       PERMISSIONS.INVENTORY_MANAGE,
       PERMISSIONS.WAREHOUSES_READ,
@@ -439,6 +454,7 @@ const SYSTEM_ROLES = [
       PERMISSIONS.SHIPMENTS_MANAGE_OWN,
       PERMISSIONS.ORDERS_READ,
       PERMISSIONS.ORDERS_MANAGE,
+      PERMISSIONS.ORDERS_READ_OWN,
       PERMISSIONS.USERS_READ,
       PERMISSIONS.USERS_MANAGE,
       PERMISSIONS.VENDORS_READ,
@@ -471,7 +487,7 @@ const SYSTEM_ROLES = [
     description: "Supreme platform governance and security authority",
     isSystem: true,
     isActive: true,
-    // ALL 47 permissions: 38 operational + 9 RBAC governance
+    // ALL 49 permissions: 40 operational + 9 RBAC governance
     permissions: Object.values(PERMISSIONS),
   },
 ];

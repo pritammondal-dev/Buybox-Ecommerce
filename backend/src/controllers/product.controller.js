@@ -76,12 +76,71 @@ const deleteProduct = asyncHandler(async (req, res) => {
   });
 });
 
+const listMyProducts = asyncHandler(async (req, res) => {
+  const result = await productService.listMyProducts({
+    userId: req.user.id,
+    page: req.query.page,
+    limit: req.query.limit,
+    status: req.query.status,
+  });
+
+  return sendSuccess(res, {
+    message: "Vendor products retrieved successfully",
+    data: result.items,
+    meta: result.meta,
+  });
+});
+
+const submitProductForApproval = asyncHandler(async (req, res) => {
+  const product = await productService.submitProductForApproval({
+    id: req.params.id,
+    actor: req.user,
+    req,
+  });
+
+  return sendSuccess(res, {
+    message: "Product submitted for approval successfully",
+    data: { product },
+  });
+});
+
+const approveProduct = asyncHandler(async (req, res) => {
+  const product = await productService.approveProduct({
+    id: req.params.id,
+    actor: req.user,
+    req,
+  });
+
+  return sendSuccess(res, {
+    message: "Product approved successfully",
+    data: { product },
+  });
+});
+
+const rejectProduct = asyncHandler(async (req, res) => {
+  const product = await productService.rejectProduct({
+    id: req.params.id,
+    reason: req.body.reason,
+    actor: req.user,
+    req,
+  });
+
+  return sendSuccess(res, {
+    message: "Product rejected successfully",
+    data: { product },
+  });
+});
+
 module.exports = {
   createProduct,
   getProduct,
   getProductBySlug,
   listProducts,
+  listMyProducts,
   updateProduct,
   deleteProduct,
+  submitProductForApproval,
+  approveProduct,
+  rejectProduct,
 };
 

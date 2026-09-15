@@ -88,9 +88,36 @@ const cancelOrder = async (req, res) => {
   });
 };
 
+const getMyVendorOrders = async (req, res) => {
+  const result = await orderService.getVendorOrders({
+    userId: req.user.id,
+    query: req.query,
+  });
+
+  return apiResponse.sendSuccess(res, {
+    message: "Vendor orders retrieved successfully",
+    data: result.items,
+    meta: result.meta,
+  });
+};
+
+const getMyVendorOrderById = async (req, res) => {
+  const order = await orderService.getVendorOrderById({
+    orderId: req.params.orderId,
+    userId: req.user.id,
+  });
+
+  return apiResponse.sendSuccess(res, {
+    message: "Vendor order retrieved successfully",
+    data: order,
+  });
+};
+
 module.exports = {
   createOrder,
   getMyOrders,
   getMyOrderById,
   cancelOrder,
+  getMyVendorOrders,
+  getMyVendorOrderById,
 };

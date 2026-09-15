@@ -3,6 +3,7 @@ const categoryRepository = require("../repositories/category.repository");
 const brandRepository = require("../repositories/brand.repository");
 const AppError = require("../errors/AppError");
 const Vendor = require("../models/Vendor");
+const { recordAuditLog } = require("./governance.service");
 
 const PRIVILEGED_ROLES = [
   "admin",
@@ -149,10 +150,22 @@ const createProduct = async ({
   const vendorId =
     await getVendorIdByUserId(userId);
 
-  return productRepository.create({
+  /*
+   * Vendor-created products must always start as "draft".
+   * Server strictly enforces initial draft status and clears approval metadata.
+   */
+  const safeData = {
     ...data,
     vendorId,
-  });
+    status: "draft",
+    submittedAt: null,
+    approvedAt: null,
+    rejectedAt: null,
+    moderatedBy: null,
+    rejectionReason: null,
+  };
+
+  return productRepository.create(safeData);
 };
 
 const getProductById = async (id) => {
@@ -309,12 +322,45 @@ const updateProduct = async ({
    * Vendor ownership is immutable.
    * Never allow a vendor to transfer a product
    * to another vendor through the update payload.
+   * Approval metadata is strictly server-controlled.
    */
   const safeData = {
     ...data,
   };
 
   delete safeData.vendorId;
+  delete safeData.submittedAt;
+  delete safeData.approvedAt;
+  delete safeData.rejectedAt;
+  delete safeData.moderatedBy;
+  delete safeData.rejectionReason;
+
+  /*
+   * Vendors cannot directly activate products or bypass approval.
+   */
+  if (safeData.status) {
+    if (safeData.status === "active") {
+      throw new AppError(
+        "Vendors cannot directly activate products. Please submit for approval.",
+        403,
+        "DIRECT_ACTIVATION_FORBIDDEN"
+      );
+    }
+    if (safeData.status === "pending_approval") {
+      throw new AppError(
+        "Please use the submit endpoint to submit a product for approval",
+        400,
+        "USE_SUBMIT_ENDPOINT"
+      );
+    }
+    if (safeData.status === "rejected") {
+      throw new AppError(
+        "Vendors cannot reject products",
+        403,
+        "PRODUCT_REJECTION_FORBIDDEN"
+      );
+    }
+  }
 
   return productRepository.updateById(
     id,
@@ -345,13 +391,205 @@ const deleteProduct = async ({
   return productRepository.softDeleteById(id);
 };
 
+const listMyProducts = async ({
+  userId,
+  page = 1,
+  limit = 20,
+  status,
+}) => {
+  const vendorId = await getVendorIdByUserId(userId);
+
+  const safePage = Math.max(Number(page) || 1, 1);
+  const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+
+  const filter = {
+    vendorId,
+    deletedAt: null,
+  };
+
+  if (status) {
+    filter.status = status;
+  }
+
+  const skip = (safePage - 1) * safeLimit;
+
+  const result = await productRepository.list({
+    filter,
+    skip,
+    limit: safeLimit,
+    sort: { createdAt: -1 },
+  });
+
+  return {
+    items: result.items,
+    meta: {
+      page: safePage,
+      limit: safeLimit,
+      total: result.total,
+      totalPages: Math.ceil(result.total / safeLimit),
+    },
+  };
+};
+
+const submitProductForApproval = async ({
+  id,
+  actor,
+  req = null,
+}) => {
+  const product = await productRepository.findById(id);
+
+  if (!product) {
+    throw new AppError("Product not found", 404, "PRODUCT_NOT_FOUND");
+  }
+
+  await ensureProductOwnership(product, actor);
+
+  if (!["draft", "rejected"].includes(product.status)) {
+    throw new AppError(
+      `Product cannot be submitted for approval from status ${product.status}`,
+      400,
+      "INVALID_PRODUCT_STATUS"
+    );
+  }
+
+  const isResubmission = product.status === "rejected";
+  const beforeState = { status: product.status };
+
+  const updatedProduct = await productRepository.updateById(id, {
+    status: "pending_approval",
+    submittedAt: new Date(),
+    rejectionReason: null,
+    rejectedAt: null,
+  });
+
+  await recordAuditLog({
+    actorId: actor.id,
+    targetId: product._id,
+    action: isResubmission ? "product_resubmitted" : "product_submitted",
+    entityType: "product",
+    beforeState,
+    afterState: {
+      status: updatedProduct.status,
+      submittedAt: updatedProduct.submittedAt,
+    },
+    req,
+  });
+
+  return updatedProduct;
+};
+
+const approveProduct = async ({
+  id,
+  actor,
+  req = null,
+}) => {
+  const product = await productRepository.findById(id);
+
+  if (!product) {
+    throw new AppError("Product not found", 404, "PRODUCT_NOT_FOUND");
+  }
+
+  if (product.status !== "pending_approval") {
+    throw new AppError(
+      `Product cannot be approved from status ${product.status}. Must be pending_approval.`,
+      400,
+      "INVALID_PRODUCT_STATUS"
+    );
+  }
+
+  const beforeState = { status: product.status };
+
+  const updatedProduct = await productRepository.updateById(id, {
+    status: "active",
+    approvedAt: new Date(),
+    moderatedBy: actor.id,
+    rejectionReason: null,
+    rejectedAt: null,
+  });
+
+  await recordAuditLog({
+    actorId: actor.id,
+    targetId: product._id,
+    action: "product_approved",
+    entityType: "product",
+    beforeState,
+    afterState: {
+      status: updatedProduct.status,
+      approvedAt: updatedProduct.approvedAt,
+      moderatedBy: actor.id,
+    },
+    req,
+  });
+
+  return updatedProduct;
+};
+
+const rejectProduct = async ({
+  id,
+  reason,
+  actor,
+  req = null,
+}) => {
+  if (!reason || typeof reason !== "string" || !reason.trim()) {
+    throw new AppError(
+      "Rejection reason is required",
+      400,
+      "REJECTION_REASON_REQUIRED"
+    );
+  }
+
+  const product = await productRepository.findById(id);
+
+  if (!product) {
+    throw new AppError("Product not found", 404, "PRODUCT_NOT_FOUND");
+  }
+
+  if (product.status !== "pending_approval") {
+    throw new AppError(
+      `Product cannot be rejected from status ${product.status}. Must be pending_approval.`,
+      400,
+      "INVALID_PRODUCT_STATUS"
+    );
+  }
+
+  const beforeState = { status: product.status };
+
+  const updatedProduct = await productRepository.updateById(id, {
+    status: "rejected",
+    rejectedAt: new Date(),
+    moderatedBy: actor.id,
+    rejectionReason: reason.trim(),
+  });
+
+  await recordAuditLog({
+    actorId: actor.id,
+    targetId: product._id,
+    action: "product_rejected",
+    entityType: "product",
+    beforeState,
+    afterState: {
+      status: updatedProduct.status,
+      rejectedAt: updatedProduct.rejectedAt,
+      moderatedBy: actor.id,
+      rejectionReason: reason.trim(),
+    },
+    req,
+  });
+
+  return updatedProduct;
+};
+
 module.exports = {
   createProduct,
   getProductById,
   getProductBySlug,
   listProducts,
+  listMyProducts,
   updateProduct,
   deleteProduct,
+  submitProductForApproval,
+  approveProduct,
+  rejectProduct,
   getVendorIdByUserId,
   resolveActorVendorId,
   ensureProductOwnership,
