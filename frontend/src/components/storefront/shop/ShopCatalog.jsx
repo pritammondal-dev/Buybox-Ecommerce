@@ -36,6 +36,11 @@ export function ShopCatalog({
   const currentPage = Math.max(1, Number(searchParams.get("page")) || 1);
   const currentCategory = searchParams.get("category") || initialCategoryId || "";
   const currentBrand = searchParams.get("brand") || "";
+  const currentMinPrice = searchParams.get("minPrice") || "";
+  const currentMaxPrice = searchParams.get("maxPrice") || "";
+  const currentMinRating = searchParams.get("minRating") || "";
+  const currentStockStatus = searchParams.get("stockStatus") || "";
+  const currentMinDiscount = searchParams.get("minDiscount") || "";
 
   // Component states
   const [products, setProducts] = useState([]);
@@ -151,6 +156,12 @@ export function ShopCatalog({
     if (backendBrandId) {
       params.brandId = backendBrandId;
     }
+    if (currentMinPrice) params.minPrice = currentMinPrice;
+    if (currentMaxPrice) params.maxPrice = currentMaxPrice;
+    if (currentMinRating) params.minRating = currentMinRating;
+    if (currentStockStatus) params.stockStatus = currentStockStatus;
+    if (currentMinDiscount) params.minDiscount = currentMinDiscount;
+    if (currentSort) params.sort = currentSort;
 
     productService
       .getProducts(params)
@@ -159,33 +170,12 @@ export function ShopCatalog({
         const productList = res?.data?.products || (Array.isArray(res?.data) ? res.data : []);
         const meta = res?.meta || {};
 
-        // Authoritative sort: backend defaults to newest ({ createdAt: -1 })
-        // Apply client-side sorting refinements on the retrieved results
-        const sortedList = [...productList];
-        if (currentSort === "price_asc") {
-          sortedList.sort((a, b) => {
-            const pA = Number(a.price?.$numberDecimal || a.price || 0);
-            const pB = Number(b.price?.$numberDecimal || b.price || 0);
-            return pA - pB;
-          });
-        } else if (currentSort === "price_desc") {
-          sortedList.sort((a, b) => {
-            const pA = Number(a.price?.$numberDecimal || a.price || 0);
-            const pB = Number(b.price?.$numberDecimal || b.price || 0);
-            return pB - pA;
-          });
-        } else if (currentSort === "rating_desc") {
-          sortedList.sort((a, b) => (b.ratingAverage || 0) - (a.ratingAverage || 0));
-        } else if (currentSort === "featured") {
-          sortedList.sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
-        }
-
-        setProducts(sortedList);
+        setProducts(productList);
         setPagination({
           page: Number(meta.page) || currentPage,
           limit: Number(meta.limit) || 16,
-          total: Number(meta.total) || sortedList.length,
-          totalPages: Number(meta.totalPages) || Math.max(1, Math.ceil((Number(meta.total) || sortedList.length) / 16)),
+          total: Number(meta.total) || productList.length,
+          totalPages: Number(meta.totalPages) || Math.max(1, Math.ceil((Number(meta.total) || productList.length) / 16)),
         });
         setIsLoading(false);
       })
@@ -198,7 +188,7 @@ export function ShopCatalog({
     return () => {
       isCancelled = true;
     };
-  }, [currentPage, currentSearch, backendCategoryId, backendBrandId, currentSort, retryCount]);
+  }, [currentPage, currentSearch, backendCategoryId, backendBrandId, currentMinPrice, currentMaxPrice, currentMinRating, currentStockStatus, currentMinDiscount, currentSort, retryCount]);
 
   // Filter change handlers
   const handleCategoryToggle = (catIdentifier) => {
@@ -289,10 +279,13 @@ export function ShopCatalog({
   };
 
   const hasActiveFilters = Boolean(
-    currentSearch || currentCategory || currentBrand || (currentSort && currentSort !== "newest")
+    currentSearch || currentCategory || currentBrand || currentMinPrice || currentMaxPrice ||
+    currentMinRating || currentStockStatus || currentMinDiscount ||
+    (currentSort && currentSort !== "newest")
   );
   const activeFilterCount =
-    (currentSearch ? 1 : 0) + (currentCategory ? 1 : 0) + (currentBrand ? 1 : 0);
+    [currentSearch, currentCategory, currentBrand, currentMinPrice || currentMaxPrice,
+      currentMinRating, currentStockStatus, currentMinDiscount].filter(Boolean).length;
 
   // Filter content component reused in Desktop Sidebar and Mobile Sheet
   const FilterContent = (
@@ -412,6 +405,55 @@ export function ShopCatalog({
         </div>
       )}
 
+      {/* Price */}
+      <div className="space-y-3 pt-4 border-t">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Price</h4>
+        <div className="grid grid-cols-2 gap-2">
+          <input aria-label="Minimum price" inputMode="numeric" placeholder="Min" value={currentMinPrice}
+            onChange={(e) => updateUrl({ minPrice: e.target.value })} className="h-8 w-full rounded-md border border-slate-200 px-2 text-xs outline-none focus:border-[#007A55]" />
+          <input aria-label="Maximum price" inputMode="numeric" placeholder="Max" value={currentMaxPrice}
+            onChange={(e) => updateUrl({ maxPrice: e.target.value })} className="h-8 w-full rounded-md border border-slate-200 px-2 text-xs outline-none focus:border-[#007A55]" />
+        </div>
+      </div>
+
+      {/* Ratings */}
+      <div className="space-y-3 pt-4 border-t">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Customer Ratings</h4>
+        {[4, 3, 2].map((rating) => (
+          <label key={rating} className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-700">
+            <Checkbox checked={currentMinRating === String(rating)} onChange={() => updateUrl({ minRating: currentMinRating === String(rating) ? null : rating })} />
+            <span className="text-amber-500">{"★".repeat(rating)}<span className="text-slate-300">{"★".repeat(5-rating)}</span></span>
+            <span>& up</span>
+          </label>
+        ))}
+      </div>
+
+      {/* Availability */}
+      <div className="space-y-3 pt-4 border-t">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Availability</h4>
+        {[
+          ["in_stock", "In Stock"],
+          ["preorder", "Pre-order"],
+          ["out_of_stock", "Out of Stock"],
+        ].map(([value, label]) => (
+          <label key={value} className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-700">
+            <Checkbox checked={currentStockStatus === value} onChange={() => updateUrl({ stockStatus: currentStockStatus === value ? null : value })} />
+            {label}
+          </label>
+        ))}
+      </div>
+
+      {/* Discount */}
+      <div className="space-y-3 pt-4 border-t">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Discount</h4>
+        {[10, 20, 30, 40].map((discount) => (
+          <label key={discount} className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-700">
+            <Checkbox checked={currentMinDiscount === String(discount)} onChange={() => updateUrl({ minDiscount: currentMinDiscount === String(discount) ? null : discount })} />
+            {discount}% or more
+          </label>
+        ))}
+      </div>
+
       {/* Trust & Guarantee Perks */}
       <div className="rounded-xl bg-slate-50 p-4 border text-xs text-slate-600 space-y-2">
         <p className="font-bold text-slate-900">Why Shop Buybox?</p>
@@ -425,6 +467,7 @@ export function ShopCatalog({
   );
 
   const displayTitle = initialCategoryName || resolvedCategory?.name || pageTitle;
+  const categoryImage = resolvedCategory?.image?.url || resolvedCategory?.image?.src || null;
 
   return (
     <div className="mx-auto max-w-[1240px] px-3 py-5 sm:px-5 lg:px-6 lg:py-6">
@@ -447,8 +490,16 @@ export function ShopCatalog({
 
       {/* Reference-style category hero banner */}
       <section className="relative mb-6 overflow-hidden rounded-[10px] border border-[#0a5f46] bg-[#005b43] px-6 py-7 sm:px-9 sm:py-8">
-        <div className="absolute -right-12 -top-20 h-52 w-52 rounded-full bg-[#08765a]/70" />
-        <div className="absolute -right-4 -bottom-24 h-56 w-56 rounded-full border-[28px] border-[#08765a]/60" />
+        <div className="absolute inset-y-0 right-0 w-[42%] overflow-hidden opacity-90">
+          {categoryImage ? (
+            <img src={categoryImage} alt="" className="h-full w-full object-cover mix-blend-screen opacity-80" />
+          ) : (
+            <>
+              <div className="absolute -right-12 -top-20 h-52 w-52 rounded-full bg-[#08765a]/70" />
+              <div className="absolute -right-4 -bottom-24 h-56 w-56 rounded-full border-[28px] border-[#08765a]/60" />
+            </>
+          )}
+        </div>
         <div className="relative max-w-2xl text-white">
           <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-200">
             Buybox Collection
@@ -548,6 +599,11 @@ export function ShopCatalog({
             </span>
           )}
 
+          {currentMinPrice && <span className="rounded-full bg-slate-100 px-3 py-1 text-xs">Min ₹{currentMinPrice}</span>}
+          {currentMaxPrice && <span className="rounded-full bg-slate-100 px-3 py-1 text-xs">Max ₹{currentMaxPrice}</span>}
+          {currentMinRating && <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">{currentMinRating}★ & up</span>}
+          {currentStockStatus && <span className="rounded-full bg-slate-100 px-3 py-1 text-xs">{currentStockStatus.replace("_"," ")}</span>}
+          {currentMinDiscount && <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-600">{currentMinDiscount}% off or more</span>}
           <button
             type="button"
             onClick={handleClearAll}
