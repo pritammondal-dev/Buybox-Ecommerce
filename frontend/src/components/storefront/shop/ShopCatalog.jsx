@@ -141,7 +141,7 @@ export function ShopCatalog({
 
     const params = {
       page: currentPage,
-      limit: 16,
+      limit: 18,
       status: "active",
     };
 
@@ -173,9 +173,9 @@ export function ShopCatalog({
         setProducts(productList);
         setPagination({
           page: Number(meta.page) || currentPage,
-          limit: Number(meta.limit) || 16,
+          limit: Number(meta.limit) || 18,
           total: Number(meta.total) || productList.length,
-          totalPages: Number(meta.totalPages) || Math.max(1, Math.ceil((Number(meta.total) || productList.length) / 16)),
+          totalPages: Number(meta.totalPages) || Math.max(1, Math.ceil((Number(meta.total) || productList.length) / 18)),
         });
         setIsLoading(false);
       })
@@ -489,7 +489,7 @@ export function ShopCatalog({
       </nav>
 
       {/* Reference-style category hero banner */}
-      <section className="relative mb-6 overflow-hidden rounded-[10px] border border-[#0a5f46] bg-[#005b43] px-6 py-7 sm:px-9 sm:py-8">
+      <section className="relative mb-5 overflow-hidden rounded-[8px] border border-[#0a5f46] bg-[#005b43] px-6 py-7 sm:px-9 sm:py-8">
         <div className="absolute inset-y-0 right-0 w-[42%] overflow-hidden opacity-90">
           {categoryImage ? (
             <img src={categoryImage} alt="" className="h-full w-full object-cover mix-blend-screen opacity-80" />
@@ -618,7 +618,7 @@ export function ShopCatalog({
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[210px_minmax(0,1fr)] lg:gap-6">
         {/* Desktop Left Filter Sidebar */}
         <aside className="hidden lg:block">
-          <div className="sticky top-28 rounded-2xl border bg-white p-5 shadow-xs">
+          <div className="sticky top-28 rounded-[8px] border border-slate-200 bg-white p-3.5 shadow-none">
             {FilterContent}
           </div>
         </aside>
