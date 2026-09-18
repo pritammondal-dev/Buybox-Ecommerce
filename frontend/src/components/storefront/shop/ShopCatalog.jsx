@@ -427,7 +427,7 @@ export function ShopCatalog({
   const displayTitle = initialCategoryName || resolvedCategory?.name || pageTitle;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+    <div className="mx-auto max-w-[1240px] px-3 py-5 sm:px-5 lg:px-6 lg:py-6">
       {/* Breadcrumbs */}
       <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-1.5 text-xs text-muted-foreground">
         <Link href="/" className="hover:text-[#007A55] transition-colors">
@@ -445,21 +445,30 @@ export function ShopCatalog({
         <span className="font-semibold text-foreground truncate max-w-xs">{displayTitle}</span>
       </nav>
 
-      {/* Header Banner */}
-      <div className="mb-8 rounded-2xl bg-[#FFF8D6] p-6 sm:p-8 border border-amber-200/60 shadow-xs">
-        <span className="text-[11px] font-extrabold uppercase tracking-widest text-[#007A55]">
-          Curated Catalog
-        </span>
-        <h1 className="mt-1 text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-slate-950">
-          {displayTitle}
-        </h1>
-        <p className="mt-2 max-w-2xl text-xs sm:text-sm text-slate-700 leading-relaxed">
-          {pageDescription}
-        </p>
-      </div>
+      {/* Reference-style category hero banner */}
+      <section className="relative mb-6 overflow-hidden rounded-[10px] border border-[#0a5f46] bg-[#005b43] px-6 py-7 sm:px-9 sm:py-8">
+        <div className="absolute -right-12 -top-20 h-52 w-52 rounded-full bg-[#08765a]/70" />
+        <div className="absolute -right-4 -bottom-24 h-56 w-56 rounded-full border-[28px] border-[#08765a]/60" />
+        <div className="relative max-w-2xl text-white">
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-200">
+            Buybox Collection
+          </div>
+          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
+            {displayTitle}
+          </h1>
+          <p className="mt-2 max-w-xl text-xs leading-5 text-emerald-50/85 sm:text-sm">
+            {pageDescription}
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-[10px] font-semibold text-emerald-100">
+            <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">Genuine products</span>
+            <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">Secure checkout</span>
+            <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5">Fast delivery</span>
+          </div>
+        </div>
+      </section>
 
       {/* Filter and Sort Toolbar */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b pb-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
         {/* Mobile Filter Trigger & Results count */}
         <div className="flex items-center gap-3">
           <Button
@@ -550,16 +559,16 @@ export function ShopCatalog({
       )}
 
       {/* Main Catalog Grid with Desktop Sidebar */}
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[210px_minmax(0,1fr)] lg:gap-6">
         {/* Desktop Left Filter Sidebar */}
-        <aside className="hidden lg:block lg:col-span-1">
+        <aside className="hidden lg:block">
           <div className="sticky top-28 rounded-2xl border bg-white p-5 shadow-xs">
             {FilterContent}
           </div>
         </aside>
 
         {/* Product Grid Area */}
-        <div className="lg:col-span-3">
+        <div className="min-w-0">
           {isLoading ? (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-3 sm:gap-4">
               {Array.from({ length: 9 }).map((_, i) => (
@@ -614,7 +623,7 @@ export function ShopCatalog({
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-3 sm:gap-4 md:gap-5">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
                 {products.map((product) => {
                   const id = product.id || product._id;
                   const isWishlisted = isInWishlist(id);
