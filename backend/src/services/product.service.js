@@ -196,6 +196,13 @@ const listProducts = async ({
   brandId,
   vendorId,
   search,
+  minPrice,
+  maxPrice,
+  minRating,
+  stockStatus,
+  minDiscount,
+  maxDiscount,
+  sort = "newest",
 }) => {
   const safePage = Math.max(
     Number(page) || 1,
