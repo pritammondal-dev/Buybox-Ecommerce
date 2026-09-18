@@ -78,13 +78,13 @@ export function ProductCard({
     <>
       <div
         className={cn(
-          "group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-border/80 bg-white p-3.5 shadow-xs transition-all duration-300 hover:shadow-card hover:-translate-y-1 hover:border-[#007A55]/30",
+          "group relative flex flex-col justify-between overflow-hidden rounded-[8px] border border-slate-200 bg-white p-2.5 shadow-none transition-all duration-200 hover:border-[#007A55]/30 hover:shadow-sm",
           className
         )}
       >
         <div>
           {/* Thumbnail Container */}
-          <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-slate-50 border border-slate-100">
+          <div className="relative aspect-[1.12/1] w-full overflow-hidden rounded-[6px] bg-white border border-slate-100">
             <Link href={productUrl} className="block size-full" tabIndex={-1}>
               {image && !imageError ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
@@ -92,7 +92,7 @@ export function ProductCard({
                   src={image}
                   alt={product.name || "Product image"}
                   onError={() => setImageError(true)}
-                  className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  className="size-full object-contain p-2 transition-transform duration-300 group-hover:scale-105"
                   loading="lazy"
                 />
               ) : (
@@ -136,7 +136,7 @@ export function ProductCard({
           </div>
 
           {/* Product Meta & Title */}
-          <div className="mt-3 space-y-1">
+          <div className="mt-2 space-y-0.5">
             {brandName ? (
               <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block truncate">
                 {brandName}
@@ -144,7 +144,7 @@ export function ProductCard({
             ) : null}
 
             <Link href={productUrl} className="group/title block">
-              <h3 className="line-clamp-1 text-sm font-bold text-slate-900 transition-colors group-hover/title:text-[#007A55]">
+              <h3 className="line-clamp-2 text-xs font-bold leading-4 text-slate-900 transition-colors group-hover/title:text-[#007A55]">
                 {product.name}
               </h3>
             </Link>
@@ -173,7 +173,7 @@ export function ProductCard({
 
             {/* Price Line with Strike-Through and Discount */}
             <div className="flex items-baseline gap-2 pt-1">
-              <span className="text-base font-extrabold text-[#007A55]">
+              <span className="text-sm font-extrabold text-[#007A55]">
                 {formatCurrency(price)}
               </span>
               {compareAtPrice > price && (
@@ -227,7 +227,7 @@ export function ProductCard({
         </div>
 
         {/* Action Footer: Wishlist Button & Teal Pill Add To Cart */}
-        <div className="mt-3 flex items-center gap-2 pt-2 border-t border-slate-100">
+        <div className="mt-2 flex items-center gap-1.5 pt-2 border-t border-slate-100">
           <button
             type="button"
             onClick={(e) => {
@@ -236,7 +236,7 @@ export function ProductCard({
             }}
             aria-label="Toggle wishlist"
             className={cn(
-              "flex size-8 shrink-0 items-center justify-center rounded-lg border border-border text-slate-500 hover:border-[#007A55] hover:text-[#007A55] transition-colors cursor-pointer",
+              "flex size-7 shrink-0 items-center justify-center rounded-md border border-border text-slate-500 hover:border-[#007A55] hover:text-[#007A55] transition-colors cursor-pointer",
               isWishlisted && "text-red-500 border-red-200 bg-red-50/50"
             )}
           >
@@ -248,7 +248,7 @@ export function ProductCard({
             onClick={() => !isOutOfStock && onAddToCart?.(product)}
             disabled={isAddingToCart || isOutOfStock}
             className={cn(
-              "flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold shadow-xs transition-all",
+              "flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-bold shadow-xs transition-all",
               isOutOfStock
                 ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
                 : "bg-[#007A55] text-white hover:bg-[#006346] active:scale-95 cursor-pointer disabled:opacity-50"
