@@ -236,6 +236,87 @@ const listProducts = async ({
     };
   }
 
+  const parseOptionalNumber = (value) => {
+    if (value === undefined || value === null || value === "") return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const parsedMinPrice = parseOptionalNumber(minPrice);
+  const parsedMaxPrice = parseOptionalNumber(maxPrice);
+  const parsedMinRating = parseOptionalNumber(minRating);
+  const parsedMinDiscount = parseOptionalNumber(minDiscount);
+  const parsedMaxDiscount = parseOptionalNumber(maxDiscount);
+
+  if (parsedMinPrice !== null) {
+    filter.price = { ...(filter.price || {}), $gte: parsedMinPrice };
+  }
+
+  if (parsedMaxPrice !== null) {
+    filter.price = { ...(filter.price || {}), $lte: parsedMaxPrice };
+  }
+
+  if (parsedMinRating !== null) {
+    filter.ratingAverage = { $gte: Math.min(Math.max(parsedMinRating, 0), 5) };
+  }
+
+  if (stockStatus && ["in_stock", "out_of_stock", "preorder"].includes(stockStatus)) {
+    filter.stockStatus = stockStatus;
+  }
+
+  if (parsedMinDiscount !== null || parsedMaxDiscount !== null) {
+    const min = parsedMinDiscount !== null ? Math.max(parsedMinDiscount, 0) : 0;
+    const max = parsedMaxDiscount !== null ? Math.min(parsedMaxDiscount, 100) : 100;
+
+    filter.$expr = {
+      $and: [
+        { $gt: ["$compareAtPrice", 0] },
+        {
+          $gte: [
+            {
+              $multiply: [
+                {
+                  $divide: [
+                    { $subtract: ["$compareAtPrice", "$price"] },
+                    "$compareAtPrice",
+                  ],
+                },
+                100,
+              ],
+            },
+            min,
+          ],
+        },
+        {
+          $lte: [
+            {
+              $multiply: [
+                {
+                  $divide: [
+                    { $subtract: ["$compareAtPrice", "$price"] },
+                    "$compareAtPrice",
+                  ],
+                },
+                100,
+              ],
+            },
+            max,
+          ],
+        },
+      ],
+    };
+  }
+
+  const sortMap = {
+    featured: { isFeatured: -1, createdAt: -1 },
+    newest: { createdAt: -1 },
+    price_asc: { price: 1, createdAt: -1 },
+    price_desc: { price: -1, createdAt: -1 },
+    rating_desc: { ratingAverage: -1, ratingCount: -1, createdAt: -1 },
+  };
+
+  const safeSort = sortMap[sort] || sortMap.newest;
+
   const skip =
     (safePage - 1) * safeLimit;
 
@@ -244,6 +325,7 @@ const listProducts = async ({
       filter,
       skip,
       limit: safeLimit,
+      sort: safeSort,
     });
 
   return {
