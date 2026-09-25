@@ -115,6 +115,13 @@ const auditLogQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+const updateEmployeePermissionsBulkSchema = z
+  .object({
+    permissions: z.array(z.string().trim().min(2).max(100)),
+    reason: z.string().trim().max(500).optional(),
+  })
+  .strict();
+
 module.exports = {
   createRoleSchema,
   updateRoleSchema,
@@ -127,4 +134,5 @@ module.exports = {
   createWorkAssignmentSchema,
   updateWorkAssignmentSchema,
   auditLogQuerySchema,
+  updateEmployeePermissionsBulkSchema,
 };

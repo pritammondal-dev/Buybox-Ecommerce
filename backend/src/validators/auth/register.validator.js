@@ -23,7 +23,7 @@ const registerSchema = z.object({
     .trim()
     .min(1, "Last name is required")
     .max(50, "Last name must not exceed 50 characters"),
-});
+}).strict();
 
 module.exports = {
   registerSchema,

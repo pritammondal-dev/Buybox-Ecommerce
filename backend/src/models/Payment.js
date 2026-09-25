@@ -18,7 +18,7 @@ const paymentSchema = new mongoose.Schema(
 
     gateway: {
       type: String,
-      enum: ["razorpay"],
+      enum: ["razorpay", "paypal", "internal"],
       required: true,
       default: "razorpay",
       index: true,
@@ -79,6 +79,9 @@ const paymentSchema = new mongoose.Schema(
         "wallet",
         "emi",
         "bank_transfer",
+        "international_card",
+        "paypal",
+        "cod",
         "other",
       ],
       default: null,

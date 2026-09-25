@@ -79,10 +79,35 @@ const deleteWarehouse = asyncHandler(
   }
 );
 
+const getMyVendorWarehouses = asyncHandler(async (req, res) => {
+  const warehouses = await warehouseService.getMyVendorWarehouses({
+    userId: req.user.id,
+  });
+
+  return sendSuccess(res, {
+    message: "Vendor warehouses retrieved successfully",
+    data: warehouses,
+  });
+});
+
+const getMyVendorWarehouseById = asyncHandler(async (req, res) => {
+  const warehouse = await warehouseService.getMyVendorWarehouseById({
+    userId: req.user.id,
+    warehouseId: req.params.warehouseId,
+  });
+
+  return sendSuccess(res, {
+    message: "Vendor warehouse retrieved successfully",
+    data: warehouse,
+  });
+});
+
 module.exports = {
   createWarehouse,
   getWarehouse,
   listWarehouses,
   updateWarehouse,
   deleteWarehouse,
+  getMyVendorWarehouses,
+  getMyVendorWarehouseById,
 };

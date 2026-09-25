@@ -3,9 +3,10 @@ const crypto = require("crypto");
 const orderRepository = require("../repositories/order.repository");
 const paymentRepository = require("../repositories/payment.repository");
 const refundRepository = require("../repositories/refund.repository");
-const orderService = require("./order.service");
+const getOrderService = () => require("./order.service");
 
 const razorpayProvider = require("../integrations/payments/razorpay.provider");
+const paypalProvider = require("../integrations/payments/paypal.provider");
 const paymentOrphanRecoveryService = require("./payment-orphan-recovery.service");
 
 const Customer = require("../models/Customer");
@@ -103,7 +104,7 @@ const reconcilePaidGatewayOrder = async ({
   gatewayOrderId,
 }) => {
   if (activePayment.status === "captured") {
-    await orderService.markOrderPaymentCaptured(order._id);
+    await getOrderService().markOrderPaymentCaptured(order._id);
     return activePayment;
   }
 
@@ -119,7 +120,7 @@ const reconcilePaidGatewayOrder = async ({
     (await paymentRepository.findById(activePayment._id)) || activePayment;
 
   if (currentPayment.status === "captured") {
-    await orderService.markOrderPaymentCaptured(order._id);
+    await getOrderService().markOrderPaymentCaptured(order._id);
     return currentPayment;
   }
 
@@ -169,7 +170,7 @@ const reconcilePaidGatewayOrder = async ({
     (await paymentRepository.findById(activePayment._id)) || currentPayment;
 
   if (latestBeforeUpdate.status === "captured") {
-    await orderService.markOrderPaymentCaptured(order._id);
+    await getOrderService().markOrderPaymentCaptured(order._id);
     return latestBeforeUpdate;
   }
 
@@ -194,7 +195,7 @@ const reconcilePaidGatewayOrder = async ({
     }
   );
 
-  await orderService.markOrderPaymentCaptured(order._id);
+  await getOrderService().markOrderPaymentCaptured(order._id);
 
   return updatedPayment || latestBeforeUpdate;
 };
@@ -589,6 +590,37 @@ const createPaymentForOrder = async (
       }
     );
 
+  try {
+    if (orderRepository && typeof orderRepository.appendPaymentAttempt === "function") {
+      await orderRepository.appendPaymentAttempt(
+        order._id,
+        {
+          attempt: {
+            attemptNumber: (order.paymentAttempts?.length || 0) + 1,
+            gateway: PAYMENT_GATEWAYS.RAZORPAY,
+            method: payment.method || null,
+            amount: order.grandTotal,
+            currency: order.currency || "INR",
+            status: "created",
+            gatewayOrderId: razorpayOrder.id,
+            createdAt: new Date(),
+          },
+          timelineEvent: {
+            event: "payment_attempt_started",
+            title: "Payment Attempt Started",
+            description: `Payment attempt initiated via Razorpay (Order ID: ${razorpayOrder.id}).`,
+            timestamp: new Date(),
+            actor: { actorType: "customer", actorId: customer._id.toString() },
+            metadata: { gatewayOrderId: razorpayOrder.id },
+          },
+        },
+        options
+      );
+    }
+  } catch (logErr) {
+    // Non-blocking
+  }
+
   return updatedPayment;
 };
 
@@ -763,21 +795,46 @@ const refundPaymentForOrder = async (
   }
 
   try {
-    const refund =
-      await razorpayProvider.refundPayment({
-        paymentId:
-          payment.gatewayPaymentId,
-        amount:
-          refundMinorUnits,
-        notes: {
-          buyboxOrderId:
-            order._id.toString(),
-          orderNumber:
-            order.orderNumber,
-        },
-        idempotencyKey:
-          refundIdempotencyKey,
-      });
+    let refund;
+    let gatewayRefundId = null;
+    let refundStatus = "processed";
+
+    if (payment.gateway === "paypal") {
+      refund = await paypalProvider.refundCapture(
+        payment.gatewayPaymentId,
+        {
+          amount: refundAmountString,
+          currency: order.currency,
+          note: `Order cancellation refund for ${order.orderNumber}`,
+        }
+      );
+      gatewayRefundId = refund?.id || null;
+      refundStatus =
+        refund?.status === "COMPLETED"
+          ? "processed"
+          : "pending";
+    } else {
+      refund =
+        await razorpayProvider.refundPayment({
+          paymentId:
+            payment.gatewayPaymentId,
+          amount:
+            refundMinorUnits,
+          notes: {
+            buyboxOrderId:
+              order._id.toString(),
+            orderNumber:
+              order.orderNumber,
+          },
+          idempotencyKey:
+            refundIdempotencyKey,
+        });
+      gatewayRefundId = refund?.id || null;
+      refundStatus =
+        refund?.status === "processed"
+          ? "processed"
+          : "pending";
+    }
 
     const newRefundedAmount =
       refundedAmount + amountToRefund;
@@ -790,26 +847,29 @@ const refundPaymentForOrder = async (
         paymentId: payment._id,
         orderId: order._id,
         customerId: order.customerId,
-        gateway: PAYMENT_GATEWAYS.RAZORPAY,
-        gatewayRefundId: refund?.id || null,
+        gateway: payment.gateway || PAYMENT_GATEWAYS.RAZORPAY,
+        gatewayRefundId,
         amount: refundAmountString,
         currency: order.currency,
-        status: refund?.status === "processed" ? "processed" : "pending",
+        status: refundStatus,
         reason: "Order cancellation refund",
         idempotencyKey: refundIdempotencyKey,
-        processedAt: refund?.status === "processed" ? new Date() : null,
+        processedAt:
+          refundStatus === "processed"
+            ? new Date()
+            : null,
       });
     } catch (createError) {
       if (createError?.code === 11000) {
         const existingRefund =
           (await refundRepository.findByIdempotencyKey(
-            PAYMENT_GATEWAYS.RAZORPAY,
+            payment.gateway || PAYMENT_GATEWAYS.RAZORPAY,
             refundIdempotencyKey
           )) ||
-          (refund?.id
+          (gatewayRefundId
             ? await refundRepository.findByGatewayRefundId(
-                PAYMENT_GATEWAYS.RAZORPAY,
-                refund.id
+                payment.gateway || PAYMENT_GATEWAYS.RAZORPAY,
+                gatewayRefundId
               )
             : null);
 
@@ -853,10 +913,270 @@ const refundPaymentForOrder = async (
   }
 };
 
+const createPayPalOrderForOrder = async (orderId, userId, idempotencyKey) => {
+  const customer = await validateCustomer(userId);
+  const order = await orderRepository.findById(orderId);
+
+  if (!order) {
+    throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
+  }
+
+  if (order.customerId.toString() !== customer._id.toString()) {
+    throw new AppError(
+      "You are not allowed to create payments for this order",
+      403,
+      "ORDER_ACCESS_DENIED"
+    );
+  }
+
+  if (order.status !== "pending") {
+    throw new AppError(
+      `Cannot pay for order in '${order.status}' status`,
+      400,
+      "INVALID_ORDER_STATUS_FOR_PAYMENT"
+    );
+  }
+
+  if (order.paymentStatus === "paid") {
+    throw new AppError(
+      "This order has already been paid",
+      409,
+      "ORDER_ALREADY_PAID"
+    );
+  }
+
+  if (!paypalProvider.isConfigured()) {
+    throw new AppError(
+      "PayPal payment provider is not configured on this server",
+      503,
+      "PAYPAL_NOT_CONFIGURED"
+    );
+  }
+
+  // Idempotency: find active payment
+  const activePayment = await paymentRepository.findActiveByOrderId(order._id);
+  if (activePayment && activePayment.gateway === "paypal" && activePayment.gatewayOrderId) {
+    return {
+      paymentId: activePayment._id,
+      gatewayOrderId: activePayment.gatewayOrderId,
+      gateway: "paypal",
+      amount: order.grandTotal,
+      currency: order.currency || "INR",
+    };
+  }
+
+  const receipt = generateReceipt(order.orderNumber);
+  const amount = Number(order.grandTotal.toString());
+
+  const paypalOrder = await paypalProvider.createOrder({
+    amount,
+    currency: order.currency || "INR",
+    receipt,
+    referenceId: order._id.toString(),
+  });
+
+  const paymentData = {
+    orderId: order._id,
+    customerId: customer._id,
+    gateway: "paypal",
+    gatewayOrderId: paypalOrder.id,
+    amount: order.grandTotal,
+    currency: order.currency || "INR",
+    status: "created",
+    method: "paypal",
+    receipt,
+    idempotencyKey: idempotencyKey || null,
+  };
+
+  const payment = await paymentRepository.create(paymentData);
+
+  try {
+    if (orderRepository && typeof orderRepository.appendPaymentAttempt === "function") {
+      await orderRepository.appendPaymentAttempt(
+        order._id,
+        {
+          attempt: {
+            attemptNumber: (order.paymentAttempts?.length || 0) + 1,
+            gateway: "paypal",
+            method: "paypal",
+            amount: order.grandTotal,
+            currency: order.currency || "INR",
+            status: "created",
+            gatewayOrderId: paypalOrder.id,
+            createdAt: new Date(),
+          },
+          timelineEvent: {
+            event: "payment_attempt_started",
+            title: "Payment Attempt Started",
+            description: `Payment attempt initiated via PayPal (Order ID: ${paypalOrder.id}).`,
+            timestamp: new Date(),
+            actor: { actorType: "customer", actorId: customer._id.toString() },
+            metadata: { gatewayOrderId: paypalOrder.id },
+          },
+        }
+      );
+    }
+  } catch (logErr) {
+    // Non-blocking
+  }
+
+  return {
+    paymentId: payment._id,
+    gatewayOrderId: paypalOrder.id,
+    gateway: "paypal",
+    links: paypalOrder.links || [],
+    amount: order.grandTotal,
+    currency: order.currency || "INR",
+  };
+};
+
+const capturePayPalOrder = async ({ orderId, userId, paypalOrderId }) => {
+  const customer = await validateCustomer(userId);
+  const order = await orderRepository.findById(orderId);
+
+  if (!order) {
+    throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
+  }
+
+  if (order.customerId.toString() !== customer._id.toString()) {
+    throw new AppError(
+      "You are not allowed to verify payments for this order",
+      403,
+      "ORDER_ACCESS_DENIED"
+    );
+  }
+
+  const payment = await paymentRepository.findByGatewayOrderId("paypal", paypalOrderId);
+  if (!payment) {
+    throw new AppError(
+      "Payment record not found for this PayPal transaction",
+      404,
+      "PAYMENT_NOT_FOUND"
+    );
+  }
+
+  if (payment.status === "captured") {
+    return payment;
+  }
+
+  const captureResult = await paypalProvider.captureOrder(paypalOrderId);
+
+  const status = captureResult.status;
+  if (status !== "COMPLETED") {
+    await paymentRepository.updateById(payment._id, {
+      status: "failed",
+      failureReason: `PayPal capture status: ${status}`,
+    });
+    throw new AppError(
+      `PayPal payment capture did not complete (status: ${status})`,
+      400,
+      "PAYPAL_CAPTURE_NOT_COMPLETED"
+    );
+  }
+
+  const captureId =
+    captureResult.purchase_units?.[0]?.payments?.captures?.[0]?.id || paypalOrderId;
+
+  const updatedPayment = await paymentRepository.updateById(payment._id, {
+    status: "captured",
+    gatewayPaymentId: captureId,
+    capturedAt: new Date(),
+    failureReason: null,
+  });
+
+  await getOrderService().markOrderPaymentCaptured(order._id);
+
+  return updatedPayment;
+};
+
+const listPaymentTransactions = async ({ page = 1, limit = 20, status, gateway } = {}) => {
+  const filter = {};
+  if (status && status !== "all") {
+    filter.status = status;
+  }
+  if (gateway && gateway !== "all") {
+    filter.gateway = gateway;
+  }
+
+  const skip = (Math.max(1, Number(page)) - 1) * Math.max(1, Number(limit));
+  const Payment = require("../models/Payment");
+
+  const [transactions, total] = await Promise.all([
+    Payment.find(filter)
+      .populate("customerId", "name email phone")
+      .populate("orderId", "orderNumber status grandTotal")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(Math.max(1, Number(limit))),
+    Payment.countDocuments(filter),
+  ]);
+
+  return {
+    transactions,
+    meta: {
+      total,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil(total / Math.max(1, Number(limit))),
+    },
+  };
+};
+
+/**
+ * Record payment cancellation or dismissal without deleting order or cart.
+ */
+const recordPaymentCancellation = async ({ orderId, userId }) => {
+  const customer = await validateCustomer(userId);
+  const Order = require("../models/Order");
+  const order = await Order.findOne({ _id: orderId, customerId: customer._id });
+  if (!order) {
+    throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
+  }
+
+  // Update latest pending attempt to cancelled
+  const attempts = order.paymentAttempts || [];
+  if (attempts.length > 0) {
+    const lastAttempt = attempts[attempts.length - 1];
+    if (lastAttempt.status === "created" || lastAttempt.status === "pending") {
+      lastAttempt.status = "cancelled";
+      lastAttempt.completedAt = new Date();
+      lastAttempt.failureReason = "Customer dismissed or cancelled payment modal";
+    }
+    attempts.forEach((att, idx) => {
+      if (!att.attemptNumber) {
+        att.attemptNumber = idx + 1;
+      }
+    });
+  }
+
+  order.timeline = order.timeline || [];
+  order.timeline.push({
+    event: "payment_cancelled",
+    title: "Payment Cancelled / Dismissed",
+    description: "Customer closed payment modal without completing transaction.",
+    timestamp: new Date(),
+    actor: { actorType: "customer", actorId: customer._id.toString() },
+    metadata: { orderId: order._id.toString() },
+  });
+
+  await order.save();
+
+  return {
+    orderId: order._id,
+    orderNumber: order.orderNumber,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+  };
+};
+
 module.exports = {
   createPaymentForOrder,
   getLatestPaymentForOrder,
   refundPaymentForOrder,
   decimalToMinorUnits,
   generateReceipt,
+  createPayPalOrderForOrder,
+  capturePayPalOrder,
+  listPaymentTransactions,
+  recordPaymentCancellation,
 };

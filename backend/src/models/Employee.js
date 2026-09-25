@@ -44,6 +44,12 @@ const employeeSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    jobRoleId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "JobRole",
+      default: null,
+      index: true,
+    },
   },
   {
     timestamps: true,

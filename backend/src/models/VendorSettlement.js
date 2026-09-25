@@ -4,6 +4,7 @@ const { Schema } = mongoose;
 
 const VENDOR_SETTLEMENT_STATUSES = Object.freeze([
   "pending",
+  "eligible",
   "processing",
   "payable",
   "paid",
@@ -27,6 +28,13 @@ const vendorSettlementSchema = new Schema(
       trim: true,
       maxlength: 100,
     },
+
+    orderIds: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "Order",
+      },
+    ],
 
     periodStart: {
       type: Date,
@@ -89,6 +97,18 @@ const vendorSettlementSchema = new Schema(
       type: String,
       trim: true,
       maxlength: 200,
+    },
+
+    payoutReference: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    settledBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
     },
 
     processedAt: {

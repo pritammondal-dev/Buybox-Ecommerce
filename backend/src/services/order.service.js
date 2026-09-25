@@ -34,6 +34,7 @@ const Order = require("../models/Order");
 const Vendor = require("../models/Vendor");
 
 const AppError = require("../errors/AppError");
+const { encodeSecureId, decodeSecureId } = require("../utils/secure-id.util");
 
 const {
   canTransitionOrderStatus,
@@ -393,11 +394,64 @@ const validateCartItems = async (cart) => {
  * Discounts, tax and shipping engines are not active yet,
  * except for the coupon discount supplied by checkout.
  */
+const DELIVERY_OPTIONS = {
+  standard: {
+    id: "standard",
+    name: "Standard Delivery",
+    estimatedDays: "2–4 business days",
+    freeThresholdMinorUnits: 49900, // ₹499
+    standardFeeBelowMinorUnits: 4000, // ₹40
+  },
+  express: {
+    id: "express",
+    name: "Express Delivery",
+    estimatedDays: "1–2 business days",
+    feeMinorUnits: 9900, // ₹99
+  },
+};
+
+const resolveDeliveryOption = (deliveryOptionId, subtotalMinorUnits = 0) => {
+  if (!deliveryOptionId) {
+    return {
+      id: "standard",
+      name: "Standard Delivery",
+      estimatedDays: "2–4 business days",
+      feeMinorUnits: 0,
+      cost: "0.00",
+    };
+  }
+  const normalizedId = String(deliveryOptionId).trim().toLowerCase();
+  if (normalizedId === "express") {
+    return {
+      id: "express",
+      name: "Express Delivery",
+      estimatedDays: "1–2 business days",
+      feeMinorUnits: 9900,
+      cost: minorUnitsToDecimalString(9900),
+    };
+  }
+  // Default standard delivery: free if subtotal meets/exceeds ₹499, else ₹40
+  const feeMinorUnits = subtotalMinorUnits >= 49900 ? 0 : 4000;
+  return {
+    id: "standard",
+    name: "Standard Delivery",
+    estimatedDays: "2–4 business days",
+    feeMinorUnits,
+    cost: minorUnitsToDecimalString(feeMinorUnits),
+  };
+};
+
+/**
+ * Calculate authoritative checkout totals.
+ *
+ * Supports dynamic shippingTotalMinorUnits, coupon discounts, and tax calculation.
+ */
 const calculateOrderTotals = (
   orderItems,
   currency,
   couponDiscountMinorUnits = 0,
-  taxCalculation = null
+  taxCalculation = null,
+  shippingTotalMinorUnits = 0
 ) => {
   let subtotalMinorUnits = 0;
 
@@ -440,7 +494,11 @@ const calculateOrderTotals = (
       ? taxCalculation.totalTaxMinorUnits
       : 0;
 
-  const shippingTotalMinorUnits = 0;
+  const shippingTotalMinor =
+    Number.isSafeInteger(shippingTotalMinorUnits) && shippingTotalMinorUnits >= 0
+      ? shippingTotalMinorUnits
+      : 0;
+
   const pricingMode =
     taxCalculation?.pricingMode || DEFAULT_TAX_PRICING_MODE;
 
@@ -449,14 +507,14 @@ const calculateOrderTotals = (
     grandTotalMinorUnits =
       subtotalMinorUnits -
       couponDiscountMinorUnits +
-      shippingTotalMinorUnits +
+      shippingTotalMinor +
       (taxCalculation?.shippingTaxTotalMinorUnits || 0);
   } else {
     grandTotalMinorUnits =
       subtotalMinorUnits -
       couponDiscountMinorUnits +
       taxTotalMinorUnits +
-      shippingTotalMinorUnits;
+      shippingTotalMinor;
   }
 
   return {
@@ -480,12 +538,12 @@ const calculateOrderTotals = (
 
     shippingTotal:
       minorUnitsToDecimalString(
-        shippingTotalMinorUnits
+        shippingTotalMinor
       ),
 
     grandTotal:
       minorUnitsToDecimalString(
-        grandTotalMinorUnits
+        Math.max(0, grandTotalMinorUnits)
       ),
   };
 };
@@ -608,7 +666,8 @@ const createOrderFromCurrentCart = async (
   userId,
   shippingAddressId,
   couponCode = null,
-  idempotencyKey = null
+  idempotencyKey = null,
+  deliveryOptionId = null
 ) => {
   const customer =
     await validateCustomer(userId);
@@ -628,6 +687,7 @@ const createOrderFromCurrentCart = async (
       customerId: customer._id,
       shippingAddressId,
       couponCode,
+      deliveryOptionId,
     });
 
     const existingOrder =
@@ -717,6 +777,9 @@ const createOrderFromCurrentCart = async (
             currency
           );
 
+        const subtotalMinorUnits = decimalToMinorUnits(subtotalTotals.subtotal);
+        const delivery = resolveDeliveryOption(deliveryOptionId, subtotalMinorUnits);
+
         const previousOrder =
           await Order.findOne({
             customerId: customer._id,
@@ -769,7 +832,7 @@ const createOrderFromCurrentCart = async (
             items: orderItems,
             shippingAddress: address,
             couponDiscountMinorUnits,
-            shippingTotalMinorUnits: 0,
+            shippingTotalMinorUnits: delivery.feeMinorUnits,
             pricingMode: DEFAULT_TAX_PRICING_MODE,
             currency,
             session,
@@ -782,7 +845,8 @@ const createOrderFromCurrentCart = async (
             finalizedOrderItems,
             currency,
             couponDiscountMinorUnits,
-            taxCalculation
+            taxCalculation,
+            delivery.feeMinorUnits
           );
 
         const orderNumber =
@@ -810,6 +874,82 @@ const createOrderFromCurrentCart = async (
             "INVALID_SHIPPING_ADDRESS"
           );
         }
+
+        const initialTimeline = [
+          {
+            event: "order_created",
+            title: "Order Created",
+            description: `Order #${orderNumber} created with total ${totals.currency} ${totals.grandTotal}.`,
+            timestamp: new Date(),
+            actor: {
+              actorType: "customer",
+              actorId: customer._id.toString(),
+            },
+            metadata: {
+              orderNumber,
+              grandTotal: totals.grandTotal,
+            },
+          },
+          {
+            event: "address_selected",
+            title: "Delivery Address Selected",
+            description: `${fullName}, ${address.addressLine1}, ${address.city}, ${address.state} - ${address.postalCode}`,
+            timestamp: new Date(),
+            actor: {
+              actorType: "customer",
+              actorId: customer._id.toString(),
+            },
+            metadata: {
+              shippingAddressId: address._id ? address._id.toString() : null,
+              postalCode: address.postalCode,
+            },
+          },
+          {
+            event: "delivery_selected",
+            title: "Delivery Option Selected",
+            description: `${delivery.name} (${delivery.estimatedDays}) — ${delivery.feeMinorUnits === 0 ? "FREE" : `₹${Number(delivery.cost)}`}`,
+            timestamp: new Date(),
+            actor: {
+              actorType: "customer",
+              actorId: customer._id.toString(),
+            },
+            metadata: {
+              deliveryOptionId: delivery.id,
+              shippingCost: delivery.cost,
+            },
+          },
+        ];
+
+        if (couponResult) {
+          initialTimeline.push({
+            event: "coupon_applied",
+            title: `Coupon ${couponResult.coupon.code} Applied`,
+            description: `Discount of ₹${couponResult.discountAmount} applied to order.`,
+            timestamp: new Date(),
+            actor: {
+              actorType: "customer",
+              actorId: customer._id.toString(),
+            },
+            metadata: {
+              couponCode: couponResult.coupon.code,
+              discountAmount: couponResult.discountAmount,
+            },
+          });
+        }
+
+        initialTimeline.push({
+          event: "inventory_reserved",
+          title: "Inventory Reserved",
+          description: `Inventory reserved for ${finalizedOrderItems.length} items.`,
+          timestamp: new Date(),
+          actor: {
+            actorType: "system",
+            actorId: null,
+          },
+          metadata: {
+            itemCount: finalizedOrderItems.length,
+          },
+        });
 
         const createdOrder =
           await orderRepository.create(
@@ -848,6 +988,12 @@ const createOrderFromCurrentCart = async (
               discountTotal:
                 totals.discountTotal,
 
+              couponDiscount:
+                totals.discountTotal,
+
+              amountPaid: "0.00",
+              amountRefunded: "0.00",
+
               taxTotal:
                 totals.taxTotal,
 
@@ -859,6 +1005,13 @@ const createOrderFromCurrentCart = async (
 
               grandTotal:
                 totals.grandTotal,
+
+              deliveryOption: {
+                id: delivery.id,
+                name: delivery.name,
+                cost: delivery.cost,
+                estimatedDays: delivery.estimatedDays,
+              },
 
               shippingAddress: {
                 fullName,
@@ -874,6 +1027,9 @@ const createOrderFromCurrentCart = async (
                 country:
                   address.country || "IN",
               },
+
+              timeline: initialTimeline,
+              paymentAttempts: [],
 
               idempotencyKey: normalizedKey,
               idempotencyFingerprint: fingerprint,
@@ -1145,7 +1301,10 @@ const cancelOrder = async (orderId, options = {}) => {
     );
   }
 
-  const customer = await validateCustomer(userId);
+  let customer = null;
+  if (!options.isAdmin) {
+    customer = await validateCustomer(userId);
+  }
 
   const order = await orderRepository.findById(
     orderId,
@@ -1161,6 +1320,8 @@ const cancelOrder = async (orderId, options = {}) => {
   }
 
   if (
+    !options.isAdmin &&
+    customer &&
     order.customerId.toString() !==
     customer._id.toString()
   ) {
@@ -1404,6 +1565,7 @@ const cancelOrder = async (orderId, options = {}) => {
             inventoryStatus: "released",
             inventoryReleasedAt: new Date(),
             items: currentOrder.items,
+            cancellationReason: options.cancellationReason,
           }
         );
       }
@@ -1427,6 +1589,27 @@ const cancelOrder = async (orderId, options = {}) => {
     await sendOrderStatusNotification({
       order: cancelledOrder,
     });
+
+    try {
+      const { createCustomerNotification } = require("./customer-notification.service");
+      await createCustomerNotification({
+        customerId: customer._id,
+        userId,
+        title: `Order #${cancelledOrder.orderNumber} Cancelled`,
+        message: `Your order #${cancelledOrder.orderNumber} has been successfully cancelled. Reason: ${options.cancellationReason || "Customer requested cancellation"}.`,
+        type: "cancellation",
+        link: `/orders/${cancelledOrder._id}`,
+      });
+    } catch {
+      // Non-blocking notification
+    }
+
+    try {
+      const rewardService = require("./reward.service");
+      await rewardService.adjustPointsForCancelledOrRefundedOrder(cancelledOrder._id);
+    } catch {
+      // Non-blocking reward adjustment
+    }
   }
 
   return cancelledOrder;
@@ -1717,6 +1900,9 @@ const transitionOrderStatus = async (
   if (nextStatus === "cancelled") {
     update.cancelledAt = new Date();
     update.cancellationStatus = "completed";
+    if (options.cancellationReason) {
+      update.cancellationReason = options.cancellationReason;
+    }
   }
 
   if (options.inventoryStatus) {
@@ -1829,7 +2015,42 @@ const markOrderPaymentCaptured = async (
 
   const update = {
     paymentStatus: "paid",
+    amountPaid: order.grandTotal,
   };
+
+  const attempts = Array.isArray(order.paymentAttempts) ? [...order.paymentAttempts] : [];
+  if (attempts.length > 0) {
+    const lastAttempt = attempts[attempts.length - 1];
+    if (lastAttempt.status === "created" || lastAttempt.status === "pending") {
+      lastAttempt.status = "successful";
+      lastAttempt.completedAt = new Date();
+    }
+    attempts.forEach((att, idx) => {
+      if (!att.attemptNumber) {
+        att.attemptNumber = idx + 1;
+      }
+    });
+  }
+  update.paymentAttempts = attempts;
+
+  const currentTimeline = Array.isArray(order.timeline) ? [...order.timeline] : [];
+  currentTimeline.push(
+    {
+      event: "payment_successful",
+      title: "Payment Captured Successfully",
+      description: `Payment of ${order.currency || "INR"} ${order.grandTotal} captured.`,
+      timestamp: new Date(),
+      actor: { actorType: "system", actorId: null },
+    },
+    {
+      event: "order_confirmed",
+      title: "Order Confirmed",
+      description: `Order #${order.orderNumber} confirmed and moving to fulfillment.`,
+      timestamp: new Date(),
+      actor: { actorType: "system", actorId: null },
+    }
+  );
+  update.timeline = currentTimeline;
 
   if (
     order.status === "pending"
@@ -1863,20 +2084,8 @@ const markOrderPaymentCaptured = async (
  * Resolve the authenticated vendor profile ID from userId.
  */
 const getVendorIdForOrderService = async (userId) => {
-  const vendor = await Vendor.findOne({
-    userId,
-    isActive: true,
-    deletedAt: null,
-  });
-
-  if (!vendor) {
-    throw new AppError(
-      "Vendor profile not found",
-      404,
-      "VENDOR_NOT_FOUND"
-    );
-  }
-
+  const { resolveApprovedVendor } = require("../middlewares/vendor.middleware");
+  const vendor = await resolveApprovedVendor(userId);
   return vendor._id;
 };
 
@@ -1886,7 +2095,7 @@ const getVendorIdForOrderService = async (userId) => {
  * subtotal and item count, minimizes customer fulfillment information, and strips
  * customer payment secrets, gateway internals, idempotency keys, and platform tax snapshots.
  */
-const projectVendorOrder = (orderDoc, vendorId) => {
+const projectVendorOrder = (orderDoc, vendorId, vendorShipments = []) => {
   const order = orderDoc?.toObject ? orderDoc.toObject() : { ...orderDoc };
   const targetVendorIdStr = vendorId.toString();
 
@@ -1912,6 +2121,9 @@ const projectVendorOrder = (orderDoc, vendorId) => {
       currency: item.currency,
       inventoryStatus: item.inventoryStatus,
       inventoryReleasedAt: item.inventoryReleasedAt || null,
+      fulfillmentStatus: item.fulfillmentStatus || "unfulfilled",
+      shipmentId: item.shipmentId ? encodeSecureId("shipment", item.shipmentId) : null,
+      settlementId: item.settlementId ? encodeSecureId("settlement", item.settlementId) : null,
     }));
 
   let subtotalMinor = 0;
@@ -1940,8 +2152,23 @@ const projectVendorOrder = (orderDoc, vendorId) => {
     country: rawAddress.country || "IN",
   };
 
+  const formattedShipments = (vendorShipments || []).map((s) => ({
+    _id: s._id,
+    secureId: encodeSecureId("shipment", s._id),
+    shipmentNumber: s.shipmentNumber,
+    status: s.status,
+    carrier: s.carrier,
+    serviceLevel: s.serviceLevel,
+    trackingNumber: s.trackingNumber,
+    trackingUrl: s.trackingUrl,
+    shippedAt: s.shippedAt,
+    deliveredAt: s.deliveredAt,
+    createdAt: s.createdAt,
+  }));
+
   return {
     _id: order._id,
+    secureId: encodeSecureId("order", order._id),
     orderNumber: order.orderNumber,
     status: order.status,
     fulfillmentStatus: order.fulfillmentStatus,
@@ -1950,6 +2177,7 @@ const projectVendorOrder = (orderDoc, vendorId) => {
     itemCount: vendorItemCount,
     subtotal: vendorSubtotal,
     shippingAddress,
+    shipments: formattedShipments,
     placedAt: order.placedAt || null,
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
@@ -1967,8 +2195,21 @@ const getVendorOrders = async ({ userId, query = {} }) => {
   const skip = (safePage - 1) * safeLimit;
 
   const filter = {};
-  if (query.status) {
+  if (query.status && query.status !== "all") {
     filter.status = query.status;
+  }
+  if (query.fulfillmentStatus && query.fulfillmentStatus !== "all") {
+    filter.fulfillmentStatus = query.fulfillmentStatus;
+  }
+  if (query.paymentStatus && query.paymentStatus !== "all") {
+    filter.paymentStatus = query.paymentStatus;
+  }
+  if (query.search) {
+    filter.$or = [
+      { orderNumber: { $regex: query.search.trim(), $options: "i" } },
+      { "items.sku": { $regex: query.search.trim(), $options: "i" } },
+      { "items.productName": { $regex: query.search.trim(), $options: "i" } },
+    ];
   }
 
   const { items: orders, total } = await orderRepository.findByVendor({
@@ -1996,20 +2237,416 @@ const getVendorOrders = async ({ userId, query = {} }) => {
  * Get single order details projected strictly to the authenticated vendor.
  * Returns 404 if the order does not exist or contains no items for this vendor.
  */
-const getVendorOrderById = async ({ orderId, userId }) => {
-  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+const getVendorOrderById = async ({ orderId, userId, strict = false }) => {
+  const resolvedOrderId = decodeSecureId(orderId, "order", { strict });
+  if (!mongoose.Types.ObjectId.isValid(resolvedOrderId)) {
     throw new AppError("Invalid order ID", 400, "INVALID_ORDER_ID");
   }
 
   const vendorId = await getVendorIdForOrderService(userId);
 
-  const order = await orderRepository.findByIdAndVendor(orderId, vendorId);
+  const order = await orderRepository.findByIdAndVendor(resolvedOrderId, vendorId);
 
   if (!order) {
     throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
   }
 
-  return projectVendorOrder(order, vendorId);
+  const Shipment = require("../models/Shipment");
+  const vendorShipments = await Shipment.find({
+    orderId: order._id,
+    vendorId,
+  }).lean();
+
+  return projectVendorOrder(order, vendorId, vendorShipments);
+};
+
+/**
+ * Transition order item state for vendor (e.g. process, ready_to_ship).
+ */
+const transitionVendorOrderItemStatus = async ({
+  userId,
+  orderId,
+  action,
+  notes = null,
+  strict = false,
+  ipAddress = null,
+  userAgent = null,
+}) => {
+  const resolvedOrderId = decodeSecureId(orderId, "order", { strict });
+  if (!mongoose.Types.ObjectId.isValid(resolvedOrderId)) {
+    throw new AppError("Invalid order ID", 400, "INVALID_ORDER_ID");
+  }
+
+  const vendorId = await getVendorIdForOrderService(userId);
+  const order = await Order.findOne({
+    _id: resolvedOrderId,
+    "items.vendorId": vendorId,
+  });
+
+  if (!order) {
+    throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
+  }
+
+  if (order.paymentStatus !== "paid") {
+    throw new AppError("Cannot process order before payment is verified and captured", 400, "ORDER_NOT_PAID");
+  }
+
+  if (["cancelled", "completed"].includes(order.status)) {
+    throw new AppError(`Cannot update items for an order in status '${order.status}'`, 409, "INVALID_ORDER_STATUS");
+  }
+
+  const AuditLog = require("../models/AuditLog");
+  let auditAction = "";
+  let targetItemStatus = "";
+  let timelineTitle = "";
+  let timelineDesc = "";
+
+  if (action === "process") {
+    if (!["confirmed", "processing"].includes(order.status)) {
+      throw new AppError(`Cannot start processing order from status '${order.status}'`, 409, "INVALID_STATUS_TRANSITION");
+    }
+    targetItemStatus = "processing";
+    auditAction = "ORDER_VENDOR_PROCESSING";
+    timelineTitle = "Order Processing by Merchant";
+    timelineDesc = notes || "Vendor has accepted the order and started preparing items.";
+  } else if (action === "ready_to_ship") {
+    targetItemStatus = "ready_to_ship";
+    auditAction = "ORDER_READY_TO_SHIP";
+    timelineTitle = "Order Marked Ready to Ship";
+    timelineDesc = notes || "Vendor has packaged items and marked them ready for courier dispatch.";
+  } else {
+    throw new AppError(`Unsupported vendor order action: ${action}`, 400, "INVALID_ACTION");
+  }
+
+  const beforeItems = JSON.parse(JSON.stringify(order.items));
+
+  let updatedAny = false;
+  order.items.forEach((item) => {
+    if (item.vendorId && item.vendorId.toString() === vendorId.toString()) {
+      if (!["shipped", "delivered", "cancelled"].includes(item.fulfillmentStatus)) {
+        item.fulfillmentStatus = targetItemStatus;
+        updatedAny = true;
+      }
+    }
+  });
+
+  if (!updatedAny) {
+    throw new AppError("No items available for this transition", 409, "NO_ELIGIBLE_ITEMS");
+  }
+
+  if (order.status === "confirmed") {
+    order.status = "processing";
+  }
+
+  order.timeline = order.timeline || [];
+  order.timeline.push({
+    event: auditAction.toLowerCase(),
+    title: timelineTitle,
+    description: timelineDesc,
+    timestamp: new Date(),
+    actor: { actorType: "vendor", actorId: vendorId.toString() },
+  });
+
+  const updatedOrder = await order.save();
+
+  await AuditLog.create({
+    actorId: userId,
+    targetId: order._id,
+    action: auditAction,
+    entityType: "order",
+    beforeState: { items: beforeItems },
+    afterState: { items: updatedOrder.items, status: updatedOrder.status },
+    ipAddress,
+    userAgent,
+  }).catch(() => {});
+
+  const Shipment = require("../models/Shipment");
+  const vendorShipments = await Shipment.find({
+    orderId: updatedOrder._id,
+    vendorId,
+  }).lean();
+
+  return projectVendorOrder(updatedOrder, vendorId, vendorShipments);
+};
+
+/**
+ * Get all platform orders for Admin with search, pagination, and multi-vendor summaries.
+ */
+const getAdminOrders = async ({ query = {} }) => {
+  const safePage = Math.max(Number(query.page) || 1, 1);
+  const safeLimit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
+  const skip = (safePage - 1) * safeLimit;
+
+  const filter = {};
+  if (query.status && query.status !== "all") {
+    filter.status = query.status;
+  }
+  if (query.paymentStatus && query.paymentStatus !== "all") {
+    filter.paymentStatus = query.paymentStatus;
+  }
+  if (query.search) {
+    filter.$or = [
+      { orderNumber: { $regex: query.search.trim(), $options: "i" } },
+      { "shippingAddress.fullName": { $regex: query.search.trim(), $options: "i" } },
+      { "shippingAddress.phone": { $regex: query.search.trim(), $options: "i" } },
+    ];
+  }
+
+  const { items: orders, total } = await orderRepository.findAll({
+    filter,
+    skip,
+    limit: safeLimit,
+    sort: { createdAt: -1 },
+  });
+
+  const items = orders.map((order) => {
+    const rawItems = order.items || [];
+    const vendorIds = new Set(rawItems.map((it) => it.vendorId?.toString()).filter(Boolean));
+
+    return {
+      _id: order._id,
+      secureId: encodeSecureId("order", order._id),
+      orderNumber: order.orderNumber,
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      fulfillmentStatus: order.fulfillmentStatus,
+      grandTotal: order.grandTotal?.toString?.() ?? String(order.grandTotal ?? "0"),
+      currency: order.currency || "INR",
+      itemCount: rawItems.reduce((sum, it) => sum + (it.quantity || 0), 0),
+      vendorCount: vendorIds.size,
+      customer: order.customerId
+        ? {
+            name: `${order.customerId.firstName || ""} ${order.customerId.lastName || ""}`.trim() || order.shippingAddress?.fullName,
+            email: order.customerId.email,
+            phone: order.customerId.phone || order.shippingAddress?.phone,
+          }
+        : {
+            name: order.shippingAddress?.fullName || "Guest",
+            email: "N/A",
+            phone: order.shippingAddress?.phone || "N/A",
+          },
+      shippingAddress: order.shippingAddress,
+      placedAt: order.placedAt,
+      createdAt: order.createdAt,
+    };
+  });
+
+  return {
+    items,
+    meta: {
+      page: safePage,
+      limit: safeLimit,
+      total,
+      totalPages: Math.ceil(total / safeLimit),
+    },
+  };
+};
+
+/**
+ * Get comprehensive single order details for platform admin with multi-vendor dossier.
+ */
+const getAdminOrderById = async (orderId) => {
+  const resolvedOrderId = decodeSecureId(orderId, "order", { strict: false });
+  if (!mongoose.Types.ObjectId.isValid(resolvedOrderId)) {
+    throw new AppError("Invalid order ID", 400, "INVALID_ORDER_ID");
+  }
+
+  const order = await Order.findById(resolvedOrderId)
+    .populate("customerId", "userId firstName lastName email phone")
+    .populate("items.vendorId", "businessName storeName businessSlug email phone")
+    .populate("items.warehouseId", "name code city state")
+    .lean();
+
+  if (!order) {
+    throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
+  }
+
+  const Shipment = require("../models/Shipment");
+  const shipments = await Shipment.find({ orderId: order._id })
+    .populate("vendorId", "storeName businessName")
+    .populate("warehouseId", "name code")
+    .lean();
+
+  return {
+    ...order,
+    secureId: encodeSecureId("order", order._id),
+    subtotal: order.subtotal?.toString?.() ?? String(order.subtotal ?? "0"),
+    grandTotal: order.grandTotal?.toString?.() ?? String(order.grandTotal ?? "0"),
+    discountTotal: order.discountTotal?.toString?.() ?? String(order.discountTotal ?? "0"),
+    taxTotal: order.taxTotal?.toString?.() ?? String(order.taxTotal ?? "0"),
+    shippingTotal: order.shippingTotal?.toString?.() ?? String(order.shippingTotal ?? "0"),
+    shipments: shipments.map((s) => ({
+      ...s,
+      secureId: encodeSecureId("shipment", s._id),
+    })),
+  };
+};
+
+/**
+ * Calculate authoritative checkout quote from active cart.
+ */
+const calculateCheckoutQuote = async ({
+  userId,
+  shippingAddressId = null,
+  couponCode = null,
+  deliveryOptionId = "standard",
+}) => {
+  const customer = await validateCustomer(userId);
+  const cart = await cartRepository.findActiveByCustomer(customer._id);
+
+  if (!cart || !cart.items || cart.items.length === 0) {
+    return {
+      items: [],
+      subtotal: "0.00",
+      productDiscount: "0.00",
+      couponDiscount: "0.00",
+      shippingTotal: "0.00",
+      taxTotal: "0.00",
+      grandTotal: "0.00",
+      currency: DEFAULT_CURRENCY,
+      coupon: null,
+      deliveryOption: resolveDeliveryOption(deliveryOptionId, 0),
+    };
+  }
+
+  const orderItems = await validateCartItems(cart);
+  const currency = cart.currency || DEFAULT_CURRENCY;
+  const subtotalTotals = calculateOrderTotals(orderItems, currency);
+  const subtotalMinorUnits = decimalToMinorUnits(subtotalTotals.subtotal);
+
+  const delivery = resolveDeliveryOption(deliveryOptionId, subtotalMinorUnits);
+
+  let address = null;
+  if (shippingAddressId) {
+    try {
+      address = await getShippingAddress(userId, shippingAddressId);
+    } catch {
+      // Non-blocking fallback
+    }
+  }
+
+  let couponResult = null;
+  let couponDiscountMinorUnits = 0;
+  if (couponCode) {
+    try {
+      const previousOrder = await Order.findOne({ customerId: customer._id }).select("_id").lean();
+      const isFirstOrder = !previousOrder;
+      couponResult = await couponService.validateCoupon({
+        code: couponCode,
+        customerId: customer._id,
+        orderAmount: Number(subtotalTotals.subtotal),
+        items: orderItems.map((item) => ({
+          productId: item.productId,
+          categoryId: item.categoryId,
+          vendorId: item.vendorId,
+          lineTotal: item.lineTotal,
+          quantity: item.quantity,
+        })),
+        isFirstOrder,
+      });
+      couponDiscountMinorUnits = decimalToMinorUnits(couponResult.discountAmount);
+    } catch (err) {
+      couponResult = { error: err.message || "Invalid coupon" };
+    }
+  }
+
+  let taxCalculation = null;
+  if (address) {
+    try {
+      taxCalculation = await taxService.calculateOrderTax({
+        items: orderItems,
+        shippingAddress: address,
+        couponDiscountMinorUnits: couponResult?.discountAmount ? couponDiscountMinorUnits : 0,
+        shippingTotalMinorUnits: delivery.feeMinorUnits,
+        pricingMode: DEFAULT_TAX_PRICING_MODE,
+        currency,
+      });
+    } catch {
+      // Non-blocking fallback
+    }
+  }
+
+  const totals = calculateOrderTotals(
+    taxCalculation?.items || orderItems,
+    currency,
+    couponResult?.discountAmount ? couponDiscountMinorUnits : 0,
+    taxCalculation,
+    delivery.feeMinorUnits
+  );
+
+  return {
+    items: (taxCalculation?.items || orderItems).map((it) => ({
+      productId: it.productId,
+      productVariantId: it.productVariantId,
+      productName: it.productName,
+      variantName: it.variantName,
+      sku: it.sku,
+      quantity: it.quantity,
+      unitPrice: it.unitPrice?.toString ? it.unitPrice.toString() : String(it.unitPrice),
+      lineTotal: it.lineTotal?.toString ? it.lineTotal.toString() : String(it.lineTotal),
+    })),
+    subtotal: totals.subtotal,
+    productDiscount: "0.00",
+    couponDiscount: totals.discountTotal,
+    shippingTotal: totals.shippingTotal,
+    taxTotal: totals.taxTotal,
+    grandTotal: totals.grandTotal,
+    currency,
+    coupon: couponResult?.coupon
+      ? {
+          code: couponResult.coupon.code,
+          discountAmount: couponResult.discountAmount,
+          title: couponResult.coupon.title,
+        }
+      : null,
+    couponError: couponResult?.error || null,
+    deliveryOption: {
+      id: delivery.id,
+      name: delivery.name,
+      cost: Number(delivery.cost),
+      estimatedDays: delivery.estimatedDays,
+    },
+  };
+};
+
+/**
+ * Get lifecycle activity timeline and financial breakdown for an order.
+ */
+const getOrderActivity = async (orderId, userId, isAdmin = false) => {
+  const customer = !isAdmin ? await validateCustomer(userId) : null;
+  const filter = { _id: orderId };
+  if (!isAdmin && customer) {
+    filter.customerId = customer._id;
+  }
+  const order = await Order.findOne(filter).lean();
+  if (!order) {
+    throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
+  }
+
+  const financialBreakdown = {
+    itemsTotal: order.subtotal?.toString?.() || String(order.subtotal || "0.00"),
+    productDiscount: "0.00",
+    couponDiscount: order.couponDiscount?.toString?.() || order.discountTotal?.toString?.() || "0.00",
+    shippingTotal: order.shippingTotal?.toString?.() || "0.00",
+    taxTotal: order.taxTotal?.toString?.() || "0.00",
+    grandTotal: order.grandTotal?.toString?.() || "0.00",
+    amountPaid: order.amountPaid?.toString?.() || (order.paymentStatus === "paid" ? order.grandTotal?.toString?.() : "0.00"),
+    amountRefunded: order.amountRefunded?.toString?.() || "0.00",
+    currency: order.currency || "INR",
+  };
+
+  return {
+    orderId: order._id,
+    orderNumber: order.orderNumber,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    deliveryOption: order.deliveryOption || { id: "standard", name: "Standard Delivery" },
+    timeline: order.timeline || [],
+    paymentAttempts: order.paymentAttempts || [],
+    financialBreakdown,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+  };
 };
 
 module.exports = {
@@ -2027,10 +2664,17 @@ module.exports = {
   getVendorOrders,
   getVendorOrderById,
   projectVendorOrder,
+  transitionVendorOrderItemStatus,
+  getAdminOrders,
+  getAdminOrderById,
   transitionOrderStatus,
   cancelOrder,
   expirePendingOrder,
   markOrderPaymentCaptured,
+  calculateCheckoutQuote,
+  getOrderActivity,
+  resolveDeliveryOption,
+  DELIVERY_OPTIONS,
 };
 
 

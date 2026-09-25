@@ -161,6 +161,33 @@ const orderItemSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
+    fulfillmentStatus: {
+      type: String,
+      enum: [
+        "unfulfilled",
+        "processing",
+        "ready_to_ship",
+        "shipped",
+        "delivered",
+        "cancelled",
+      ],
+      default: "unfulfilled",
+      required: true,
+      index: true,
+    },
+
+    shipmentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Shipment",
+      default: null,
+    },
+
+    settlementId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "VendorSettlement",
+      default: null,
+    },
   },
   {
     _id: true,
@@ -247,6 +274,13 @@ const orderSchema = new mongoose.Schema(
       default: "none",
       required: true,
       index: true,
+    },
+
+    cancellationReason: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      default: null,
     },
 
     paymentStatus: {
@@ -455,6 +489,11 @@ const orderSchema = new mongoose.Schema(
       default: null,
     },
 
+    deliveredAt: {
+      type: Date,
+      default: null,
+    },
+
     cancelledAt: {
       type: Date,
       default: null,
@@ -475,6 +514,147 @@ const orderSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+
+    /*
+     * Selected delivery option snapshot (standard / express).
+     */
+    deliveryOption: {
+      id: {
+        type: String,
+        default: "standard",
+        trim: true,
+      },
+      name: {
+        type: String,
+        default: "Standard Delivery",
+        trim: true,
+      },
+      cost: {
+        type: mongoose.Schema.Types.Decimal128,
+        default: 0,
+      },
+      estimatedDays: {
+        type: String,
+        default: "2–4 business days",
+        trim: true,
+      },
+    },
+
+    couponDiscount: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: 0,
+    },
+
+    amountPaid: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: 0,
+    },
+
+    amountRefunded: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: 0,
+    },
+
+    /*
+     * Append-only lifecycle activity timeline for customer & admin audit.
+     */
+    timeline: [
+      {
+        event: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        title: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        description: {
+          type: String,
+          default: "",
+          trim: true,
+        },
+        timestamp: {
+          type: Date,
+          default: Date.now,
+        },
+        actor: {
+          actorType: {
+            type: String,
+            enum: ["customer", "system", "admin", "vendor"],
+            default: "customer",
+          },
+          actorId: {
+            type: String,
+            default: null,
+          },
+        },
+        metadata: {
+          type: mongoose.Schema.Types.Mixed,
+          default: {},
+        },
+      },
+    ],
+
+    /*
+     * Payment attempts history for reconciliation and customer support.
+     */
+    paymentAttempts: [
+      {
+        attemptNumber: {
+          type: Number,
+          required: true,
+        },
+        gateway: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        method: {
+          type: String,
+          default: null,
+          trim: true,
+        },
+        amount: {
+          type: mongoose.Schema.Types.Decimal128,
+          required: true,
+        },
+        currency: {
+          type: String,
+          default: "INR",
+          trim: true,
+        },
+        status: {
+          type: String,
+          enum: ["created", "pending", "successful", "failed", "cancelled"],
+          default: "created",
+        },
+        gatewayOrderId: {
+          type: String,
+          default: null,
+          trim: true,
+        },
+        gatewayPaymentId: {
+          type: String,
+          default: null,
+          trim: true,
+        },
+        failureReason: {
+          type: String,
+          default: null,
+          trim: true,
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+        completedAt: {
+          type: Date,
+          default: null,
+        },
+      },
+    ],
   },
   {
     timestamps: true,

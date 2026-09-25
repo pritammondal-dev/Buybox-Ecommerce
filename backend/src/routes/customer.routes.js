@@ -1,7 +1,7 @@
 const express = require("express");
 
 const customerController = require("../controllers/customer.controller");
-const authenticate = require("../middlewares/authentication.middleware");
+const { authenticateCustomer } = require("../middlewares/authentication.middleware");
 const validate = require("../middlewares/validate.middleware");
 
 const {
@@ -10,7 +10,7 @@ const {
 
 const router = express.Router();
 
-router.use(authenticate);
+router.use(authenticateCustomer);
 
 router.get(
   "/me",

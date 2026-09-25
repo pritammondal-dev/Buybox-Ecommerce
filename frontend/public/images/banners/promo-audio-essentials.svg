@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 200" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#022c22" />
+      <stop offset="50%" stop-color="#064E3B" />
+      <stop offset="100%" stop-color="#043E2E" />
+    </linearGradient>
+    <radialGradient id="glow" cx="80%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#10B981" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#064E3B" stop-opacity="0" />
+    </radialGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.5" />
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="480" height="200" fill="url(#bg)" />
+  <rect width="480" height="200" fill="url(#glow)" />
+
+  <!-- Subtle wave lines on right -->
+  <path d="M 320,190 Q 360,110 400,140 T 480,90" fill="none" stroke="#34D399" stroke-opacity="0.2" stroke-width="2" />
+  <path d="M 340,200 Q 380,130 420,160 T 480,110" fill="none" stroke="#FBBF24" stroke-opacity="0.15" stroke-width="1.5" />
+
+  <!-- Left Content -->
+  <g transform="translate(32, 34)">
+    <!-- Discount Tag -->
+    <text x="0" y="20" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="800" fill="#34D399" letter-spacing="1.5">
+      UP TO 40% OFF
+    </text>
+
+    <!-- Main Title -->
+    <text x="0" y="54" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="24" font-weight="900" fill="#FFFFFF" letter-spacing="-0.5">
+      Audio Essentials
+    </text>
+
+    <!-- Subtitle -->
+    <text x="0" y="78" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="500" fill="#A7F3D0" opacity="0.9">
+      Studio monitors &amp; wireless audio.
+    </text>
+
+    <!-- CTA Button -->
+    <g transform="translate(0, 96)">
+      <rect width="112" height="32" rx="16" fill="#007A55" />
+      <text x="18" y="20" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">
+        Shop Now →
+      </text>
+    </g>
+  </g>
+
+  <!-- Headphones Graphic on Right -->
+  <g transform="translate(370, 100)" filter="url(#shadow)">
+    <!-- Headband -->
+    <path d="M -55,10 C -55,-65 55,-65 55,10" fill="none" stroke="#1E293B" stroke-width="18" stroke-linecap="round" />
+    <path d="M -50,6 C -50,-58 50,-58 50,6" fill="none" stroke="#D97706" stroke-width="3" stroke-linecap="round" opacity="0.7" />
+
+    <!-- Left Ear Cup -->
+    <g transform="translate(-56, 12)">
+      <ellipse cx="0" cy="0" rx="18" ry="32" fill="#0F172A" />
+      <ellipse cx="0" cy="0" rx="14" ry="26" fill="#1E293B" />
+      <ellipse cx="-2" cy="0" rx="6" ry="14" fill="#D97706" opacity="0.8" />
+      <ellipse cx="-2" cy="0" rx="4" ry="10" fill="#FBBF24" />
+    </g>
+
+    <!-- Right Ear Cup -->
+    <g transform="translate(56, 12)">
+      <ellipse cx="0" cy="0" rx="18" ry="32" fill="#0F172A" />
+      <ellipse cx="0" cy="0" rx="14" ry="26" fill="#1E293B" />
+      <ellipse cx="2" cy="0" rx="6" ry="14" fill="#D97706" opacity="0.8" />
+      <ellipse cx="2" cy="0" rx="4" ry="10" fill="#FBBF24" />
+    </g>
+  </g>
+</svg>

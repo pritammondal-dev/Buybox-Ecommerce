@@ -1,5 +1,7 @@
 const PAYMENT_GATEWAYS = Object.freeze({
   RAZORPAY: "razorpay",
+  PAYPAL: "paypal",
+  INTERNAL: "internal",
 });
 
 const PAYMENT_STATUSES = Object.freeze({
@@ -20,6 +22,9 @@ const PAYMENT_METHODS = Object.freeze([
   "wallet",
   "emi",
   "bank_transfer",
+  "international_card",
+  "paypal",
+  "cod",
   "other",
 ]);
 

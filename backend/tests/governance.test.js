@@ -16,7 +16,7 @@ const Warehouse = require("../src/models/Warehouse");
 const Category = require("../src/models/Category");
 const { PERMISSIONS } = require("../src/constants/permissions.constants");
 const { SCOPE_TYPES } = require("../src/constants/scope.constants");
-const { generateAccessToken } = require("../src/services/token.service");
+const { generateAccessToken, TOKEN_CONTEXTS } = require("../src/services/token.service");
 
 const TEST_MONGODB_URI = process.env.MONGODB_URI
   ? process.env.MONGODB_URI.replace("/buybox?", "/buybox_gov_test?")
@@ -39,7 +39,7 @@ describe("Phase 1F — Super Admin RBAC/PBAC Governance Backend", () => {
       lastName: "User",
       email: `gov_user_${unique}@test-gov.com`,
       password: "Password123!",
-      role: options.role || "manager",
+      role: options.role || "admin",
       isActive: options.isActive !== undefined ? options.isActive : true,
       authVersion: 1,
       permissionVersion: 1,
@@ -59,6 +59,7 @@ describe("Phase 1F — Super Admin RBAC/PBAC Governance Backend", () => {
     const token = generateAccessToken({
       sub: user._id.toString(),
       role: user.role,
+      context: TOKEN_CONTEXTS.ADMINISTRATOR,
       authVersion: user.authVersion,
       permissionVersion: user.permissionVersion,
     });
@@ -178,6 +179,7 @@ describe("Phase 1F — Super Admin RBAC/PBAC Governance Backend", () => {
     }
 
     // 1. Create primary Super Admin (with employee + system_super_admin role)
+    await User.deleteMany({ role: "super_admin" });
     const superAdminUnique = `${Date.now()}_superadmin`;
     superAdminUser = await User.create({
       firstName: "Super",
@@ -207,12 +209,13 @@ describe("Phase 1F — Super Admin RBAC/PBAC Governance Backend", () => {
     superAdminToken = generateAccessToken({
       sub: superAdminUser._id.toString(),
       role: superAdminUser.role,
+      context: TOKEN_CONTEXTS.ADMINISTRATOR,
       authVersion: 1,
       permissionVersion: 1,
     });
 
     // 2. Create regular staff user (NO governance permissions)
-    const staff = await createTestEmployee({ role: "manager" });
+    const staff = await createTestEmployee({ role: "admin" });
     regularStaffUser = staff.user;
     regularStaffToken = staff.token;
 
@@ -1143,8 +1146,8 @@ describe("Phase 1F — Super Admin RBAC/PBAC Governance Backend", () => {
     });
 
     it("allows suspending a second Super Admin as long as at least one active Super Admin remains", async () => {
-      // Create a second active Super Admin
-      const secondSuper = await createTestEmployee({ role: "super_admin" });
+      // Create a second active Super Admin (role admin + system_super_admin employee role)
+      const secondSuper = await createTestEmployee({ role: "admin" });
       const superRole = await Role.findOne({ slug: "system_super_admin" });
       await EmployeeRole.create({
         employeeId: secondSuper.employee._id,

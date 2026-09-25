@@ -1,5 +1,20 @@
 const mongoose = require("mongoose");
 
+const ALLOWED_BANNER_SLOTS = [
+  "hero_main",
+  "hero_audio",
+  "hero_smart_home",
+  "hero_brand_deals",
+  "mid_work_smarter",
+  "mid_stylish_looks",
+  "category_audio",
+  "category_workspace",
+  "category_smart_living",
+  "bottom_home_kitchen",
+  "bottom_smart_gadgets",
+  "bottom_monsoon_special",
+];
+
 const storefrontBannerSchema = new mongoose.Schema(
   {
     title: {
@@ -7,6 +22,19 @@ const storefrontBannerSchema = new mongoose.Schema(
       required: true,
       trim: true,
       maxlength: 200,
+    },
+
+    slotKey: {
+      type: String,
+      enum: ALLOWED_BANNER_SLOTS,
+      default: null,
+      index: true,
+    },
+
+    altText: {
+      type: String,
+      trim: true,
+      default: null,
     },
 
     imageUrl: {
@@ -62,8 +90,16 @@ const storefrontBannerSchema = new mongoose.Schema(
   {
     timestamps: true,
     versionKey: false,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   }
 );
+
+storefrontBannerSchema.virtual("placement").get(function () {
+  return this.slotKey;
+}).set(function (val) {
+  this.slotKey = val;
+});
 
 storefrontBannerSchema.index({
   isActive: 1,
@@ -74,6 +110,11 @@ storefrontBannerSchema.index({
   isActive: 1,
   startsAt: 1,
   endsAt: 1,
+});
+
+storefrontBannerSchema.index({
+  slotKey: 1,
+  isActive: 1,
 });
 
 storefrontBannerSchema.pre("validate", function () {

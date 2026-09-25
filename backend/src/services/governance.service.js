@@ -1524,6 +1524,141 @@ const getAuditLogById = async (id) => {
   return log;
 };
 
+/**
+ * Atomic bulk update of an employee's permissions.
+ * Computes difference with base role, records grants/restrictions,
+ * invalidates permission cache via permissionVersion, and creates audit log.
+ */
+const updateEmployeePermissionsBulk = async ({
+  employeeId,
+  permissionSlugs,
+  actorId,
+  req = null,
+}) => {
+  const {
+    getEffectivePermissions,
+    incrementPermissionVersion,
+  } = require("./authorization.service");
+
+  if (!mongoose.isValidObjectId(employeeId)) {
+    throw new AppError("Invalid employee ID", 400, "INVALID_EMPLOYEE_ID");
+  }
+
+  const employee = await Employee.findById(employeeId);
+  if (!employee) {
+    throw new AppError("Employee not found", 404, "EMPLOYEE_NOT_FOUND");
+  }
+
+  const targetUser = await User.findById(employee.userId);
+  if (!targetUser) {
+    throw new AppError("User not found", 404, "USER_NOT_FOUND");
+  }
+
+  // Prevent modifying Superadmin permissions
+  if (targetUser.role === "super_admin") {
+    throw new AppError(
+      "Cannot modify Superadmin permissions",
+      400,
+      "CANNOT_MODIFY_SUPERADMIN_PERMISSIONS"
+    );
+  }
+
+  // Validate permission names against server-side registry
+  const allPermissions = await Permission.find({ isActive: true }).lean();
+  const permMap = new Map();
+  for (const p of allPermissions) {
+    permMap.set(p.slug, p);
+  }
+
+  const validSlugs = new Set();
+  for (const slug of permissionSlugs) {
+    if (!permMap.has(slug)) {
+      throw new AppError(
+        `Invalid permission name: ${slug}`,
+        400,
+        "INVALID_PERMISSION"
+      );
+    }
+    validSlugs.add(slug);
+  }
+
+  // Capture Before State
+  const beforeEffective = await getEffectivePermissions(targetUser._id);
+
+  // Determine base role permissions
+  const activeRoles = await EmployeeRole.find({
+    employeeId: employee._id,
+    isActive: true,
+  }).lean();
+  const roleIds = activeRoles.map((r) => r.roleId);
+  const rolePermissions = await RolePermission.find({
+    roleId: { $in: roleIds },
+  }).lean();
+  const rolePermIds = new Set(rolePermissions.map((rp) => rp.permissionId.toString()));
+
+  const rolePermSlugs = new Set();
+  for (const p of allPermissions) {
+    if (rolePermIds.has(p._id.toString())) {
+      rolePermSlugs.add(p.slug);
+    }
+  }
+
+  // Clear existing direct grants and restrictions
+  await EmployeePermissionGrant.deleteMany({ employeeId: employee._id });
+  await EmployeePermissionRestriction.deleteMany({ employeeId: employee._id });
+
+  // 1. Direct Grants for any requested permission not covered by base role
+  for (const slug of validSlugs) {
+    if (!rolePermSlugs.has(slug)) {
+      const pDoc = permMap.get(slug);
+      await EmployeePermissionGrant.create({
+        employeeId: employee._id,
+        permissionId: pDoc._id,
+        reason: "Granted via Superadmin permission management",
+        grantedBy: actorId,
+        isActive: true,
+      });
+    }
+  }
+
+  // 2. Direct Restrictions for any base role permission stripped in the request
+  for (const roleSlug of rolePermSlugs) {
+    if (!validSlugs.has(roleSlug)) {
+      const pDoc = permMap.get(roleSlug);
+      if (pDoc) {
+        await EmployeePermissionRestriction.create({
+          employeeId: employee._id,
+          permissionId: pDoc._id,
+          reason: "Restricted via Superadmin permission management",
+          restrictedBy: actorId,
+          isActive: true,
+        });
+      }
+    }
+  }
+
+  // Invalidate authorization context immediately
+  await incrementPermissionVersion(targetUser._id);
+
+  const afterEffective = await getEffectivePermissions(targetUser._id);
+
+  await recordAuditLog({
+    actorId,
+    targetId: employee._id,
+    action: "permission.updated",
+    entityType: "employee_permissions",
+    beforeState: { permissions: beforeEffective },
+    afterState: { permissions: afterEffective },
+    req,
+  });
+
+  return {
+    employeeId: employee._id,
+    userId: targetUser._id,
+    effectivePermissions: afterEffective,
+  };
+};
+
 module.exports = {
   sanitizeAuditState,
   recordAuditLog,
@@ -1555,4 +1690,5 @@ module.exports = {
   removeWorkAssignment,
   listAuditLogs,
   getAuditLogById,
+  updateEmployeePermissionsBulk,
 };

@@ -35,7 +35,7 @@ const listBanners = async (req, res, next) => {
 const listActiveBanners = async (req, res, next) => {
   try {
     const banners =
-      await storefrontBannerService.listActiveBanners();
+      await storefrontBannerService.listActiveBanners(req.query);
 
     return sendSuccess(res, {
       message: "Active storefront banners fetched successfully",

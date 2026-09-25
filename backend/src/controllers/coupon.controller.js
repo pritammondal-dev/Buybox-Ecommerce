@@ -128,6 +128,35 @@ const validateCoupon = async (req, res, next) => {
   }
 };
 
+const Coupon = require("../models/Coupon");
+
+const getActiveCoupons = async (req, res, next) => {
+  try {
+    const now = new Date();
+    const coupons = await Coupon.find({
+      status: "active",
+      isActive: true,
+      startsAt: { $lte: now },
+      expiresAt: { $gte: now },
+    })
+      .select("code title description discountType discountAmount minOrderAmount maxDiscountAmount scope startsAt expiresAt")
+      .sort({ discountAmount: -1 })
+      .lean();
+
+    return apiResponse.sendSuccess(res, {
+      message: "Active coupons retrieved successfully",
+      data: coupons.map((c) => ({
+        ...c,
+        discountAmount: c.discountAmount?.toString(),
+        minOrderAmount: c.minOrderAmount?.toString(),
+        maxDiscountAmount: c.maxDiscountAmount?.toString(),
+      })),
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   createCoupon,
   getCouponById,
@@ -136,4 +165,5 @@ module.exports = {
   activateCoupon,
   deactivateCoupon,
   validateCoupon,
+  getActiveCoupons,
 };

@@ -19,17 +19,25 @@ export async function generateMetadata({ params }) {
     const product = res?.data?.product || res?.data;
 
     if (product) {
-      const primaryImage = product.images?.[0]?.url || null;
+      const primaryImage = product.images?.[0]?.url || product.image || null;
+      const title = `${product.name} | Buybox`;
+      const description =
+        product.shortDescription ||
+        product.description?.slice(0, 160) ||
+        `Explore ${product.name} with verified quality, genuine brand warranty, and fast delivery at Buybox.`;
+
       return {
-        title: `${product.name} | Buybox`,
-        description:
-          product.shortDescription ||
-          product.description ||
-          `Explore ${product.name} with verified quality and genuine warranties at Buybox.`,
+        title,
+        description,
         openGraph: {
-          title: `${product.name} | Buybox`,
-          description: product.shortDescription || product.description,
-          images: primaryImage ? [{ url: primaryImage }] : [],
+          title,
+          description,
+          type: "website",
+          url: `/product/${slug}`,
+          images: primaryImage ? [{ url: primaryImage, alt: product.name }] : [],
+        },
+        alternates: {
+          canonical: `/product/${slug}`,
         },
       };
     }
@@ -39,7 +47,7 @@ export async function generateMetadata({ params }) {
 
   return {
     title: "Product Details | Buybox",
-    description: "Explore high-performance audio, tech & peripherals at Buybox.",
+    description: "Explore high-performance audio, tech & peripherals with genuine warranty at Buybox.",
   };
 }
 
@@ -65,17 +73,18 @@ export default async function ProductDetailPage({ params }) {
     notFound();
   }
 
-  // Resolve brand, category, and same-category products concurrently
+  // Resolve brand, category, same-category products, and all categories concurrently
   const categoryId = product.categoryId || product.category?._id;
   const brandId = product.brandId || product.brand?._id;
 
-  const [categoryResult, brandResult, sameCategoryResult] =
+  const [categoryResult, brandResult, sameCategoryResult, allCategoriesResult] =
     await Promise.allSettled([
       categoryId ? categoryService.getCategoryById(categoryId) : Promise.resolve(null),
       brandId ? brandService.getBrandById(brandId) : Promise.resolve(null),
       categoryId
         ? productService.getProducts({ categoryId, limit: 5, status: "active" })
         : Promise.resolve(null),
+      categoryService.getCategories(),
     ]);
 
   const category =
@@ -87,6 +96,14 @@ export default async function ProductDetailPage({ params }) {
     brandResult.status === "fulfilled"
       ? brandResult.value?.data?.brand || brandResult.value?.data || null
       : null;
+
+  const allCategories =
+    allCategoriesResult.status === "fulfilled"
+      ? allCategoriesResult.value?.data?.categories ||
+        (Array.isArray(allCategoriesResult.value?.data)
+          ? allCategoriesResult.value.data
+          : [])
+      : [];
 
   let sameCategoryProducts = [];
   if (sameCategoryResult.status === "fulfilled" && sameCategoryResult.value) {
@@ -104,6 +121,7 @@ export default async function ProductDetailPage({ params }) {
       product={product}
       brand={brand}
       category={category}
+      allCategories={allCategories}
       sameCategoryProducts={sameCategoryProducts}
     />
   );

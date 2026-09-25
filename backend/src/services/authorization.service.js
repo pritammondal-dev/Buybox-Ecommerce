@@ -1,5 +1,6 @@
 const User = require("../models/User");
 const Employee = require("../models/Employee");
+const JobRole = require("../models/JobRole");
 const Role = require("../models/Role");
 const Permission = require("../models/Permission");
 const RolePermission = require("../models/RolePermission");
@@ -7,6 +8,10 @@ const EmployeeRole = require("../models/EmployeeRole");
 const EmployeePermissionGrant = require("../models/EmployeePermissionGrant");
 const EmployeePermissionRestriction = require("../models/EmployeePermissionRestriction");
 const { ROLE_PERMISSIONS } = require("../constants/role-permissions.constants");
+const {
+  PERMISSIONS,
+  resolvePermissionAliases,
+} = require("../constants/permissions.constants");
 const AppError = require("../errors/AppError");
 
 /**
@@ -53,12 +58,17 @@ const getEffectivePermissions = async (userId, options = {}) => {
     return [];
   }
 
+  // Superadmin platform authority: unconditionally possesses all system permissions
+  if (user.role === "super_admin") {
+    return Object.values(PERMISSIONS).sort();
+  }
+
   // 2. Resolve Employee Profile
   const employee = await Employee.findOne({ userId: user._id }).lean();
 
   // If user has no Employee profile:
   if (!employee) {
-    // Customer and Vendor fallback: return legacy permissions
+    // Customer, Vendor, or other legacy roles fallback: return role permissions
     if (["customer", "vendor"].includes(user.role)) {
       const legacy = ROLE_PERMISSIONS[user.role] || [];
       return [...new Set(legacy)].sort();
@@ -73,6 +83,24 @@ const getEffectivePermissions = async (userId, options = {}) => {
   }
 
   // 4. Resolve Active, Non-Expired Role Permissions
+  let rolePermissions = new Set();
+
+  // Dynamic JobRole Permissions (Authoritative)
+  if (employee.jobRoleId) {
+    const jobRole = await JobRole.findById(employee.jobRoleId).lean();
+    if (jobRole && jobRole.isActive) {
+      if (jobRole.isSuperadminRole) {
+        return Object.values(PERMISSIONS).sort();
+      }
+      if (Array.isArray(jobRole.permissions)) {
+        for (const p of jobRole.permissions) {
+          rolePermissions.add(p);
+        }
+      }
+    }
+  }
+
+  // Legacy EmployeeRoles (Backward Compatibility)
   const activeEmployeeRoles = await EmployeeRole.find({
     employeeId: employee._id,
     isActive: true,
@@ -81,7 +109,6 @@ const getEffectivePermissions = async (userId, options = {}) => {
 
   const roleIds = activeEmployeeRoles.map((er) => er.roleId);
 
-  let rolePermissions = new Set();
   if (roleIds.length > 0) {
     // Only query permissions for active Roles
     const activeRoles = await Role.find({
@@ -182,7 +209,9 @@ const hasPermission = async (userId, permission, options = {}) => {
     return false;
   }
   const effective = await getEffectivePermissions(userId, options);
-  return effective.includes(permission);
+  const effectiveSet = new Set(effective);
+  const aliases = resolvePermissionAliases(permission);
+  return aliases.some((alias) => effectiveSet.has(alias));
 };
 
 /**
@@ -199,7 +228,10 @@ const hasAnyPermission = async (userId, permissions = [], options = {}) => {
   }
   const effective = await getEffectivePermissions(userId, options);
   const effectiveSet = new Set(effective);
-  return permissions.some((perm) => effectiveSet.has(perm));
+  return permissions.some((perm) => {
+    const aliases = resolvePermissionAliases(perm);
+    return aliases.some((alias) => effectiveSet.has(alias));
+  });
 };
 
 /**
@@ -216,7 +248,10 @@ const hasAllPermissions = async (userId, permissions = [], options = {}) => {
   }
   const effective = await getEffectivePermissions(userId, options);
   const effectiveSet = new Set(effective);
-  return permissions.every((perm) => effectiveSet.has(perm));
+  return permissions.every((perm) => {
+    const aliases = resolvePermissionAliases(perm);
+    return aliases.some((alias) => effectiveSet.has(alias));
+  });
 };
 
 /**

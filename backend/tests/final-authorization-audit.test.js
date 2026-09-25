@@ -12,7 +12,7 @@ const EmployeePermissionRestriction = require("../src/models/EmployeePermissionR
 const Warehouse = require("../src/models/Warehouse");
 const { PERMISSIONS } = require("../src/constants/permissions.constants");
 const { ROLES } = require("../src/constants/auth.constants");
-const { generateAccessToken } = require("../src/services/token.service");
+const { generateAccessToken, TOKEN_CONTEXTS } = require("../src/services/token.service");
 
 const TEST_MONGODB_URI = process.env.MONGODB_URI
   ? process.env.MONGODB_URI.replace("/buybox?", "/buybox_final_auth_audit_test?")
@@ -44,6 +44,9 @@ describe("Phase E — Final Authorization & Security Audit", () => {
 
   async function createTestEmployee(options = {}) {
     const status = options.status || "active";
+    if (options.userRole === "super_admin" || options.userRole === ROLES.SUPER_ADMIN) {
+      await User.deleteMany({ role: "super_admin" });
+    }
     const user = await User.create({
       firstName: "Audit",
       lastName: "Staff",
@@ -89,6 +92,7 @@ describe("Phase E — Final Authorization & Security Audit", () => {
     const token = generateAccessToken({
       sub: user._id.toString(),
       role: user.role,
+      context: TOKEN_CONTEXTS.ADMINISTRATOR,
       authVersion: user.authVersion,
       permissionVersion: user.permissionVersion,
     });

@@ -17,6 +17,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { SearchBar } from "./SearchBar.jsx";
+import { DeliveryLocationWidget } from "./navigation/DeliveryLocationWidget.jsx";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../ui/Sheet.jsx";
 import { DropdownMenu, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "../ui/DropdownMenu.jsx";
 import { useAuth } from "../../hooks/useAuth.js";
@@ -84,22 +85,14 @@ export function StorefrontHeader({ categories: propCategories, onCartClick, clas
         <div className="hidden md:flex flex-1 max-w-2xl mx-2 lg:mx-6">
           <SearchBar
             categories={categories}
-            placeholder="Search products, brands and categories..."
+            placeholder="Search for products, brands and more..."
           />
         </div>
 
-        {/* Right Section: Support, Account, Wishlist, Cart */}
+        {/* Right Section: Location, Account, Wishlist, Cart */}
         <div className="flex items-center gap-3 sm:gap-5 lg:gap-6">
-          {/* Hotline / 24/7 Support */}
-          <div className="hidden xl:flex items-center gap-2.5 pl-2">
-            <div className="flex size-10 items-center justify-center rounded-full bg-emerald-50 text-[#007A55]">
-              <PhoneCall className="size-4 stroke-[2.2]" />
-            </div>
-            <div className="flex flex-col text-left">
-              <span className="text-[11px] font-medium text-muted-foreground">24/7 Support</span>
-              <span className="text-xs font-bold text-foreground">+800-777-003</span>
-            </div>
-          </div>
+          {/* Location / Deliver To Selector (Dynamic from user address) */}
+          <DeliveryLocationWidget className="hidden lg:flex" />
 
           {/* User Account Flyout (Amazon / Flipkart inspired) */}
           <DropdownMenu
@@ -125,7 +118,7 @@ export function StorefrontHeader({ categories: propCategories, onCartClick, clas
                     <ChevronDown className="size-3 text-muted-foreground opacity-70" />
                   </span>
                   <span className="text-xs font-bold text-foreground">
-                    {isAuthenticated ? "Account & Orders" : "Account & Lists"}
+                    {isAuthenticated ? "My Account" : "My Account"}
                   </span>
                 </div>
               </button>
@@ -209,7 +202,7 @@ export function StorefrontHeader({ categories: propCategories, onCartClick, clas
                     <ArrowRight className="size-3 text-muted-foreground" />
                   </Link>
                   <Link
-                    href="/shop"
+                    href="/help"
                     className="flex items-center justify-between rounded-lg px-2 py-1.5 font-medium text-foreground hover:bg-slate-50 transition-colors"
                   >
                     <span>Help & Customer Care</span>

@@ -8,6 +8,7 @@ import { cn } from "../../utils/cn.js";
 const SORT_OPTIONS = [
   { value: "featured", label: "Featured / Recommended" },
   { value: "newest", label: "Newest Arrivals" },
+  { value: "discount", label: "Today's Deals / Highest Discount" },
   { value: "price_asc", label: "Price: Low to High" },
   { value: "price_desc", label: "Price: High to Low" },
   { value: "rating_desc", label: "Customer Rating" },

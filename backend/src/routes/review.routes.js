@@ -5,7 +5,9 @@ const reviewController = require("../controllers/review.controller");
 const authenticate = require("../middlewares/authentication.middleware");
 const {
   requirePermissions,
+  requireRoles,
 } = require("../middlewares/authorization.middleware");
+const { ROLES } = require("../constants/auth.constants");
 const validate = require("../middlewares/validate.middleware");
 
 const {
@@ -19,6 +21,22 @@ const {
 const { PERMISSIONS } = require("../constants/permissions.constants");
 
 const router = express.Router();
+
+// Vendor-scoped reviews (must precede /:reviewId)
+router.get(
+  "/vendor/my",
+  authenticate,
+  requireRoles(ROLES.VENDOR),
+  reviewController.getMyVendorReviews
+);
+
+// Admin list all reviews
+router.get(
+  "/",
+  authenticate,
+  requirePermissions(PERMISSIONS.REVIEWS_READ),
+  reviewController.listAllReviews
+);
 
 router.post(
   "/",
@@ -50,6 +68,15 @@ router.patch(
 
 router.patch(
   "/:reviewId/moderate",
+  authenticate,
+  requirePermissions(PERMISSIONS.REVIEWS_MODERATE),
+  validate(reviewIdParamsSchema, "params"),
+  validate(moderateReviewSchema),
+  reviewController.moderateReview
+);
+
+router.patch(
+  "/:reviewId/moderation",
   authenticate,
   requirePermissions(PERMISSIONS.REVIEWS_MODERATE),
   validate(reviewIdParamsSchema, "params"),

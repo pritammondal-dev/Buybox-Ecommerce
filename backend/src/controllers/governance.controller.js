@@ -331,7 +331,53 @@ const getAuditLog = asyncHandler(async (req, res) => {
   });
 });
 
+/* =========================================================================
+   9. BULK PERMISSIONS MANAGEMENT (SUPERADMIN ONLY)
+   ========================================================================= */
+
+const getEmployeePermissions = asyncHandler(async (req, res) => {
+  const mongoose = require("mongoose");
+  const Employee = require("../models/Employee");
+  const User = require("../models/User");
+  const { getEffectivePermissions } = require("../services/authorization.service");
+  const AppError = require("../errors/AppError");
+
+  const { employeeId } = req.params;
+  let employee = await Employee.findById(employeeId).lean();
+  let userId = employee?.userId;
+  if (!userId && mongoose.isValidObjectId(employeeId)) {
+    const user = await User.findById(employeeId).lean();
+    if (user) userId = user._id;
+  }
+  if (!userId) {
+    throw new AppError("Employee not found", 404, "EMPLOYEE_NOT_FOUND");
+  }
+
+  const effectivePermissions = await getEffectivePermissions(userId);
+
+  return sendSuccess(res, {
+    message: "Employee permissions retrieved successfully",
+    data: { effectivePermissions },
+  });
+});
+
+const updateEmployeePermissionsBulk = asyncHandler(async (req, res) => {
+  const result = await governanceService.updateEmployeePermissionsBulk({
+    employeeId: req.params.employeeId,
+    permissionSlugs: req.body.permissions,
+    actorId: req.user._id,
+    req,
+  });
+
+  return sendSuccess(res, {
+    message: "Employee permissions updated successfully",
+    data: result,
+  });
+});
+
 module.exports = {
+  getEmployeePermissions,
+  updateEmployeePermissionsBulk,
   listRoles,
   getRole,
   createRole,
@@ -358,4 +404,5 @@ module.exports = {
   removeAssignment,
   listAuditLogs,
   getAuditLog,
+  updateEmployeePermissionsBulk,
 };

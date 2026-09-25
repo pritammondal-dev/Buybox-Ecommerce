@@ -65,6 +65,42 @@ export const paymentService = {
   async createRefund(orderId, payload) {
     return apiClient.post(`/payments/orders/${orderId}/refunds`, payload);
   },
+
+  /**
+   * Create PayPal order for customer checkout
+   * @param {string} orderId
+   * @param {string} [idempotencyKey]
+   * @returns {Promise<Object>}
+   */
+  async createPayPalOrder(orderId, idempotencyKey = null) {
+    const config = {};
+    if (idempotencyKey) {
+      config.headers = { "Idempotency-Key": idempotencyKey };
+    }
+    return apiClient.post(`/payments/paypal/orders/${orderId}`, {}, config);
+  },
+
+  /**
+   * Capture PayPal payment on server
+   * @param {Object} payload
+   * @param {string} payload.orderId
+   * @param {string} payload.paypalOrderId
+   * @returns {Promise<Object>}
+   */
+  async capturePayPalPayment({ orderId, paypalOrderId }) {
+    return apiClient.post("/payments/paypal/capture", { orderId, paypalOrderId });
+  },
+
+  /**
+   * Record payment cancellation or dismissal without deleting order or cart
+   * @param {string} orderId
+   * @returns {Promise<Object>}
+   */
+  async recordPaymentCancellation(orderId) {
+    return apiClient.post(`/payments/orders/${orderId}/cancel`);
+  },
 };
 
 export default paymentService;
+
+

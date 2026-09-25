@@ -28,16 +28,16 @@ export function AddressCard({
           onSelect(id);
         }
       }}
-      className={`group relative flex flex-col justify-between rounded-xl border p-4 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#007A55] ${
+      className={`group relative flex flex-col justify-between rounded-xl border p-4 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#004D38] ${
         isSelected
-          ? "border-[#007A55] bg-emerald-50/40 ring-1 ring-[#007A55]"
+          ? "border-[#004D38] bg-emerald-50/40 ring-1 ring-[#004D38]"
           : "border-slate-200 bg-white hover:border-slate-300"
       }`}
     >
       <div className="flex items-start gap-3">
         <div className="mt-0.5 shrink-0">
           {isSelected ? (
-            <CheckCircle2 className="size-5 text-[#007A55]" />
+            <CheckCircle2 className="size-5 text-[#004D38]" />
           ) : (
             <div className="size-5 rounded-full border-2 border-slate-300 group-hover:border-slate-400" />
           )}
@@ -54,7 +54,7 @@ export function AddressCard({
             </span>
 
             {address.isDefault && (
-              <span className="inline-block rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-[#007A55]">
+              <span className="inline-block rounded-md bg-[#004D38]/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-[#004D38]">
                 Default
               </span>
             )}

@@ -356,12 +356,50 @@ const addVendorResponse = async (
 };
 
 const markHelpful = async (
-  reviewId
+  reviewId,
+  userId = null
 ) => {
   validateObjectId(
     reviewId,
     "review ID"
   );
+
+  const Review = require("../models/Review");
+  const Customer = require("../models/Customer");
+
+  let customer = null;
+  if (userId) {
+    customer = await Customer.findOne({ userId });
+  }
+
+  if (customer) {
+    // Idempotent check: if already upvoted, return current review without duplicate increment
+    const existingVote = await Review.findOne({
+      _id: reviewId,
+      helpfulVoters: customer._id,
+    });
+
+    if (existingVote) {
+      return existingVote;
+    }
+
+    // Atomically record voter and increment helpfulCount
+    const updated = await Review.findOneAndUpdate(
+      {
+        _id: reviewId,
+        helpfulVoters: { $ne: customer._id },
+      },
+      {
+        $addToSet: { helpfulVoters: customer._id },
+        $inc: { helpfulCount: 1 },
+      },
+      { new: true }
+    );
+
+    if (updated) {
+      return updated;
+    }
+  }
 
   const review =
     await reviewRepository.incrementHelpfulCount(
@@ -379,6 +417,117 @@ const markHelpful = async (
   return review;
 };
 
+const Review = require("../models/Review");
+const Product = require("../models/Product");
+const { resolveApprovedVendor } = require("../middlewares/vendor.middleware");
+const { encodeSecureId } = require("../utils/secure-id.util");
+
+const getMyVendorReviews = async ({ userId, query = {} }) => {
+  const vendor = await resolveApprovedVendor(userId);
+
+  const vendorProducts = await Product.find({
+    vendorId: vendor._id,
+    deletedAt: null,
+  }).select("_id title").lean();
+  const productIds = vendorProducts.map((p) => p._id);
+  const productMap = new Map(vendorProducts.map((p) => [p._id.toString(), p]));
+
+  if (productIds.length === 0) {
+    return { items: [], meta: { page: 1, limit: 20, total: 0, totalPages: 0 } };
+  }
+
+  const safePage = Math.max(Number(query.page) || 1, 1);
+  const safeLimit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
+  const skip = (safePage - 1) * safeLimit;
+
+  const filter = { productId: { $in: productIds } };
+  if (query.rating) {
+    filter.rating = Number(query.rating);
+  }
+
+  const total = await Review.countDocuments(filter);
+  const reviews = await Review.find(filter)
+    .populate("customerId", "userId")
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(safeLimit)
+    .lean();
+
+  const items = reviews.map((r) => {
+    const product = productMap.get(r.productId?.toString());
+    return {
+      _id: r._id,
+      secureId: encodeSecureId("review", r._id),
+      product: {
+        _id: r.productId,
+        secureId: encodeSecureId("product", r.productId),
+        title: product?.title || "Product",
+      },
+      rating: r.rating,
+      title: r.title,
+      comment: r.comment,
+      status: r.status,
+      vendorResponse: r.vendorResponse,
+      helpfulCount: r.helpfulCount,
+      isVerifiedPurchase: r.isVerifiedPurchase,
+      createdAt: r.createdAt,
+    };
+  });
+
+  return {
+    items,
+    meta: {
+      page: safePage,
+      limit: safeLimit,
+      total,
+      totalPages: Math.ceil(total / safeLimit),
+    },
+  };
+};
+
+const listAllReviews = async ({ page = 1, limit = 20, status, rating, search } = {}) => {
+  const safePage = Math.max(Number(page) || 1, 1);
+  const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  const skip = (safePage - 1) * safeLimit;
+
+  const filter = {};
+  if (status) filter.status = status;
+  if (rating) filter.rating = Number(rating);
+  if (search) {
+    const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(escaped, "i");
+    filter.$or = [
+      { title: regex },
+      { comment: regex },
+    ];
+  }
+
+  const [reviews, total] = await Promise.all([
+    Review.find(filter)
+      .populate("productId", "title slug sku")
+      .populate({
+        path: "customerId",
+        select: "userId",
+        populate: { path: "userId", select: "firstName lastName email" },
+      })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .lean(),
+    Review.countDocuments(filter),
+  ]);
+
+  return {
+    items: reviews,
+    meta: {
+      page: safePage,
+      limit: safeLimit,
+      total,
+      totalPages: Math.ceil(total / safeLimit),
+    },
+  };
+};
+
 module.exports = {
   createReview,
   getReviewById,
@@ -387,5 +536,7 @@ module.exports = {
   moderateReview,
   addVendorResponse,
   markHelpful,
+  getMyVendorReviews,
+  listAllReviews,
 };
 

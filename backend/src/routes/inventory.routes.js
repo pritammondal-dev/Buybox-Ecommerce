@@ -6,11 +6,13 @@ const validate = require("../middlewares/validate.middleware");
 
 const {
   requirePermissions,
+  requireRoles,
 } = require("../middlewares/authorization.middleware");
 
 const {
   PERMISSIONS,
 } = require("../constants/permissions.constants");
+const { ROLES } = require("../constants/auth.constants");
 
 const {
   createInventorySchema,
@@ -25,10 +27,57 @@ const validateObjectId = require("../middlewares/validate-object-id.middleware")
 const {
   positiveStockQuantitySchema,
 } = require("../validators/inventory/positive-stock-quantity.validator");
+const { decodeSecureId } = require("../utils/secure-id.util");
+const AppError = require("../errors/AppError");
+
+const resolveInventoryIdParam = (paramName = "id") => {
+  return (req, res, next) => {
+    try {
+      const rawParam = req.params[paramName];
+      if (!rawParam) {
+        throw new AppError("Inventory ID is required", 400, "INVALID_OBJECT_ID");
+      }
+      const trimmed = String(rawParam).trim();
+
+      if (/^[a-fA-F0-9]{24}$/.test(trimmed)) {
+        req.params[paramName] = trimmed;
+        return next();
+      }
+
+      if (trimmed.startsWith("inv_")) {
+        const decodedId = decodeSecureId(trimmed, "inventory", { strict: false });
+        req.params[paramName] = decodedId;
+        return next();
+      }
+
+      throw new AppError(`Invalid ${paramName}`, 400, "INVALID_OBJECT_ID");
+    } catch (err) {
+      next(err);
+    }
+  };
+};
 
 const router = express.Router();
 
 router.use(authenticate);
+
+// Vendor-scoped inventory (must precede /:id)
+router.get(
+  "/vendor/my",
+  requireRoles(ROLES.VENDOR),
+  inventoryController.getMyVendorInventory
+);
+
+router.get(
+  "/summary",
+  inventoryController.getInventorySummary
+);
+
+router.get(
+  "/",
+  requirePermissions(PERMISSIONS.INVENTORY_READ),
+  inventoryController.listAllInventory
+);
 
 router.get(
   "/:id",
@@ -60,7 +109,7 @@ router.post(
 
 router.patch(
   "/:id/adjust",
-  validateObjectId("id"),
+  resolveInventoryIdParam("id"),
   requirePermissions(PERMISSIONS.INVENTORY_MANAGE),
   validate(stockAdjustmentSchema),
   inventoryController.adjustStock
@@ -88,6 +137,12 @@ router.patch(
   requirePermissions(PERMISSIONS.INVENTORY_MANAGE),
   validate(positiveStockQuantitySchema),
   inventoryController.deductReservedStock
+);
+
+router.post(
+  "/transfer",
+  requirePermissions(PERMISSIONS.INVENTORY_MANAGE),
+  inventoryController.transferStock
 );
 
 module.exports = router;

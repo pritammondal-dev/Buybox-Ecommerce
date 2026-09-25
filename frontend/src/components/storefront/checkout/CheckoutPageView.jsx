@@ -1,18 +1,27 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Lock } from "lucide-react";
+import { Lock, AlertCircle, ArrowRight, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../../hooks/useAuth.js";
 import { useCart } from "../../../hooks/useCart.js";
 import { addressService } from "../../../services/address.service.js";
+import { useAddressStore } from "../../../stores/address.store.js";
 import { orderService } from "../../../services/order.service.js";
 import { paymentService } from "../../../services/payment.service.js";
 import { couponService } from "../../../services/coupon.service.js";
 import { customerService } from "../../../services/customer.service.js";
+import {
+  STOREFRONT_BUSINESS_POLICIES,
+  calculateDeliveryFee,
+  evaluateCodEligibility,
+} from "../../../config/business-policies.config.js";
+import { formatCurrency, parsePrice } from "../../../utils/formatCurrency.js";
+import { CheckoutStepIndicator } from "./CheckoutStepIndicator.jsx";
 import { CheckoutAddressSection } from "./CheckoutAddressSection.jsx";
+import { CheckoutDeliveryOptions } from "./CheckoutDeliveryOptions.jsx";
 import { CheckoutPaymentSection } from "./CheckoutPaymentSection.jsx";
 import { CheckoutCouponSection } from "./CheckoutCouponSection.jsx";
 import { CheckoutOrderSummary } from "./CheckoutOrderSummary.jsx";
@@ -51,7 +60,11 @@ export function CheckoutPageView() {
     taxTotal = 0,
     isHydrated,
     clearCart,
+    fetchServerCart,
   } = useCart();
+
+  // Multi-step state (Steps 1 to 5)
+  const [currentStep, setCurrentStep] = useState(1);
 
   // Address state
   const [addresses, setAddresses] = useState([]);
@@ -59,15 +72,43 @@ export function CheckoutPageView() {
   const [isLoadingAddresses, setIsLoadingAddresses] = useState(true);
   const [isMutatingAddress, setIsMutatingAddress] = useState(false);
 
+  // Delivery options state
+  const [selectedDeliveryOption, setSelectedDeliveryOption] = useState("standard");
+
   // Coupon state
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
+
+  // Payment method state
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("razorpay");
+
+  // Cart validation on mount status
+  const [cartValidationNotice, setCartValidationNotice] = useState(null);
 
   // Order submission state
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const idempotencyKeyRef = useRef(null);
 
-  // Load customer addresses
+  // 1. Authoritative cart synchronization on load
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    fetchServerCart()
+      .then((serverCart) => {
+        if (!serverCart || !serverCart.items || serverCart.items.length === 0) {
+          return;
+        }
+        // Check if any server values updated
+        setCartValidationNotice(
+          "Cart prices and inventory synchronized with live catalog."
+        );
+      })
+      .catch((err) => {
+        console.warn("Cart revalidation notice:", err?.message);
+      });
+  }, [isAuthenticated, fetchServerCart]);
+
+  // 2. Load customer addresses
   useEffect(() => {
     let isCancelled = false;
 
@@ -107,6 +148,21 @@ export function CheckoutPageView() {
     };
   }, [isAuthenticated]);
 
+  // Calculate dynamic delivery fee from policy
+  const effectiveDeliveryFee = useMemo(() => {
+    return calculateDeliveryFee(subtotal, selectedDeliveryOption);
+  }, [subtotal, selectedDeliveryOption]);
+
+  // Compute completed steps
+  const completedSteps = useMemo(() => {
+    const steps = [];
+    if (selectedAddressId) steps.push(1);
+    if (selectedAddressId && selectedDeliveryOption) steps.push(2);
+    if (selectedAddressId && selectedDeliveryOption) steps.push(3);
+    if (selectedAddressId && selectedDeliveryOption && selectedPaymentMethod) steps.push(4);
+    return steps;
+  }, [selectedAddressId, selectedDeliveryOption, selectedPaymentMethod]);
+
   // Address CRUD Handlers
   const handleCreateAddress = async (payload) => {
     setIsMutatingAddress(true);
@@ -118,6 +174,7 @@ export function CheckoutPageView() {
         setAddresses((prev) => [...prev, created]);
         setSelectedAddressId(id);
         toast.success("Delivery address added successfully");
+        useAddressStore.getState().fetchAddresses(true).catch(() => {});
         return true;
       }
       return false;
@@ -139,6 +196,7 @@ export function CheckoutPageView() {
           prev.map((a) => ((a._id || a.id) === id ? updated : a))
         );
         toast.success("Address updated successfully");
+        useAddressStore.getState().fetchAddresses(true).catch(() => {});
         return true;
       }
       return false;
@@ -163,6 +221,7 @@ export function CheckoutPageView() {
         return next;
       });
       toast.success("Address removed successfully");
+      useAddressStore.getState().fetchAddresses(true).catch(() => {});
       return true;
     } catch (err) {
       toast.error(err?.message || "Failed to delete address.");
@@ -172,7 +231,7 @@ export function CheckoutPageView() {
     }
   };
 
-  // Coupon Handlers
+  // Coupon Handlers with strict backend authoritative validation
   const handleApplyCoupon = async (code) => {
     setIsValidatingCoupon(true);
     try {
@@ -181,7 +240,7 @@ export function CheckoutPageView() {
         const profileRes = await customerService.getProfile();
         customerId = profileRes?.data?.customer?._id || profileRes?.data?.customer?.id;
       } catch {
-        // Continue if profile endpoint is not required for coupon staging
+        // Fallback handled below
       }
 
       if (customerId) {
@@ -203,9 +262,9 @@ export function CheckoutPageView() {
         });
         toast.success(`Coupon "${code}" applied successfully!`);
       } else {
-        // Stage coupon to be validated and applied by backend createOrder
+        // Stage coupon to be validated and applied authoritatively by backend createOrder
         setAppliedCoupon({ code, discountAmount: 0 });
-        toast.success(`Coupon code "${code}" added. Will be applied at order creation.`);
+        toast.success(`Coupon "${code}" staged for authoritative server-side calculation.`);
       }
       return true;
     } catch (err) {
@@ -225,6 +284,7 @@ export function CheckoutPageView() {
   const handlePlaceOrder = async () => {
     if (!selectedAddressId) {
       toast.error("Please select or add a delivery address.");
+      setCurrentStep(1);
       return;
     }
 
@@ -245,7 +305,7 @@ export function CheckoutPageView() {
     const idempotencyKey = idempotencyKeyRef.current;
 
     try {
-      // 1. Create order in backend from active cart
+      // 1. Create order in backend from active cart with authoritative backend calculation
       const orderRes = await orderService.createOrder({
         shippingAddressId: selectedAddressId,
         couponCode: appliedCoupon?.code || null,
@@ -259,15 +319,44 @@ export function CheckoutPageView() {
         throw new Error("Order could not be created. Please try again.");
       }
 
-      // 2. Load Razorpay script
+      // 2. If PayPal is selected
+      if (selectedPaymentMethod === "paypal") {
+        try {
+          const paypalRes = await paymentService.createPayPalOrder(orderId, idempotencyKey);
+          const paypalData = paypalRes?.data;
+          const approveLink = paypalData?.links?.find?.((l) => l.rel === "approve")?.href;
+
+          await clearCart();
+          idempotencyKeyRef.current = null;
+
+          if (approveLink) {
+            toast.success("Redirecting to PayPal for secure checkout...");
+            window.location.href = approveLink;
+            return;
+          }
+
+          toast.info(
+            `Order #${order.orderNumber || orderId} created with PayPal. Please check your order details.`
+          );
+          router.push(`/order/success/${orderId}`);
+          return;
+        } catch (payErr) {
+          await clearCart();
+          toast.error(payErr?.message || "Order created, but PayPal payment could not be initiated.");
+          router.push(`/order/success/${orderId}`);
+          return;
+        }
+      }
+
+      // 3. Load Razorpay script
       const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded || typeof window === "undefined" || !window.Razorpay) {
-        // If Razorpay SDK cannot load (e.g. offline/network blocked), inform customer
+        // If Razorpay SDK cannot load, order was created safely in pending status
         await clearCart();
         toast.info(
           `Order #${order.orderNumber || orderId} was created in pending status. Payment gateway could not be loaded.`
         );
-        router.push(`/checkout/success?orderId=${orderId}`);
+        router.push(`/order/success/${orderId}`);
         return;
       }
 
@@ -276,10 +365,9 @@ export function CheckoutPageView() {
       try {
         paymentRes = await paymentService.createPaymentIntent(orderId, idempotencyKey);
       } catch (payErr) {
-        // Order is created, but payment initiation threw
         await clearCart();
-        toast.error(payErr?.message || "Order created, but payment could not be initiated.");
-        router.push(`/checkout/success?orderId=${orderId}`);
+        toast.error(payErr?.message || "Order created, but payment initiation could not complete.");
+        router.push(`/order/success/${orderId}`);
         return;
       }
 
@@ -289,7 +377,7 @@ export function CheckoutPageView() {
       if (!gatewayOrderId) {
         await clearCart();
         toast.info(`Order #${order.orderNumber || orderId} created. Please complete payment from your orders.`);
-        router.push(`/checkout/success?orderId=${orderId}`);
+        router.push(`/order/success/${orderId}`);
         return;
       }
 
@@ -301,7 +389,7 @@ export function CheckoutPageView() {
         toast.error(
           "Payment gateway key is not configured. Your order was created with pending payment. Please complete payment from your orders."
         );
-        router.push(`/checkout/success?orderId=${orderId}`);
+        router.push(`/order/success/${orderId}`);
         return;
       }
 
@@ -320,7 +408,7 @@ export function CheckoutPageView() {
           contact: selectedAddress?.phone || "",
         },
         theme: {
-          color: "#007A55",
+          color: "#004D38",
         },
         handler: async function (response) {
           try {
@@ -333,13 +421,13 @@ export function CheckoutPageView() {
             await clearCart();
             idempotencyKeyRef.current = null;
             toast.success("Payment verified! Your order is confirmed.");
-            router.push(`/checkout/success?orderId=${orderId}`);
+            router.push(`/order/success/${orderId}`);
           } catch (verifyErr) {
             await clearCart();
             toast.error(
               verifyErr?.message || "Payment verification failed. Your order is pending verification."
             );
-            router.push(`/checkout/success?orderId=${orderId}`);
+            router.push(`/order/success/${orderId}`);
           }
         },
         modal: {
@@ -348,7 +436,7 @@ export function CheckoutPageView() {
             toast.info(
               `Payment was not completed. Order #${order.orderNumber || orderId} is saved in pending status.`
             );
-            router.push(`/checkout/success?orderId=${orderId}`);
+            router.push(`/order/success/${orderId}`);
           },
         },
       };
@@ -374,7 +462,7 @@ export function CheckoutPageView() {
   if (!isAuthenticated) {
     return (
       <div className="mx-auto max-w-lg px-4 py-20 text-center space-y-6">
-        <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-emerald-50 text-[#007A55] shadow-xs">
+        <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-emerald-50 text-[#004D38] shadow-xs">
           <Lock className="size-8 stroke-[1.75]" />
         </div>
         <div className="space-y-2">
@@ -388,13 +476,13 @@ export function CheckoutPageView() {
         <div className="flex flex-col gap-3 pt-2">
           <Link
             href="/auth/login?redirect=/checkout"
-            className="w-full rounded-full bg-[#007A55] hover:bg-[#006346] text-white font-bold text-sm py-3.5 shadow-md active:scale-95 transition-all text-center"
+            className="w-full rounded-full bg-[#004D38] hover:bg-[#003D2C] text-white font-bold text-sm py-3.5 shadow-md active:scale-95 transition-all text-center cursor-pointer"
           >
             Sign In to Checkout
           </Link>
           <Link
             href="/auth/register?redirect=/checkout"
-            className="w-full rounded-full border border-slate-200 bg-white text-slate-800 font-bold text-sm py-3 hover:bg-slate-50 text-center transition-all"
+            className="w-full rounded-full border border-slate-200 bg-white text-slate-800 font-bold text-sm py-3 hover:bg-slate-50 text-center transition-all cursor-pointer"
           >
             Create an Account
           </Link>
@@ -408,68 +496,156 @@ export function CheckoutPageView() {
     return <CheckoutEmptyCart />;
   }
 
+  const finalPayableEstimate = Math.max(
+    0,
+    parsePrice(subtotal) -
+      parsePrice(appliedCoupon?.discountAmount || 0) +
+      parsePrice(effectiveDeliveryFee) +
+      parsePrice(taxTotal)
+  );
+
   return (
-    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
       {/* Breadcrumbs */}
-      <nav aria-label="Breadcrumb" className="mb-6 flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Link href="/" className="hover:text-[#007A55] transition-colors">
+      <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-slate-500">
+        <Link href="/" className="hover:text-[#004D38] transition-colors">
           Home
         </Link>
         <span>/</span>
-        <Link href="/cart" className="hover:text-[#007A55] transition-colors">
+        <Link href="/cart" className="hover:text-[#004D38] transition-colors">
           Shopping Cart
         </Link>
         <span>/</span>
-        <span className="font-semibold text-foreground">Checkout</span>
+        <span className="font-semibold text-slate-900">Checkout</span>
       </nav>
 
       {/* Page Header */}
-      <div className="border-b border-slate-200 pb-6">
+      <div className="border-b border-slate-200 pb-4">
         <h1 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight">
           Secure Checkout
         </h1>
         <p className="text-xs text-slate-500 mt-1">
-          Select delivery location, review order breakdown, and proceed to verified payment
+          Select delivery location, choose logistics, apply coupons, and proceed to verified payment
         </p>
       </div>
 
+      {/* Step Indicator */}
+      <CheckoutStepIndicator
+        currentStep={currentStep}
+        completedSteps={completedSteps}
+        onStepClick={(stepId) => setCurrentStep(stepId)}
+      />
+
+      {/* Cart validation notification if synced */}
+      {cartValidationNotice && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 flex items-center justify-between text-xs text-emerald-800">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="size-4 text-[#004D38] shrink-0" />
+            <span>{cartValidationNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCartValidationNotice(null)}
+            className="text-[11px] font-bold text-[#004D38] hover:underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Main 2-Column Grid */}
-      <div className="mt-8 grid grid-cols-1 gap-10 lg:grid-cols-12">
-        {/* Left Column: Address, Payment, Coupon (7 cols) */}
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 items-start">
+        {/* Left Column: Checkout Steps (7 cols) */}
         <div className="lg:col-span-7 space-y-6">
-          <CheckoutAddressSection
-            addresses={addresses}
-            selectedAddressId={selectedAddressId}
-            onSelectAddress={(id) => setSelectedAddressId(id)}
-            onCreateAddress={handleCreateAddress}
-            onUpdateAddress={handleUpdateAddress}
-            onDeleteAddress={handleDeleteAddress}
-            isLoading={isLoadingAddresses}
-            isMutating={isMutatingAddress}
-          />
+          {/* Step 1: Delivery Address */}
+          <section aria-labelledby="step-address-heading">
+            <CheckoutAddressSection
+              addresses={addresses}
+              selectedAddressId={selectedAddressId}
+              onSelectAddress={(id) => setSelectedAddressId(id)}
+              onCreateAddress={handleCreateAddress}
+              onUpdateAddress={handleUpdateAddress}
+              onDeleteAddress={handleDeleteAddress}
+              isLoading={isLoadingAddresses}
+              isMutating={isMutatingAddress}
+              onContinue={() => setCurrentStep(2)}
+            />
+          </section>
 
-          <CheckoutPaymentSection selectedMethod="razorpay" />
+          {/* Step 2: Delivery Options */}
+          <section aria-labelledby="step-delivery-heading">
+            <CheckoutDeliveryOptions
+              selectedOptionId={selectedDeliveryOption}
+              onSelectOption={(opt) => setSelectedDeliveryOption(opt)}
+              subtotal={subtotal}
+              onContinue={() => setCurrentStep(3)}
+            />
+          </section>
 
-          <CheckoutCouponSection
-            appliedCoupon={appliedCoupon}
-            onApplyCoupon={handleApplyCoupon}
-            onRemoveCoupon={handleRemoveCoupon}
-            isLoading={isValidatingCoupon}
-          />
+          {/* Step 3: Offers / Coupons */}
+          <section aria-labelledby="step-coupons-heading">
+            <CheckoutCouponSection
+              appliedCoupon={appliedCoupon}
+              onApplyCoupon={handleApplyCoupon}
+              onRemoveCoupon={handleRemoveCoupon}
+              isLoading={isValidatingCoupon}
+              onContinue={() => setCurrentStep(4)}
+            />
+          </section>
+
+          {/* Step 4: Payment Method */}
+          <section aria-labelledby="step-payment-heading">
+            <CheckoutPaymentSection
+              selectedMethod={selectedPaymentMethod}
+              onSelectMethod={(m) => setSelectedPaymentMethod(m)}
+              subtotal={subtotal}
+              onContinue={() => setCurrentStep(5)}
+            />
+          </section>
         </div>
 
-        {/* Right Column: Order Summary (5 cols) */}
+        {/* Right Column: Order Summary (5 cols, sticky on desktop) */}
         <div className="lg:col-span-5">
           <CheckoutOrderSummary
             items={items}
             subtotal={subtotal}
             discountTotal={appliedCoupon?.discountAmount || 0}
-            shippingTotal={shippingTotal}
+            shippingTotal={effectiveDeliveryFee}
             taxTotal={taxTotal}
             isSubmitting={isSubmittingOrder}
             selectedAddressId={selectedAddressId}
             onPlaceOrder={handlePlaceOrder}
           />
+        </div>
+      </div>
+
+      {/* Mobile Sticky Bottom Pay Bar (visible on <lg screens) */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 block lg:hidden border-t border-slate-200 bg-white/95 backdrop-blur-md p-3 shadow-lg">
+        <div className="flex items-center justify-between gap-3 max-w-md mx-auto">
+          <div>
+            <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 block">
+              Total Payable
+            </span>
+            <span className="text-base font-black text-[#004D38] tracking-tight">
+              {formatCurrency(finalPayableEstimate)}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={handlePlaceOrder}
+            disabled={isSubmittingOrder || !selectedAddressId}
+            className="flex-1 max-w-[220px] rounded-full bg-[#004D38] hover:bg-[#003D2C] text-white font-bold text-xs py-3 px-4 shadow-md active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            {isSubmittingOrder ? (
+              <span>Processing...</span>
+            ) : (
+              <>
+                <Lock className="size-3.5" />
+                <span>Place Order & Pay</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>

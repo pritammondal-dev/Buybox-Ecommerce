@@ -22,6 +22,18 @@ export class ApiError extends Error {
     this.details = details;
     this.rawError = rawError;
 
+    // Backward-compatibility bridge for code expecting Axios error response structure:
+    // err.response?.status, err.response?.data?.code, err.response?.data?.message
+    this.response = rawError?.response || {
+      status,
+      data: {
+        message,
+        code,
+        data: details,
+        requestId,
+      },
+    };
+
     // Maintains proper stack trace for where our error was thrown (V8 only)
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, ApiError);

@@ -19,11 +19,14 @@ const {
   updateCategorySchema,
 } = require("../validators/catalog/update-category.validator");
 
+const attributeController = require("../controllers/attribute.controller");
+
 const router = express.Router();
 
 // Public
 router.get("/", categoryController.listCategories);
 router.get("/:id", validateObjectId("id"), categoryController.getCategory);
+router.get("/:id/attributes", validateObjectId("id"), attributeController.getCategoryAttributes);
 
 // Admin/Manager
 router.post(
@@ -40,6 +43,20 @@ router.post(
 );
 
 router.patch(
+  "/:id",
+  authenticate,
+  validateObjectId("id"),
+  requirePermissions(PERMISSIONS.PRODUCTS_UPDATE),
+  validate(updateCategorySchema),
+  requireScope({
+    scopeType: SCOPE_TYPES.CATEGORY,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
+  categoryController.updateCategory
+);
+
+router.put(
   "/:id",
   authenticate,
   validateObjectId("id"),

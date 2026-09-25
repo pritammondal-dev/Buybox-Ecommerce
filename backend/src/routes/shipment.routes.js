@@ -52,6 +52,11 @@ router.get(
 );
 
 router.get(
+  "/my/order/:orderId",
+  shipmentController.getMyShipmentsByOrderId
+);
+
+router.get(
   "/tracking/:trackingNumber",
   shipmentController.getShipmentByTrackingNumber
 );
@@ -117,6 +122,14 @@ router.patch(
  * ADMIN / MANAGER OPERATIONAL RETRIEVAL
  * ============================================================
  */
+
+router.get(
+  "/",
+  requirePermissions(
+    PERMISSIONS.SHIPMENTS_READ
+  ),
+  shipmentController.listAllShipments
+);
 
 router.get(
   "/:shipmentId",

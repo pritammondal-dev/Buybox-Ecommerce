@@ -56,13 +56,19 @@ const updateProductSchema = z
       .optional(),
 
     price: z
-      .string()
-      .regex(/^\d+(?:\.\d{1,2})?$/, "Invalid price")
+      .union([
+        z.string().regex(/^\d+(?:\.\d{1,2})?$/, "Invalid price"),
+        z.number().nonnegative(),
+      ])
+      .transform((val) => String(val))
       .optional(),
 
     compareAtPrice: z
-      .string()
-      .regex(/^\d+(?:\.\d{1,2})?$/, "Invalid compare-at price")
+      .union([
+        z.string().regex(/^\d+(?:\.\d{1,2})?$/, "Invalid compare-at price"),
+        z.number().nonnegative(),
+      ])
+      .transform((val) => (val === null || val === undefined ? null : String(val)))
       .nullable()
       .optional(),
 

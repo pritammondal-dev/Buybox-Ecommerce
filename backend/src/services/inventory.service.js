@@ -4,8 +4,12 @@ const inventoryTransactionRepository = require("../repositories/inventory-transa
 const inventoryTransactionService = require("./inventory-transaction.service");
 
 const ProductVariant = require("../models/ProductVariant");
+const Product = require("../models/Product");
+const Inventory = require("../models/Inventory");
 const AppError = require("../errors/AppError");
 const withTransaction = require("../utils/withTransaction");
+const { resolveApprovedVendor } = require("../middlewares/vendor.middleware");
+const { encodeSecureId } = require("../utils/secure-id.util");
 
 const createInventory = async ({
   productVariantId,
@@ -680,6 +684,373 @@ const deductReservedStockInTransaction = async (
   return deductedInventory;
 };
 
+const getMyVendorInventory = async ({ userId, query = {} }) => {
+  const vendor = await resolveApprovedVendor(userId);
+
+  const safePage = Math.max(Number(query.page) || 1, 1);
+  const safeLimit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
+  const skip = (safePage - 1) * safeLimit;
+
+  // 1. Get vendor products
+  const productFilter = { vendorId: vendor._id, deletedAt: null };
+  if (query.search) {
+    productFilter.$or = [
+      { name: { $regex: query.search, $options: "i" } },
+      { title: { $regex: query.search, $options: "i" } },
+    ];
+  }
+
+  const products = await Product.find(productFilter).select("_id name title status").lean();
+  const productIds = products.map((p) => p._id);
+  const productMap = new Map(products.map((p) => [p._id.toString(), p]));
+
+  if (productIds.length === 0) {
+    return {
+      items: [],
+      meta: { page: safePage, limit: safeLimit, total: 0, totalPages: 0 },
+    };
+  }
+
+  // 2. Get variants
+  const variants = await ProductVariant.find({
+    productId: { $in: productIds },
+  }).lean();
+  const variantIds = variants.map((v) => v._id);
+  const variantMap = new Map(variants.map((v) => [v._id.toString(), v]));
+
+  // 3. Query inventory
+  const inventoryFilter = { productVariantId: { $in: variantIds } };
+  if (query.warehouseId) {
+    inventoryFilter.warehouseId = query.warehouseId;
+  }
+
+  const total = await Inventory.countDocuments(inventoryFilter);
+  const inventories = await Inventory.find(inventoryFilter)
+    .populate("warehouseId", "name code city state isActive")
+    .skip(skip)
+    .limit(safeLimit)
+    .sort({ onHand: 1 })
+    .lean();
+
+  const items = inventories.map((inv) => {
+    const variant = variantMap.get(inv.productVariantId.toString());
+    const product = variant ? productMap.get(variant.productId?.toString()) : null;
+    const available = Math.max((inv.onHand || 0) - (inv.reserved || 0), 0);
+    const isLowStock = available <= (inv.lowStockThreshold || 5);
+
+    return {
+      _id: inv._id,
+      secureId: encodeSecureId("inventory", inv._id),
+      sku: variant?.sku || "N/A",
+      product: {
+        _id: product?._id,
+        secureId: encodeSecureId("product", product?._id),
+        title: product?.name || product?.title || "Product",
+        status: product?.status,
+      },
+      variant: {
+        _id: variant?._id,
+        secureId: encodeSecureId("variant", variant?._id),
+        price: variant?.price?.toString(),
+        attributes: variant?.attributes,
+      },
+      warehouse: inv.warehouseId
+        ? {
+            _id: inv.warehouseId._id,
+            secureId: encodeSecureId("warehouse", inv.warehouseId._id),
+            name: inv.warehouseId.name,
+            code: inv.warehouseId.code,
+            city: inv.warehouseId.city,
+            state: inv.warehouseId.state,
+          }
+        : null,
+      onHand: inv.onHand || 0,
+      reserved: inv.reserved || 0,
+      available,
+      lowStockThreshold: inv.lowStockThreshold || 5,
+      isLowStock,
+      updatedAt: inv.updatedAt,
+    };
+  });
+
+  return {
+    items,
+    meta: {
+      page: safePage,
+      limit: safeLimit,
+      total,
+      totalPages: Math.ceil(total / safeLimit),
+    },
+  };
+};
+
+/**
+ * Platform-wide inventory query for admins.
+ */
+const listAllInventory = async ({ page = 1, limit = 20, isLowStock } = {}) => {
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
+  const skip = (safePage - 1) * safeLimit;
+
+  const query = {};
+  if (isLowStock === "true") {
+    query.$expr = {
+      $lte: [{ $subtract: ["$onHand", "$reserved"] }, "$lowStockThreshold"],
+    };
+  }
+
+  const [docs, total] = await Promise.all([
+    Inventory.find(query)
+      .populate({
+        path: "productVariantId",
+        select: "sku title price productId",
+        populate: { path: "productId", select: "name slug vendorId" },
+      })
+      .populate("warehouseId", "name code city state")
+      .sort({ updatedAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .lean(),
+    Inventory.countDocuments(query),
+  ]);
+
+  const items = docs.map((inv) => {
+    const onHand = inv.onHand || 0;
+    const reserved = inv.reserved || 0;
+    const available = Math.max(0, onHand - reserved);
+    const lowStockThreshold = inv.lowStockThreshold || 5;
+
+    return {
+      id: inv._id,
+      productVariant: inv.productVariantId,
+      warehouse: inv.warehouseId,
+      onHand,
+      reserved,
+      available,
+      lowStockThreshold,
+      isLowStock: available <= lowStockThreshold,
+      updatedAt: inv.updatedAt,
+    };
+  });
+
+  return {
+    items,
+    meta: {
+      page: safePage,
+      limit: safeLimit,
+      total,
+      totalPages: Math.ceil(total / safeLimit),
+    },
+  };
+};
+
+/**
+ * Transfer stock atomically between two warehouses.
+ */
+const transferStock = async ({
+  productVariantId,
+  sourceWarehouseId,
+  destinationWarehouseId,
+  quantity,
+  reason = "Inter-warehouse stock transfer",
+  actor = null,
+  req = null,
+}) => {
+  const mongoose = require("mongoose");
+  const Warehouse = require("../models/Warehouse");
+  const { recordAuditLog } = require("./governance.service");
+
+  if (!mongoose.isValidObjectId(productVariantId)) {
+    throw new AppError("Invalid product variant ID", 400, "INVALID_ID");
+  }
+  if (!mongoose.isValidObjectId(sourceWarehouseId)) {
+    throw new AppError("Invalid source warehouse ID", 400, "INVALID_ID");
+  }
+  if (!mongoose.isValidObjectId(destinationWarehouseId)) {
+    throw new AppError("Invalid destination warehouse ID", 400, "INVALID_ID");
+  }
+  if (sourceWarehouseId.toString() === destinationWarehouseId.toString()) {
+    throw new AppError("Source and destination warehouses cannot be the same", 400, "SAME_WAREHOUSE_TRANSFER");
+  }
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    throw new AppError("Transfer quantity must be a positive integer", 400, "INVALID_QUANTITY");
+  }
+
+  const [sourceWarehouse, destWarehouse] = await Promise.all([
+    Warehouse.findById(sourceWarehouseId),
+    Warehouse.findById(destinationWarehouseId),
+  ]);
+
+  if (!sourceWarehouse || !sourceWarehouse.isActive) {
+    throw new AppError("Source warehouse not found or inactive", 404, "SOURCE_WAREHOUSE_NOT_FOUND");
+  }
+  if (!destWarehouse || !destWarehouse.isActive) {
+    throw new AppError("Destination warehouse not found or inactive", 404, "DESTINATION_WAREHOUSE_NOT_FOUND");
+  }
+
+  return await withTransaction(async (session) => {
+    const sourceInventory = await Inventory.findOne({
+      productVariantId,
+      warehouseId: sourceWarehouseId,
+    }).session(session);
+
+    if (!sourceInventory) {
+      throw new AppError("Source warehouse does not hold stock for this variant", 404, "INVENTORY_NOT_FOUND");
+    }
+
+    let destInventory = await Inventory.findOne({
+      productVariantId,
+      warehouseId: destinationWarehouseId,
+    }).session(session);
+
+    const availableStock = sourceInventory.onHand - sourceInventory.reserved;
+    if (availableStock < quantity) {
+      throw new AppError(
+        `Insufficient available stock for transfer. Available: ${availableStock}, Requested: ${quantity}`,
+        409,
+        "INSUFFICIENT_STOCK_FOR_TRANSFER"
+      );
+    }
+
+    const sourceOnHandBefore = sourceInventory.onHand;
+    const sourceOnHandAfter = sourceInventory.onHand - quantity;
+    const sourceReserved = sourceInventory.reserved;
+
+    sourceInventory.onHand = sourceOnHandAfter;
+    await sourceInventory.save({ session });
+
+    const destOnHandBefore = destInventory ? destInventory.onHand : 0;
+    const destOnHandAfter = destOnHandBefore + quantity;
+    const destReserved = destInventory ? destInventory.reserved : 0;
+
+    if (!destInventory) {
+      destInventory = new Inventory({
+        productVariantId,
+        warehouseId: destinationWarehouseId,
+        onHand: destOnHandAfter,
+        reserved: 0,
+        lowStockThreshold: sourceInventory.lowStockThreshold || 10,
+      });
+    } else {
+      destInventory.onHand = destOnHandAfter;
+    }
+    await destInventory.save({ session });
+
+    await inventoryTransactionService.createTransaction({
+      productVariantId,
+      warehouseId: sourceWarehouseId,
+      type: "transfer",
+      quantity: -quantity,
+      onHandBefore: sourceOnHandBefore,
+      onHandAfter: sourceOnHandAfter,
+      reservedBefore: sourceReserved,
+      reservedAfter: sourceReserved,
+      referenceType: "warehouse_transfer",
+      referenceId: destinationWarehouseId,
+      notes: `Transferred to warehouse ${destWarehouse.name}: ${reason}`,
+      session,
+    });
+
+    await inventoryTransactionService.createTransaction({
+      productVariantId,
+      warehouseId: destinationWarehouseId,
+      type: "transfer",
+      quantity,
+      onHandBefore: destOnHandBefore,
+      onHandAfter: destOnHandAfter,
+      reservedBefore: destReserved,
+      reservedAfter: destReserved,
+      referenceType: "warehouse_transfer",
+      referenceId: sourceWarehouseId,
+      notes: `Transferred from warehouse ${sourceWarehouse.name}: ${reason}`,
+      session,
+    });
+
+    if (actor) {
+      await recordAuditLog({
+        actorId: actor._id || actor.id,
+        targetId: sourceInventory._id,
+        action: "inventory.transfer",
+        entityType: "inventory",
+        afterState: {
+          productVariantId,
+          sourceWarehouseId,
+          destinationWarehouseId,
+          quantity,
+          reason,
+        },
+        req,
+      });
+    }
+
+    return {
+      success: true,
+      message: "Stock transferred successfully",
+      sourceInventory,
+      destinationInventory: destInventory,
+      transferredQuantity: quantity,
+    };
+  });
+};
+
+/**
+ * Get inventory dashboard metrics & summaries (low stock, out of stock, totals)
+ */
+const getInventorySummary = async ({ vendorId = null } = {}) => {
+  const mongoose = require("mongoose");
+  const Warehouse = require("../models/Warehouse");
+  const query = {};
+
+  if (vendorId && mongoose.isValidObjectId(vendorId)) {
+    const vendorProducts = await Product.find({ vendorId, deletedAt: null }).select("_id").lean();
+    const vendorProductIds = vendorProducts.map((p) => p._id);
+    const vendorVariants = await ProductVariant.find({
+      productId: { $in: vendorProductIds },
+      deletedAt: null,
+    }).select("_id").lean();
+    query.productVariantId = { $in: vendorVariants.map((v) => v._id) };
+  }
+
+  const [records, totalWarehouses] = await Promise.all([
+    Inventory.find(query).lean(),
+    Warehouse.countDocuments({ isActive: true, deletedAt: null }),
+  ]);
+
+  let totalUnitsOnHand = 0;
+  let totalUnitsReserved = 0;
+  let lowStockCount = 0;
+  let outOfStockCount = 0;
+
+  for (const inv of records) {
+    const onHand = inv.onHand || 0;
+    const reserved = inv.reserved || 0;
+    const available = Math.max(0, onHand - reserved);
+    const threshold = inv.lowStockThreshold || 5;
+
+    totalUnitsOnHand += onHand;
+    totalUnitsReserved += reserved;
+
+    if (available === 0) {
+      outOfStockCount++;
+    } else if (available <= threshold) {
+      lowStockCount++;
+    }
+  }
+
+  const totalUnitsAvailable = Math.max(0, totalUnitsOnHand - totalUnitsReserved);
+
+  return {
+    totalRecords: records.length,
+    totalSkus: records.length,
+    totalUnitsOnHand,
+    totalUnitsReserved,
+    totalUnitsAvailable,
+    lowStockCount,
+    outOfStockCount,
+    totalWarehouses,
+  };
+};
+
 module.exports = {
   createInventory,
   getInventoryById,
@@ -692,4 +1063,8 @@ module.exports = {
   releaseStockInTransaction,
   deductReservedStock,
   deductReservedStockInTransaction,
+  getMyVendorInventory,
+  listAllInventory,
+  transferStock,
+  getInventorySummary,
 };

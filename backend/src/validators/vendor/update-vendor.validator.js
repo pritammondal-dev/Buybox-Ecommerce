@@ -46,8 +46,7 @@ const updateVendorSchema = z
         country: z
           .string()
           .trim()
-          .toUpperCase()
-          .length(2)
+          .max(100)
           .optional(),
       })
       .strict()
@@ -57,6 +56,8 @@ const updateVendorSchema = z
       .object({
         taxId: z.string().trim().max(100).nullable().optional(),
         taxType: z.string().trim().max(50).nullable().optional(),
+        gstin: z.string().trim().max(100).nullable().optional(),
+        pan: z.string().trim().max(100).nullable().optional(),
       })
       .strict()
       .optional(),

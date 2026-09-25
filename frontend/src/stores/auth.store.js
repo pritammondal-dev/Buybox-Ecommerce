@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { tokenManager } from "../lib/auth/token-manager.js";
 import { authService } from "../services/auth.service.js";
 import { customerService } from "../services/customer.service.js";
+import { vendorService } from "../services/vendor.service.js";
 import { normalizeApiError } from "../lib/api/api-error.js";
 
 /**
@@ -63,13 +64,15 @@ export const useAuthStore = create((set, get) => {
             }
           }
 
-          // Retrieve customer profile for user metadata
+          // Retrieve customer profile for user metadata (only for customer accounts)
           let profile = null;
-          try {
-            const profileResponse = await customerService.getProfile();
-            profile = profileResponse?.data?.customer || profileResponse?.data || null;
-          } catch {
-            // Profile may not exist yet or request failed; proceed with basic authenticated session
+          if (!restoredUser?.role || restoredUser?.role === "customer") {
+            try {
+              const profileResponse = await customerService.getProfile();
+              profile = profileResponse?.data?.customer || profileResponse?.data || null;
+            } catch {
+              // Profile may not exist yet or request failed; proceed with basic authenticated session
+            }
           }
 
           set({
@@ -122,13 +125,15 @@ export const useAuthStore = create((set, get) => {
           tokenManager.setAccessToken(accessToken);
         }
 
-        // Retrieve customer profile
+        // Retrieve customer profile (only for customer accounts)
         let profile = null;
-        try {
-          const profileResponse = await customerService.getProfile();
-          profile = profileResponse?.data?.customer || profileResponse?.data || null;
-        } catch {
-          // Profile optional on first login
+        if (!user?.role || user?.role === "customer") {
+          try {
+            const profileResponse = await customerService.getProfile();
+            profile = profileResponse?.data?.customer || profileResponse?.data || null;
+          } catch {
+            // Profile optional on first login
+          }
         }
 
         if (user && typeof window !== "undefined") {
@@ -142,6 +147,169 @@ export const useAuthStore = create((set, get) => {
         set({
           user,
           customerProfile: profile,
+          isAuthenticated: true,
+          isLoading: false,
+          isInitialized: true,
+          error: null,
+        });
+
+        return response;
+      } catch (err) {
+        const normalized = normalizeApiError(err);
+        set({
+          isLoading: false,
+          error: normalized.message,
+        });
+        throw normalized;
+      }
+    },
+
+    /**
+     * Internal helper to apply customer session state from API response
+     */
+    _applyAuthSession: async (response) => {
+      const data = response?.data || response;
+      const user = data?.user || null;
+      const accessToken = data?.accessToken || null;
+
+      if (accessToken) {
+        tokenManager.setAccessToken(accessToken);
+      }
+
+      let profile = null;
+      if (!user?.role || user?.role === "customer") {
+        try {
+          const profileResponse = await customerService.getProfile();
+          profile = profileResponse?.data?.customer || profileResponse?.data || null;
+        } catch {
+          // Optional customer profile
+        }
+      }
+
+      if (user && typeof window !== "undefined") {
+        try {
+          localStorage.setItem("buybox_auth_user", JSON.stringify(user));
+        } catch {
+          // Ignore storage write failure
+        }
+      }
+
+      set({
+        user,
+        customerProfile: profile,
+        isAuthenticated: true,
+        isLoading: false,
+        isInitialized: true,
+        error: null,
+      });
+
+      return response;
+    },
+
+    /**
+     * Passwordless customer login via email OTP
+     */
+    loginWithEmailOtp: async ({ email, otp }) => {
+      set({ isLoading: true, error: null });
+      try {
+        const response = await authService.verifyEmailLoginOtp({ email, otp });
+        return await get()._applyAuthSession(response);
+      } catch (err) {
+        const normalized = normalizeApiError(err);
+        set({
+          isLoading: false,
+          error: normalized.message,
+        });
+        throw normalized;
+      }
+    },
+
+    /**
+     * Customer login via mobile phone OTP
+     */
+    loginWithPhoneOtp: async ({ phone, otp }) => {
+      set({ isLoading: true, error: null });
+      try {
+        const response = await authService.verifyPhoneLoginOtp({ phone, otp });
+        return await get()._applyAuthSession(response);
+      } catch (err) {
+        const normalized = normalizeApiError(err);
+        set({
+          isLoading: false,
+          error: normalized.message,
+        });
+        throw normalized;
+      }
+    },
+
+    /**
+     * Customer login via verified Google identity
+     */
+    loginWithGoogle: async ({ idToken }) => {
+      set({ isLoading: true, error: null });
+      try {
+        const response = await authService.loginWithGoogle({ idToken });
+        return await get()._applyAuthSession(response);
+      } catch (err) {
+        const normalized = normalizeApiError(err);
+        set({
+          isLoading: false,
+          error: normalized.message,
+        });
+        throw normalized;
+      }
+    },
+
+    /**
+     * Mobile registration completion via phone OTP
+     */
+    registerWithPhone: async ({ phone, otp, firstName, lastName }) => {
+      set({ isLoading: true, error: null });
+      try {
+        const response = await authService.verifyPhoneRegister({
+          phone,
+          otp,
+          firstName,
+          lastName,
+        });
+        return await get()._applyAuthSession(response);
+      } catch (err) {
+        const normalized = normalizeApiError(err);
+        set({
+          isLoading: false,
+          error: normalized.message,
+        });
+        throw normalized;
+      }
+    },
+
+    /**
+     * Vendor login with email and password via dedicated vendor auth endpoint
+     */
+    vendorLogin: async ({ email, password }) => {
+      set({ isLoading: true, error: null });
+
+      try {
+        const response = await vendorService.login({ email, password });
+        const data = response?.data || response;
+        const user = data?.user || null;
+        const accessToken = data?.accessToken || null;
+
+        if (accessToken) {
+          tokenManager.setAccessToken(accessToken);
+        }
+
+        if (user && typeof window !== "undefined") {
+          try {
+            localStorage.setItem("buybox_auth_user", JSON.stringify(user));
+          } catch {
+            // Ignore storage write failure
+          }
+        }
+
+        set({
+          user,
+          customerProfile: null,
           isAuthenticated: true,
           isLoading: false,
           isInitialized: true,

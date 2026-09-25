@@ -152,7 +152,7 @@ export function AddressForm({
             onChange={handleChange}
             placeholder="John"
             disabled={isSubmitting}
-            className={`w-full rounded-lg border px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#007A55] ${
+            className={`w-full rounded-lg border px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#004D38] ${
               errors.firstName ? "border-red-400 bg-red-50/20" : "border-slate-300 bg-white"
             }`}
           />
@@ -172,7 +172,7 @@ export function AddressForm({
             onChange={handleChange}
             placeholder="Doe"
             disabled={isSubmitting}
-            className={`w-full rounded-lg border px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#007A55] ${
+            className={`w-full rounded-lg border px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#004D38] ${
               errors.lastName ? "border-red-400 bg-red-50/20" : "border-slate-300 bg-white"
             }`}
           />
@@ -193,7 +193,7 @@ export function AddressForm({
           onChange={handleChange}
           placeholder="e.g. 9876543210"
           disabled={isSubmitting}
-          className={`w-full rounded-lg border px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#007A55] ${
+          className={`w-full rounded-lg border px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#004D38] ${
             errors.phone ? "border-red-400 bg-red-50/20" : "border-slate-300 bg-white"
           }`}
         />
@@ -213,7 +213,7 @@ export function AddressForm({
           onChange={handleChange}
           placeholder="Flat 4B, Emerald Heights, Park Street"
           disabled={isSubmitting}
-          className={`w-full rounded-lg border px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#007A55] ${
+          className={`w-full rounded-lg border px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#004D38] ${
             errors.addressLine1 ? "border-red-400 bg-red-50/20" : "border-slate-300 bg-white"
           }`}
         />
@@ -233,7 +233,7 @@ export function AddressForm({
           onChange={handleChange}
           placeholder="Near City Center Mall"
           disabled={isSubmitting}
-          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#007A55]"
+          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#004D38]"
         />
       </div>
 
@@ -251,7 +251,7 @@ export function AddressForm({
             onChange={handleChange}
             placeholder="Kolkata"
             disabled={isSubmitting}
-            className={`w-full rounded-lg border px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#007A55] ${
+            className={`w-full rounded-lg border px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#004D38] ${
               errors.city ? "border-red-400 bg-red-50/20" : "border-slate-300 bg-white"
             }`}
           />
@@ -271,7 +271,7 @@ export function AddressForm({
             onChange={handleChange}
             placeholder="West Bengal"
             disabled={isSubmitting}
-            className={`w-full rounded-lg border px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#007A55] ${
+            className={`w-full rounded-lg border px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#004D38] ${
               errors.state ? "border-red-400 bg-red-50/20" : "border-slate-300 bg-white"
             }`}
           />
@@ -292,7 +292,7 @@ export function AddressForm({
             onChange={handleChange}
             placeholder="700001"
             disabled={isSubmitting}
-            className={`w-full rounded-lg border px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#007A55] ${
+            className={`w-full rounded-lg border px-3 py-2 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-[#004D38] ${
               errors.postalCode ? "border-red-400 bg-red-50/20" : "border-slate-300 bg-white"
             }`}
           />
@@ -314,7 +314,7 @@ export function AddressForm({
                   checked={formData.type === t}
                   onChange={handleChange}
                   disabled={isSubmitting}
-                  className="accent-[#007A55]"
+                  className="accent-[#004D38]"
                 />
                 <span className="capitalize">{t}</span>
               </label>
@@ -329,7 +329,7 @@ export function AddressForm({
             checked={formData.isDefault}
             onChange={handleChange}
             disabled={isSubmitting}
-            className="rounded border-slate-300 accent-[#007A55]"
+            className="rounded border-slate-300 accent-[#004D38]"
           />
           <span>Set as default address</span>
         </label>
@@ -353,7 +353,7 @@ export function AddressForm({
           type="submit"
           size="sm"
           disabled={isSubmitting}
-          className="bg-[#007A55] hover:bg-[#006346] text-white text-xs font-bold px-5"
+          className="bg-[#004D38] hover:bg-[#003D2C] text-white text-xs font-bold px-5"
         >
           {isSubmitting ? (
             <span className="flex items-center gap-1.5">

@@ -34,24 +34,33 @@ describe("Phase 1G / Batch 2G — Logistics Core Operations Route Authorization 
   // Helper to create test employee user + profile
   async function createTestEmployee(options = {}) {
     const status = options.status || "active";
-    const user = await User.create({
-      firstName: "Batch2G",
-      lastName: "Staff",
-      email: `staff_${Date.now()}_${Math.random().toString(36).substring(7)}@test-batch2g.com`,
-      password: "Password123!",
-      role: options.userRole || "manager",
-      isActive: options.isActive !== undefined ? options.isActive : true,
-      authVersion: 1,
-      permissionVersion: 1,
-    });
+    let user;
+    if (options.userRole === "super_admin") {
+      user = await User.findOne({ role: "super_admin", isActive: true });
+    }
+    if (!user) {
+      user = await User.create({
+        firstName: "Batch2G",
+        lastName: options.userRole === "super_admin" ? "SuperAdmin" : "Staff",
+        email: `staff_${Date.now()}_${Math.random().toString(36).substring(7)}@test-batch2g.com`,
+        password: "Password123!",
+        role: options.userRole || "manager",
+        isActive: options.isActive !== undefined ? options.isActive : true,
+        authVersion: 1,
+        permissionVersion: 1,
+      });
+    }
 
-    const employee = await Employee.create({
-      userId: user._id,
-      employeeNumber: `EMP_${Date.now()}_${Math.random().toString(36).substring(7).toUpperCase()}`,
-      jobTitle: "Logistics Coordinator",
-      department: "Logistics",
-      status,
-    });
+    let employee = await Employee.findOne({ userId: user._id });
+    if (!employee) {
+      employee = await Employee.create({
+        userId: user._id,
+        employeeNumber: `EMP_${Date.now()}_${Math.random().toString(36).substring(7).toUpperCase()}`,
+        jobTitle: "Logistics Coordinator",
+        department: "Logistics",
+        status,
+      });
+    }
 
     const token = generateAccessToken({
       sub: user._id.toString(),

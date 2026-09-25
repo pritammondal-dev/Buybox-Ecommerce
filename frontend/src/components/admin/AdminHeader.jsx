@@ -13,11 +13,11 @@ import {
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "../ui/DropdownMenu.jsx";
 import { Button } from "../ui/Button.jsx";
-import { useAuth } from "../../hooks/useAuth.js";
+import { useAdminAuth } from "../../hooks/useAdminAuth.js";
 import { cn } from "../../utils/cn.js";
 
 export function AdminHeader({ onMenuClick, title, className }) {
-  const { user, logout } = useAuth();
+  const { user, logout } = useAdminAuth();
 
   return (
     <header
@@ -104,7 +104,7 @@ export function AdminHeader({ onMenuClick, title, className }) {
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
-            <Link href="/admin/settings/security" className="flex items-center gap-2 w-full">
+            <Link href="/administrator/security/events" className="flex items-center gap-2 w-full">
               <ShieldAlert className="size-4 text-muted-foreground" />
               <span>Security Logs</span>
             </Link>

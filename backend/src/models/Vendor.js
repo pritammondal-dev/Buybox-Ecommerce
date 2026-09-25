@@ -109,6 +109,7 @@ const vendorSchema = new mongoose.Schema(
         "under_review",
         "approved",
         "rejected",
+        "changes_requested",
         "suspended",
         "inactive",
       ],
@@ -120,6 +121,45 @@ const vendorSchema = new mongoose.Schema(
       type: String,
       default: null,
       maxlength: 500,
+    },
+
+    changesRequestedReason: {
+      type: String,
+      default: null,
+      maxlength: 500,
+    },
+
+    approvedAt: {
+      type: Date,
+      default: null,
+    },
+
+    approvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    rejectedAt: {
+      type: Date,
+      default: null,
+    },
+
+    rejectedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    changesRequestedAt: {
+      type: Date,
+      default: null,
+    },
+
+    changesRequestedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
     },
 
     commissionRate: {

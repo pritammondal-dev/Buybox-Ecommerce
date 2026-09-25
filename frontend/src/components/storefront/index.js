@@ -3,8 +3,12 @@ export { StorefrontHeader } from "./StorefrontHeader.jsx";
 export { MainNavigation } from "./MainNavigation.jsx";
 export { MobileNavigation } from "./MobileNavigation.jsx";
 export { CategoryNavigation } from "./CategoryNavigation.jsx";
+export { MainShoppingNav } from "./navigation/MainShoppingNav.jsx";
+export { CategoryNavBar } from "./navigation/CategoryNavBar.jsx";
+export { CategoryDrawer } from "./navigation/CategoryDrawer.jsx";
 export { SearchBar } from "./SearchBar.jsx";
 export { ProductCard } from "./ProductCard.jsx";
+export { ProductCarousel } from "./ProductCarousel.jsx";
 export { ProductGrid } from "./ProductGrid.jsx";
 export { ProductPrice } from "./ProductPrice.jsx";
 export { ProductRating } from "./ProductRating.jsx";
@@ -25,4 +29,3 @@ export { EmptyState } from "./EmptyState.jsx";
 export { LoadingState } from "./LoadingState.jsx";
 export { StorefrontFooter } from "./StorefrontFooter.jsx";
 export * from "./home/index.js";
-

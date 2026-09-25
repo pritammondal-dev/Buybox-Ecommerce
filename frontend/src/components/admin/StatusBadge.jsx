@@ -22,6 +22,13 @@ const STATUS_CONFIGS = {
   in_stock: { label: "In Stock", variant: "success", className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20" },
   low_stock: { label: "Low Stock", variant: "warning", className: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" },
   out_of_stock: { label: "Out of Stock", variant: "destructive", className: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20" },
+
+  // Vendor Onboarding Lifecycle
+  under_review: { label: "Under Review", variant: "info", className: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20" },
+  approved: { label: "Approved", variant: "success", className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20" },
+  rejected: { label: "Rejected", variant: "destructive", className: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20" },
+  changes_requested: { label: "Changes Requested", variant: "warning", className: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" },
+  suspended: { label: "Suspended", variant: "destructive", className: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20" },
 };
 
 export function StatusBadge({ status = "pending", customLabel, className }) {

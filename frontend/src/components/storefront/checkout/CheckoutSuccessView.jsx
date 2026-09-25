@@ -58,11 +58,11 @@ export function CheckoutSuccessView() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-16 text-center">
       {/* Success Icon */}
-      <div className="mx-auto flex size-20 items-center justify-center rounded-full bg-emerald-50 text-[#007A55] mb-6 shadow-xs">
+      <div className="mx-auto flex size-20 items-center justify-center rounded-full bg-emerald-50 text-[#004D38] mb-6 shadow-xs">
         <CheckCircle2 className="size-12 stroke-[2]" />
       </div>
 
-      <span className="text-xs font-black uppercase tracking-widest text-[#007A55]">
+      <span className="text-xs font-black uppercase tracking-widest text-[#004D38]">
         {isPaid ? "Payment Verified & Order Placed" : "Order Placed Successfully"}
       </span>
 
@@ -93,7 +93,7 @@ export function CheckoutSuccessView() {
                 className={`inline-block rounded-full text-[11px] font-extrabold uppercase tracking-wider px-3 py-1 ${
                   order.status === "cancelled"
                     ? "bg-red-100 text-red-700"
-                    : "bg-emerald-100 text-[#007A55]"
+                    : "bg-emerald-100 text-[#004D38]"
                 }`}
               >
                 Order: {order.status || "PENDING"}
@@ -101,7 +101,7 @@ export function CheckoutSuccessView() {
 
               <span
                 className={`inline-block rounded-full text-[11px] font-extrabold uppercase tracking-wider px-3 py-1 ${
-                  isPaid ? "bg-emerald-100 text-[#007A55]" : "bg-amber-100 text-amber-800"
+                  isPaid ? "bg-emerald-100 text-[#004D38]" : "bg-amber-100 text-amber-800"
                 }`}
               >
                 Payment: {order.paymentStatus || "PENDING"}
@@ -174,7 +174,7 @@ export function CheckoutSuccessView() {
 
             <div className="flex items-baseline justify-between border-t border-slate-200 pt-2 text-sm">
               <span className="font-black text-slate-950">Grand Total</span>
-              <span className="text-lg font-black text-[#007A55]">
+              <span className="text-lg font-black text-[#004D38]">
                 {formatCurrency(parsePrice(order.grandTotal))}
               </span>
             </div>
@@ -183,7 +183,7 @@ export function CheckoutSuccessView() {
           {/* Shipping Address Summary */}
           {order.shippingAddress && (
             <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3.5 flex items-start gap-2.5 text-xs text-slate-600">
-              <MapPin className="size-4 text-[#007A55] shrink-0 mt-0.5" />
+              <MapPin className="size-4 text-[#004D38] shrink-0 mt-0.5" />
               <div>
                 <strong className="text-slate-900">Delivering to: </strong>
                 {order.shippingAddress.fullName},{" "}
@@ -214,7 +214,7 @@ export function CheckoutSuccessView() {
         <Link href="/account/orders">
           <button
             type="button"
-            className="inline-flex items-center gap-2 rounded-full bg-[#007A55] hover:bg-[#006346] text-white font-bold text-xs sm:text-sm px-6 py-3 shadow-md active:scale-95 transition-all cursor-pointer"
+            className="inline-flex items-center gap-2 rounded-full bg-[#004D38] hover:bg-[#003D2C] text-white font-bold text-xs sm:text-sm px-6 py-3 shadow-md active:scale-95 transition-all cursor-pointer"
           >
             <PackageCheck className="size-4" />
             View My Orders

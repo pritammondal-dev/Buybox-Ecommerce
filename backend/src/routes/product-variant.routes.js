@@ -45,6 +45,13 @@ router.post(
   productVariantController.createProductVariant
 );
 
+// Create bulk variants (matrix generator)
+router.post(
+  "/product/:productId/bulk",
+  requirePermissions(PERMISSIONS.PRODUCTS_CREATE),
+  productVariantController.createBulkVariants
+);
+
 // Update variant
 router.patch(
   "/:id",

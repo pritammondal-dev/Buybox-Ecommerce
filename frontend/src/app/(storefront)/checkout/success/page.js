@@ -1,10 +1,15 @@
 import React, { Suspense } from "react";
+import { redirect } from "next/navigation";
 import { CheckoutSuccessView } from "../../../../components/storefront/checkout/CheckoutSuccessView.jsx";
 import { Skeleton } from "../../../../components/ui/Skeleton.jsx";
 
 export const metadata = {
   title: "Order Confirmed | Buybox",
   description: "Your Buybox order has been confirmed.",
+  robots: {
+    index: false,
+    follow: false,
+  },
 };
 
 function SuccessFallback() {
@@ -17,7 +22,14 @@ function SuccessFallback() {
   );
 }
 
-export default function CheckoutSuccessPage() {
+export default async function CheckoutSuccessPage({ searchParams }) {
+  const resolvedSearchParams = await searchParams;
+  const orderId = resolvedSearchParams?.orderId;
+
+  if (orderId) {
+    redirect(`/order/success/${orderId}`);
+  }
+
   return (
     <Suspense fallback={<SuccessFallback />}>
       <CheckoutSuccessView />

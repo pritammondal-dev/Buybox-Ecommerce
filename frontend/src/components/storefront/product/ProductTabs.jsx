@@ -11,13 +11,25 @@ import {
   Building2,
   SlidersHorizontal,
   PlusCircle,
+  RotateCcw,
+  CheckCircle,
+  Truck,
+  ChevronDown,
+  ChevronUp,
+  HelpCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../../hooks/useAuth.js";
 import { reviewService } from "../../../services/review.service.js";
+import { questionService } from "../../../services/question.service.js";
 import { orderService } from "../../../services/order.service.js";
 import { Button } from "../../ui/Button.jsx";
 import { WriteReviewModal } from "../review/WriteReviewModal.jsx";
+import {
+  STOREFRONT_BUSINESS_POLICIES,
+  extractProductWarranty,
+  resolveSellerInfo,
+} from "../../../config/business-policies.config.js";
 
 export function ProductTabs({
   product,
@@ -27,6 +39,7 @@ export function ProductTabs({
 }) {
   const { isAuthenticated } = useAuth();
   const [activeTab, setActiveTab] = useState(initialActiveTab);
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
 
   const productId = product?._id || product?.id;
 
@@ -66,6 +79,35 @@ export function ProductTabs({
     }
 
     loadReviews();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [productId]);
+
+  // Real Questions State
+  const [questions, setQuestions] = useState([]);
+  const [isLoadingQuestions, setIsLoadingQuestions] = useState(Boolean(productId));
+
+  useEffect(() => {
+    if (!productId) return;
+    let isMounted = true;
+
+    async function loadQuestions() {
+      try {
+        const res = await questionService.getProductQuestions(productId);
+        if (!isMounted) return;
+        const list = Array.isArray(res?.data) ? res.data : res?.data?.questions || [];
+        setQuestions(list);
+      } catch {
+        if (!isMounted) return;
+        setQuestions([]);
+      } finally {
+        if (isMounted) setIsLoadingQuestions(false);
+      }
+    }
+
+    loadQuestions();
 
     return () => {
       isMounted = false;
@@ -207,6 +249,14 @@ export function ProductTabs({
       ? Object.entries(specificationsMap)
       : [];
 
+  // Authentic seller info and policies
+  const sellerInfo = resolveSellerInfo(product, brand);
+  const authenticWarranty = extractProductWarranty(product);
+  const returnsAndWarranty = STOREFRONT_BUSINESS_POLICIES.returnsAndWarranty;
+
+  const descriptionText = product?.description || "";
+  const isLongDescription = descriptionText.length > 400;
+
   return (
     <div id="product-details-tabs" className="mt-14 sm:mt-18 border-t border-slate-200 pt-8 sm:pt-10">
       {/* Tab Navigation Buttons */}
@@ -216,13 +266,13 @@ export function ProductTabs({
           onClick={() => setActiveTab("description")}
           className={`text-sm sm:text-base font-bold tracking-tight transition-colors cursor-pointer relative pb-4 shrink-0 ${
             activeTab === "description"
-              ? "text-[#007A55]"
+              ? "text-[#004D38]"
               : "text-slate-500 hover:text-slate-900"
           }`}
         >
           <span>Product Overview</span>
           {activeTab === "description" && (
-            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#007A55] rounded-full" />
+            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#004D38] rounded-full" />
           )}
         </button>
 
@@ -231,13 +281,28 @@ export function ProductTabs({
           onClick={() => setActiveTab("specifications")}
           className={`text-sm sm:text-base font-bold tracking-tight transition-colors cursor-pointer relative pb-4 shrink-0 ${
             activeTab === "specifications"
-              ? "text-[#007A55]"
+              ? "text-[#004D38]"
               : "text-slate-500 hover:text-slate-900"
           }`}
         >
           <span>Technical Specifications</span>
           {activeTab === "specifications" && (
-            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#007A55] rounded-full" />
+            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#004D38] rounded-full" />
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("seller")}
+          className={`text-sm sm:text-base font-bold tracking-tight transition-colors cursor-pointer relative pb-4 shrink-0 ${
+            activeTab === "seller"
+              ? "text-[#004D38]"
+              : "text-slate-500 hover:text-slate-900"
+          }`}
+        >
+          <span>Seller & Warranty</span>
+          {activeTab === "seller" && (
+            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#004D38] rounded-full" />
           )}
         </button>
 
@@ -246,31 +311,77 @@ export function ProductTabs({
           onClick={() => setActiveTab("reviews")}
           className={`text-sm sm:text-base font-bold tracking-tight transition-colors cursor-pointer relative pb-4 shrink-0 ${
             activeTab === "reviews"
-              ? "text-[#007A55]"
+              ? "text-[#004D38]"
               : "text-slate-500 hover:text-slate-900"
           }`}
         >
           <span>Customer Reviews ({totalReviewsCount})</span>
           {activeTab === "reviews" && (
-            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#007A55] rounded-full" />
+            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#004D38] rounded-full" />
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("questions")}
+          className={`text-sm sm:text-base font-bold tracking-tight transition-colors cursor-pointer relative pb-4 shrink-0 ${
+            activeTab === "questions"
+              ? "text-[#004D38]"
+              : "text-slate-500 hover:text-slate-900"
+          }`}
+        >
+          <span>Customer Q&A ({questions.length})</span>
+          {activeTab === "questions" && (
+            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#004D38] rounded-full" />
           )}
         </button>
       </div>
 
-      {/* Tab 1: Product Overview (Strictly Real Backend Content) */}
+      {/* Tab 1: Product Overview / Description */}
       {activeTab === "description" && (
         <div className="py-6 max-w-4xl space-y-5 text-sm leading-relaxed text-slate-700">
           {product?.shortDescription && (
-            <p className="font-semibold text-slate-900 text-base">
-              {product.shortDescription}
-            </p>
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
+              <p className="font-semibold text-slate-900 text-base">
+                {product.shortDescription}
+              </p>
+            </div>
           )}
 
-          {product?.description ? (
-            <p className="whitespace-pre-line">{product.description}</p>
+          {descriptionText ? (
+            <div className="space-y-3">
+              <div
+                className={`whitespace-pre-line leading-relaxed text-slate-600 transition-all ${
+                  !isDescriptionExpanded && isLongDescription
+                    ? "line-clamp-6"
+                    : ""
+                }`}
+              >
+                {descriptionText}
+              </div>
+
+              {isLongDescription && (
+                <button
+                  type="button"
+                  onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-[#004D38] hover:underline cursor-pointer pt-1"
+                >
+                  <span>
+                    {isDescriptionExpanded
+                      ? "Show less"
+                      : "Read full product overview"}
+                  </span>
+                  {isDescriptionExpanded ? (
+                    <ChevronUp className="size-3.5" />
+                  ) : (
+                    <ChevronDown className="size-3.5" />
+                  )}
+                </button>
+              )}
+            </div>
           ) : (
             <p className="text-slate-500 italic">
-              No additional description provided by the manufacturer.
+              No additional description provided for this product.
             </p>
           )}
 
@@ -294,10 +405,10 @@ export function ProductTabs({
         </div>
       )}
 
-      {/* Tab 2: Technical Specifications (Strict Real Data Only) */}
+      {/* Tab 2: Technical Specifications */}
       {activeTab === "specifications" && (
-        <div className="py-6 max-w-2xl">
-          <table className="w-full text-xs text-left border border-slate-200 rounded-2xl overflow-hidden">
+        <div className="py-6 max-w-3xl">
+          <table className="w-full text-xs text-left border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
             <tbody>
               {product?.sku && (
                 <tr className="border-b border-slate-100 bg-slate-50/50">
@@ -327,11 +438,11 @@ export function ProductTabs({
                 <tr className="border-b border-slate-100 bg-slate-50/50">
                   <td className="p-3.5 font-semibold text-slate-500">Tax Treatment</td>
                   <td className="p-3.5 text-slate-900 font-medium">
-                    {product.isTaxable ? "Taxable (GST applied at checkout)" : "Exempt"}
+                    {product.isTaxable ? "Taxable (GST calculated at checkout)" : "Exempt"}
                   </td>
                 </tr>
               )}
-              {/* Custom specification key-values directly from backend */}
+              {/* Dynamic specifications directly from backend Map or Object */}
               {customSpecEntries.map(([key, val], idx) => (
                 <tr
                   key={key}
@@ -346,12 +457,90 @@ export function ProductTabs({
         </div>
       )}
 
-      {/* Tab 3: Customer Reviews (Real Reviews + Real Distribution) */}
+      {/* Tab 3: Seller & Warranty Information */}
+      {activeTab === "seller" && (
+        <div className="py-6 max-w-3xl space-y-6">
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex size-12 items-center justify-center rounded-2xl bg-[#004D38]/10 text-[#004D38]">
+                  <Building2 className="size-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">
+                    {sellerInfo.sellerName}
+                  </h3>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-[#004D38] border border-emerald-200/60">
+                      <ShieldCheck className="size-3.5" />
+                      <span>{sellerInfo.verifiedBadge}</span>
+                    </span>
+                    {sellerInfo.rating !== null && (
+                      <span className="text-xs font-semibold text-amber-600">
+                        ★ {sellerInfo.rating} Seller Rating
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Dynamic Guarantees & Policy Terms */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 space-y-1.5">
+                <div className="flex items-center gap-2 font-bold text-slate-900">
+                  <CheckCircle className="size-4 text-[#004D38]" />
+                  <span>{returnsAndWarranty.genuineGuaranteeLabel}</span>
+                </div>
+                <p className="text-slate-600 leading-relaxed text-[11px]">
+                  {returnsAndWarranty.genuineGuaranteeDescription}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 space-y-1.5">
+                <div className="flex items-center gap-2 font-bold text-slate-900">
+                  <Truck className="size-4 text-[#004D38]" />
+                  <span>{sellerInfo.fulfillmentLabel}</span>
+                </div>
+                <p className="text-slate-600 leading-relaxed text-[11px]">
+                  {sellerInfo.fulfillmentDescription}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 space-y-1.5">
+                <div className="flex items-center gap-2 font-bold text-slate-900">
+                  <RotateCcw className="size-4 text-[#004D38]" />
+                  <span>{returnsAndWarranty.replacementLabel} Policy</span>
+                </div>
+                <p className="text-slate-600 leading-relaxed text-[11px]">
+                  {returnsAndWarranty.replacementDescription}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 space-y-1.5">
+                <div className="flex items-center gap-2 font-bold text-slate-900">
+                  <ShieldCheck className="size-4 text-[#004D38]" />
+                  <span>
+                    {authenticWarranty ? "Manufacturer Warranty" : returnsAndWarranty.defaultWarrantyLabel}
+                  </span>
+                </div>
+                <p className="text-slate-600 leading-relaxed text-[11px]">
+                  {authenticWarranty
+                    ? `Product includes ${authenticWarranty} honored at authorized service centers.`
+                    : returnsAndWarranty.defaultWarrantyDescription}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab 4: Customer Reviews */}
       {activeTab === "reviews" && (
         <div className="py-6 grid grid-cols-1 gap-10 lg:grid-cols-12">
           {/* Reviews List & Real Rating Breakdown (7 cols) */}
           <div className="lg:col-span-7 space-y-6">
-            {/* Real Rating Breakdown Summary */}
+            {/* Rating Breakdown Summary */}
             {totalReviewsCount > 0 && (
               <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 space-y-4">
                 <div className="flex items-center gap-4">
@@ -378,7 +567,7 @@ export function ProductTabs({
                   </div>
                 </div>
 
-                {/* Rating Distribution Bars strictly from real reviews */}
+                {/* Rating Distribution Bars */}
                 <div className="space-y-1.5 pt-2 border-t border-slate-200/60">
                   {ratingDistribution.map(({ stars, count, percentage }) => (
                     <button
@@ -414,7 +603,7 @@ export function ProductTabs({
                     onClick={() => setStarFilter(null)}
                     className={`rounded-full px-3 py-1 font-bold transition-all cursor-pointer ${
                       starFilter === null
-                        ? "bg-[#007A55] text-white shadow-xs"
+                        ? "bg-[#004D38] text-white shadow-xs"
                         : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                     }`}
                   >
@@ -434,7 +623,7 @@ export function ProductTabs({
                         }
                         className={`rounded-full px-3 py-1 font-bold transition-all cursor-pointer ${
                           starFilter === s
-                            ? "bg-[#007A55] text-white shadow-xs"
+                            ? "bg-[#004D38] text-white shadow-xs"
                             : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                         }`}
                       >
@@ -449,7 +638,7 @@ export function ProductTabs({
                   <select
                     value={sortOption}
                     onChange={(e) => setSortOption(e.target.value)}
-                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700 outline-none focus:border-[#007A55]"
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700 outline-none focus:border-[#004D38]"
                   >
                     <option value="recent">Most Recent</option>
                     <option value="highest">Highest Rating</option>
@@ -485,7 +674,7 @@ export function ProductTabs({
                   <button
                     type="button"
                     onClick={() => setStarFilter(null)}
-                    className="text-[#007A55] hover:underline font-bold"
+                    className="text-[#004D38] hover:underline font-bold cursor-pointer"
                   >
                     Clear filter
                   </button>
@@ -505,10 +694,10 @@ export function ProductTabs({
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-xs text-slate-900">
-                            Verified Customer
+                            {rev.userId?.name || rev.userName || "Verified Customer"}
                           </span>
                           {rev.isVerifiedPurchase && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-[#007A55]">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-[#004D38]">
                               <ShieldCheck className="size-3" />
                               <span>Verified Purchase</span>
                             </span>
@@ -555,11 +744,11 @@ export function ProductTabs({
                         </p>
                       )}
 
-                      {/* Real Vendor Response Block */}
+                      {/* Vendor Response Block */}
                       {rev.vendorResponse && (
                         <div className="rounded-xl bg-slate-50 border border-slate-200/70 p-3 text-xs space-y-1 mt-2">
                           <div className="flex items-center gap-1.5 font-bold text-slate-800 text-[11px]">
-                            <Building2 className="size-3.5 text-[#007A55]" />
+                            <Building2 className="size-3.5 text-[#004D38]" />
                             <span>Official Vendor Response</span>
                             {rev.vendorRespondedAt && (
                               <span className="text-slate-400 font-normal text-[10px]">
@@ -576,17 +765,17 @@ export function ProductTabs({
                         </div>
                       )}
 
-                      {/* Helpful Button with Real Count */}
+                      {/* Helpful Button */}
                       <div className="pt-2 flex items-center justify-end">
                         <button
                           type="button"
                           onClick={() => handleMarkHelpful(revId)}
-                          className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-[#007A55] transition-colors cursor-pointer"
+                          className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-[#004D38] transition-colors cursor-pointer"
                         >
                           <ThumbsUp
                             className={`size-3.5 ${
                               helpfulVoted[revId]
-                                ? "fill-current text-[#007A55]"
+                                ? "fill-current text-[#004D38]"
                                 : ""
                             }`}
                           />
@@ -604,12 +793,12 @@ export function ProductTabs({
           <div className="lg:col-span-5">
             <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-6 shadow-xs space-y-4">
               <h3 className="text-sm font-black text-slate-950 uppercase tracking-wider">
-                Customer Reviews
+                Review this Product
               </h3>
 
               {!isAuthenticated ? (
                 <div className="rounded-xl bg-white border border-slate-200 p-5 text-center space-y-3">
-                  <ShieldCheck className="size-8 text-[#007A55] mx-auto" />
+                  <ShieldCheck className="size-8 text-[#004D38] mx-auto" />
                   <div className="space-y-1">
                     <p className="text-xs font-bold text-slate-900">
                       Purchased this product?
@@ -621,7 +810,7 @@ export function ProductTabs({
                   </div>
                   <Link
                     href={`/auth/login?redirect=/product/${product?.slug || productId}#reviews`}
-                    className="inline-block rounded-full bg-[#007A55] hover:bg-[#004D38] text-white font-bold text-xs px-5 py-2 transition-colors shadow-xs"
+                    className="inline-block rounded-full bg-[#004D38] hover:bg-[#003D2C] text-white font-bold text-xs px-5 py-2 transition-colors shadow-xs"
                   >
                     Sign In to Review
                   </Link>
@@ -634,7 +823,7 @@ export function ProductTabs({
               ) : eligibleOrders.length > 0 ? (
                 <div className="rounded-xl bg-white border border-emerald-200 p-5 space-y-3">
                   <div className="flex items-center gap-2 text-emerald-800">
-                    <ShieldCheck className="size-5 text-[#007A55]" />
+                    <ShieldCheck className="size-5 text-[#004D38]" />
                     <span className="text-xs font-bold">
                       Verified Purchase Eligible
                     </span>
@@ -647,7 +836,7 @@ export function ProductTabs({
                   <Button
                     type="button"
                     onClick={() => setIsWriteModalOpen(true)}
-                    className="w-full rounded-full bg-[#007A55] text-white hover:bg-[#004D38] font-bold text-xs py-2.5 flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                    className="w-full rounded-full bg-[#004D38] text-white hover:bg-[#003D2C] font-bold text-xs py-2.5 flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
                   >
                     <PlusCircle className="size-4" />
                     <span>Write a Product Review</span>
@@ -668,7 +857,7 @@ export function ProductTabs({
                       </p>
                       <Link
                         href="/account/orders"
-                        className="inline-block pt-1 font-bold text-[#007A55] hover:underline"
+                        className="inline-block pt-1 font-bold text-[#004D38] hover:underline"
                       >
                         View your order history &rarr;
                       </Link>
@@ -678,6 +867,107 @@ export function ProductTabs({
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Tab 5: Customer Q&A */}
+      {activeTab === "questions" && (
+        <div className="py-6 max-w-4xl space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                Customer Questions & Answers
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Have questions regarding compatibility, features, or box contents?
+              </p>
+            </div>
+            <Link
+              href={`/product/${product?.slug || productId}/questions`}
+              className="inline-flex items-center gap-1.5 rounded-full bg-[#004D38] px-4 py-2 text-xs font-bold text-white hover:bg-[#003B2B] transition-colors shadow-xs shrink-0"
+            >
+              <HelpCircle className="size-3.5" />
+              <span>Ask / View All Q&A</span>
+            </Link>
+          </div>
+
+          {isLoadingQuestions ? (
+            <div className="space-y-3">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <div key={i} className="p-4 rounded-xl border bg-slate-50 space-y-2 animate-pulse">
+                  <div className="h-4 bg-slate-200 rounded w-1/3" />
+                  <div className="h-3 bg-slate-100 rounded w-2/3" />
+                </div>
+              ))}
+            </div>
+          ) : questions.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-500 space-y-3">
+              <HelpCircle className="size-8 mx-auto text-slate-300" />
+              <p className="font-semibold text-slate-700">No questions asked yet about this product.</p>
+              <p className="text-[11px] text-slate-400">
+                Be the first to ask about specifications, impedance, cables, or warranty details.
+              </p>
+              <Link
+                href={`/product/${product?.slug || productId}/questions`}
+                className="inline-block text-[#004D38] hover:underline font-bold"
+              >
+                Ask a Question &rarr;
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {questions.slice(0, 4).map((q) => {
+                const qId = q._id || q.id;
+                const topAnswer = q.answers?.[0];
+                return (
+                  <div
+                    key={qId}
+                    className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs space-y-3 text-xs"
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded bg-[#004D38] text-white text-[10px] font-extrabold">
+                        Q
+                      </span>
+                      <div className="font-bold text-slate-900 leading-snug">
+                        {q.question}
+                      </div>
+                    </div>
+                    {topAnswer ? (
+                      <div className="flex items-start gap-2.5 pl-7 text-slate-600">
+                        <span className="shrink-0 flex h-5 w-5 items-center justify-center rounded bg-emerald-100 text-[#004D38] text-[10px] font-bold">
+                          A
+                        </span>
+                        <div className="space-y-1">
+                          <p className="leading-relaxed">{topAnswer.answer}</p>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                            <span>Answered by {topAnswer.isVendor ? "Official Seller" : (topAnswer.userId?.name || "Customer")}</span>
+                            {topAnswer.createdAt && (
+                              <span>• {new Date(topAnswer.createdAt).toLocaleDateString()}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="pl-7 text-[11px] text-slate-400 italic">
+                        Awaiting community or seller answer.
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {questions.length > 4 && (
+                <div className="pt-2 text-center">
+                  <Link
+                    href={`/product/${product?.slug || productId}/questions`}
+                    className="text-xs font-bold text-[#004D38] hover:underline"
+                  >
+                    View all {questions.length} answered questions &rarr;
+                  </Link>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

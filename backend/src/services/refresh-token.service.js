@@ -1,5 +1,6 @@
 const RefreshToken = require("../models/RefreshToken");
 const User = require("../models/User");
+const Employee = require("../models/Employee");
 const AppError = require("../errors/AppError");
 
 const {
@@ -14,11 +15,15 @@ const rotateRefreshToken = async ({
   refreshToken,
   ipAddress = null,
   userAgent = null,
+  expectedContext = null,
+  allowedRoles = null,
 }) => {
   let decoded;
 
   try {
-    decoded = verifyRefreshToken(refreshToken);
+    decoded = verifyRefreshToken(refreshToken, {
+      expectedContext,
+    });
   } catch (error) {
     throw new AppError(
       "Invalid or expired refresh token",
@@ -57,34 +62,34 @@ const rotateRefreshToken = async ({
     );
   }
 
-if (storedToken.revokedAt) {
-  if (storedToken.replacedByTokenId) {
-    await RefreshToken.updateMany(
-      {
-        userId: storedToken.userId,
-        revokedAt: null,
-      },
-      {
-        $set: {
-          revokedAt: new Date(),
-          revokedByIp: ipAddress,
+  if (storedToken.revokedAt) {
+    if (storedToken.replacedByTokenId) {
+      await RefreshToken.updateMany(
+        {
+          userId: storedToken.userId,
+          revokedAt: null,
         },
-      }
-    );
+        {
+          $set: {
+            revokedAt: new Date(),
+            revokedByIp: ipAddress,
+          },
+        }
+      );
+
+      throw new AppError(
+        "Refresh token reuse detected. All active sessions have been revoked.",
+        401,
+        "REFRESH_TOKEN_REUSE_DETECTED"
+      );
+    }
 
     throw new AppError(
-      "Refresh token reuse detected. All active sessions have been revoked.",
+      "Refresh token has already been revoked",
       401,
-      "REFRESH_TOKEN_REUSE_DETECTED"
+      "REFRESH_TOKEN_REVOKED"
     );
   }
-
-  throw new AppError(
-    "Refresh token has already been revoked",
-    401,
-    "REFRESH_TOKEN_REVOKED"
-  );
-}
 
   if (storedToken.expiresAt <= new Date()) {
     throw new AppError(
@@ -112,19 +117,46 @@ if (storedToken.revokedAt) {
     );
   }
 
-  const newAccessToken = generateAccessToken({
-    sub: user._id.toString(),
-    role: user.role,
-    authVersion: user.authVersion || 1,
-    permissionVersion: user.permissionVersion || 1,
-  });
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    throw new AppError(
+      "Insufficient privileges for this session context",
+      403,
+      "INSUFFICIENT_ROLE"
+    );
+  }
 
-  const newRefreshToken = generateRefreshToken({
-    sub: user._id.toString(),
-  });
+  // If administrator session, ensure employee status is active
+  if (expectedContext === "administrator" || decoded.context === "administrator") {
+    const employee = await Employee.findOne({ userId: user._id });
+    if (employee && employee.status !== "active") {
+      throw new AppError(
+        "Staff member account is suspended or terminated",
+        403,
+        "STAFF_SUSPENDED"
+      );
+    }
+  }
 
-  const newDecodedRefreshToken =
-    verifyRefreshToken(newRefreshToken);
+  const sessionContext = decoded.context || expectedContext;
+
+  const newAccessToken = generateAccessToken(
+    {
+      sub: user._id.toString(),
+      role: user.role,
+      authVersion: user.authVersion || 1,
+      permissionVersion: user.permissionVersion || 1,
+    },
+    { context: sessionContext }
+  );
+
+  const newRefreshToken = generateRefreshToken(
+    {
+      sub: user._id.toString(),
+    },
+    { context: sessionContext }
+  );
+
+  const newDecodedRefreshToken = verifyRefreshToken(newRefreshToken);
 
   const replacementToken = await RefreshToken.create({
     userId: storedToken.userId,
@@ -143,9 +175,17 @@ if (storedToken.revokedAt) {
   return {
     accessToken: newAccessToken,
     refreshToken: newRefreshToken,
+    user: {
+      id: user._id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      isActive: user.isActive,
+    },
   };
 };
 
 module.exports = {
   rotateRefreshToken,
-};
+};

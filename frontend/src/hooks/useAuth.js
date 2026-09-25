@@ -22,6 +22,7 @@ export function useAuth() {
   const refreshSession = useAuthStore((state) => state.refreshSession);
   const initializeAuth = useAuthStore((state) => state.initializeAuth);
   const clearAuth = useAuthStore((state) => state.clearAuth);
+  const setUser = useAuthStore((state) => state.setUser);
 
   return {
     user,
@@ -36,6 +37,7 @@ export function useAuth() {
     refreshSession,
     initializeAuth,
     clearAuth,
+    setUser,
   };
 }
 

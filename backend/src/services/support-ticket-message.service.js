@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const User = require("../models/User");
 
 const supportTicketMessageRepository = require("../repositories/support-ticket-message.repository");
 const supportTicketRepository = require("../repositories/support-ticket.repository");
@@ -34,7 +35,22 @@ const getTicket = async (ticketId) => {
 const getActiveCustomer = async (userId) => {
   validateObjectId(userId, "user ID");
 
-  const customer = await customerRepository.findByUserId(userId);
+  let customer = await customerRepository.findByUserId(userId);
+
+  if (!customer) {
+    const user = await User.findById(userId);
+    if (user && user.isActive) {
+      try {
+        customer = await customerRepository.create({
+          userId: user._id,
+          phone: user.phone || null,
+          isActive: true,
+        });
+      } catch (err) {
+        customer = await customerRepository.findByUserId(userId);
+      }
+    }
+  }
 
   if (!customer || !customer.isActive) {
     throw new AppError(

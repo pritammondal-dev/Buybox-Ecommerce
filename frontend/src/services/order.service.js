@@ -28,16 +28,41 @@ export const orderService = {
   },
 
   /**
+   * Calculate authoritative checkout quote from active cart
+   * @param {Object} payload
+   * @param {string} [payload.shippingAddressId]
+   * @param {string} [payload.couponCode]
+   * @param {string} [payload.deliveryOptionId]
+   * @returns {Promise<Object>} Authoritative quote with subtotal, shipping, tax, totals
+   */
+  async getCheckoutQuote({ shippingAddressId = null, couponCode = null, deliveryOptionId = "standard" } = {}) {
+    return apiClient.post("/orders/quote", {
+      shippingAddressId: shippingAddressId || null,
+      couponCode: couponCode || null,
+      deliveryOptionId: deliveryOptionId || "standard",
+    });
+  },
+
+  /**
    * Create an order from current cart (Finalize Checkout)
    * Triggers stock reservation, tax calculation, multi-warehouse allocation.
    * @param {Object} payload
    * @param {string} payload.shippingAddressId - MongoDB ObjectId
    * @param {string} [payload.couponCode] - Optional promo code
+   * @param {string} [payload.deliveryOptionId] - Optional delivery option ("standard" | "express")
    * @param {string} [payload.idempotencyKey] - Optional idempotency key (min 8 chars)
    * @returns {Promise<Object>} { data: { order } }
    */
-  async createOrder({ shippingAddressId, couponCode = null, idempotencyKey = null }) {
-    const body = { shippingAddressId };
+  async createOrder({
+    shippingAddressId,
+    couponCode = null,
+    deliveryOptionId = "standard",
+    idempotencyKey = null,
+  }) {
+    const body = {
+      shippingAddressId,
+      deliveryOptionId: deliveryOptionId || "standard",
+    };
     if (couponCode) {
       body.couponCode = couponCode;
     }
@@ -46,6 +71,15 @@ export const orderService = {
       config.headers = { "Idempotency-Key": idempotencyKey.trim() };
     }
     return apiClient.post("/orders", body, config);
+  },
+
+  /**
+   * Get order lifecycle activity timeline and financial details
+   * @param {string} id
+   * @returns {Promise<Object>} { data: { timeline, paymentAttempts, financialBreakdown } }
+   */
+  async getOrderActivity(id) {
+    return apiClient.get(`/orders/${id}/activity`);
   },
 
   /**
@@ -59,3 +93,4 @@ export const orderService = {
 };
 
 export default orderService;
+

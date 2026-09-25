@@ -6,9 +6,11 @@ const validate = require("../middlewares/validate.middleware");
 const validateObjectId = require("../middlewares/validate-object-id.middleware");
 const {
   requirePermissions,
+  requireRoles,
 } = require("../middlewares/authorization.middleware");
 const { requireScope } = require("../middlewares/scope.middleware");
 const { SCOPE_TYPES } = require("../constants/scope.constants");
+const { ROLES } = require("../constants/auth.constants");
 
 const {
   PERMISSIONS,
@@ -25,6 +27,19 @@ const {
 const router = express.Router();
 
 router.use(authenticate);
+
+// Vendor-scoped warehouse endpoints (must precede /:id)
+router.get(
+  "/vendor/my",
+  requireRoles(ROLES.VENDOR),
+  warehouseController.getMyVendorWarehouses
+);
+
+router.get(
+  "/vendor/my/:warehouseId",
+  requireRoles(ROLES.VENDOR),
+  warehouseController.getMyVendorWarehouseById
+);
 
 router.get(
   "/",

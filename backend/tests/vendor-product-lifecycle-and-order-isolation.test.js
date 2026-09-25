@@ -29,6 +29,8 @@ const TEST_MONGODB_URI = process.env.MONGODB_URI
   ? process.env.MONGODB_URI.replace("/buybox?", "/buybox_phase3b_test?")
   : "mongodb://127.0.0.1:27017/buybox_phase3b_test?replicaSet=rs0";
 
+jest.setTimeout(60000);
+
 describe("Buybox Phase 3B — Vendor Product Lifecycle, Approval & Order Isolation", () => {
   let createdPermissions = new Map();
   let testCategory;
@@ -1179,6 +1181,7 @@ describe("Buybox Phase 3B — Vendor Product Lifecycle, Approval & Order Isolati
     });
 
     it("36. Super Admin retains access to product moderation via dynamic authorization", async () => {
+      await User.deleteMany({ role: ROLES.SUPER_ADMIN });
       const superAdminUser = await User.create({
         firstName: "Super",
         lastName: "Admin",

@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 290" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bankBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#022c22" />
+      <stop offset="60%" stop-color="#064E3B" />
+      <stop offset="100%" stop-color="#043E2E" />
+    </linearGradient>
+    <radialGradient id="bankGlow" cx="75%" cy="60%" r="55%">
+      <stop offset="0%" stop-color="#10B981" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#043E2E" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="goldRibbon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE68A" />
+      <stop offset="50%" stop-color="#F59E0B" />
+      <stop offset="100%" stop-color="#D97706" />
+    </linearGradient>
+    <linearGradient id="card1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E2E8F0" />
+      <stop offset="100%" stop-color="#94A3B8" />
+    </linearGradient>
+    <linearGradient id="card2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E3A8A" />
+      <stop offset="100%" stop-color="#1D4ED8" />
+    </linearGradient>
+    <filter id="cardShadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.45" />
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="420" height="290" rx="20" fill="url(#bankBg)" />
+  <rect width="420" height="290" rx="20" fill="url(#bankGlow)" />
+
+  <!-- Sparkles / Stars -->
+  <circle cx="340" cy="50" r="2" fill="#FDE68A" opacity="0.8" />
+  <circle cx="390" cy="90" r="1.5" fill="#FDE68A" opacity="0.6" />
+  <circle cx="280" cy="180" r="2" fill="#FDE68A" opacity="0.5" />
+
+  <!-- Header -->
+  <g transform="translate(24, 28)">
+    <circle cx="14" cy="14" r="14" fill="#065F46" />
+    <polygon points="14,6 16.5,11.5 22,12 18,16 19,21.5 14,18.5 9,21.5 10,16 6,12 11.5,11.5" fill="#FBBF24" />
+    <text x="36" y="20" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="900" fill="#FFFFFF">
+      Bank Offers
+    </text>
+  </g>
+
+  <!-- Main Copy -->
+  <g transform="translate(24, 80)">
+    <text x="0" y="0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="600" fill="#A7F3D0">
+      Extra Savings with Top Banks
+    </text>
+    <text x="0" y="32" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="24" font-weight="900" fill="#FDE68A" letter-spacing="-0.5">
+      Up to ₹5,000 Off
+    </text>
+    <text x="0" y="52" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="500" fill="#D1FAE5" opacity="0.85">
+      On Credit &amp; Debit Card EMI transactions
+    </text>
+
+    <!-- Button -->
+    <g transform="translate(0, 72)">
+      <rect width="116" height="34" rx="17" fill="#007A55" stroke="#10B981" stroke-width="1" />
+      <text x="20" y="21" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">
+        View Offers →
+      </text>
+    </g>
+  </g>
+
+  <!-- Credit Cards Graphic on Bottom Right -->
+  <g transform="translate(260, 150)" filter="url(#cardShadow)">
+    <!-- Card 1 (Silver / Platinum) -->
+    <g transform="rotate(-12)">
+      <rect width="130" height="82" rx="8" fill="url(#card1)" stroke="#CBD5E1" stroke-width="0.5" />
+      <rect x="12" y="24" width="20" height="15" rx="3" fill="#F59E0B" opacity="0.85" />
+      <text x="12" y="70" font-family="monospace" font-size="9" font-weight="700" fill="#1E293B">•••• 8829</text>
+      <text x="96" y="70" font-family="sans-serif" font-size="9" font-weight="900" fill="#2563EB">VISA</text>
+    </g>
+
+    <!-- Card 2 (Deep Blue Sapphire) -->
+    <g transform="translate(25, 20) rotate(8)">
+      <rect width="130" height="82" rx="8" fill="url(#card2)" stroke="#3B82F6" stroke-width="0.5" />
+      <rect x="12" y="24" width="20" height="15" rx="3" fill="#F59E0B" opacity="0.9" />
+      <text x="12" y="70" font-family="monospace" font-size="9" font-weight="700" fill="#FFFFFF">•••• 4102</text>
+      <!-- Mastercard circles -->
+      <circle cx="104" cy="67" r="7" fill="#EF4444" opacity="0.9" />
+      <circle cx="112" cy="67" r="7" fill="#F59E0B" opacity="0.9" />
+    </g>
+
+    <!-- Golden Ribbon -->
+    <path d="M -40,85 C 20,40 80,110 160,70" fill="none" stroke="url(#goldRibbon)" stroke-width="7" stroke-linecap="round" />
+  </g>
+</svg>

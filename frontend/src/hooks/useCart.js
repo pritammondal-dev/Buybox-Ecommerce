@@ -1,7 +1,6 @@
-"use client";
-
 import { useCartStore } from "../stores/cart.store.js";
 import { useAuthStore } from "../stores/auth.store.js";
+import { parsePrice } from "../utils/formatCurrency.js";
 
 /**
  * Reusable Cart Hook
@@ -26,6 +25,7 @@ export function useCart() {
   const updateQuantityStore = useCartStore((state) => state.updateQuantity);
   const removeItemStore = useCartStore((state) => state.removeItem);
   const clearCartStore = useCartStore((state) => state.clearCart);
+  const consumeCartStore = useCartStore((state) => state.consumeCart);
   const fetchServerCart = useCartStore((state) => state.fetchServerCart);
   const migrateGuestCartToServer = useCartStore(
     (state) => state.migrateGuestCartToServer
@@ -42,19 +42,19 @@ export function useCart() {
 
   const shippingTotal =
     isAuthenticated && serverCart?.shippingTotal !== undefined
-      ? Number(serverCart.shippingTotal) || 0
+      ? parsePrice(serverCart.shippingTotal)
       : 0;
   const taxTotal =
     isAuthenticated && serverCart?.taxTotal !== undefined
-      ? Number(serverCart.taxTotal) || 0
+      ? parsePrice(serverCart.taxTotal)
       : 0;
   const discountTotal =
     isAuthenticated && serverCart?.discountTotal !== undefined
-      ? Number(serverCart.discountTotal) || 0
+      ? parsePrice(serverCart.discountTotal)
       : 0;
   const grandTotal =
     isAuthenticated && serverCart?.grandTotal !== undefined
-      ? Number(serverCart.grandTotal) || 0
+      ? parsePrice(serverCart.grandTotal)
       : null;
 
   return {
@@ -78,9 +78,11 @@ export function useCart() {
     updateQuantity: (payload) => updateQuantityStore(payload, isAuthenticated),
     removeItem: (payload) => removeItemStore(payload, isAuthenticated),
     clearCart: () => clearCartStore(isAuthenticated),
+    consumeCart: () => consumeCartStore(),
     fetchServerCart,
     migrateGuestCartToServer,
   };
 }
 
 export default useCart;
+

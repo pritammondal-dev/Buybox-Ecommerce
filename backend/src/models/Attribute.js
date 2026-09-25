@@ -26,9 +26,31 @@ const attributeSchema = new mongoose.Schema(
         "boolean",
         "select",
         "multiselect",
+        "size",
         "color",
+        "measurement",
+        "date",
       ],
       default: "select",
+    },
+
+    categoryIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Category",
+      },
+    ],
+
+    isRequired: {
+      type: Boolean,
+      default: false,
+    },
+
+    attributeGroup: {
+      type: String,
+      default: "General",
+      trim: true,
+      maxlength: 100,
     },
 
     values: [
@@ -95,6 +117,12 @@ attributeSchema.index({
   isActive: 1,
   isFilterable: 1,
   sortOrder: 1,
+});
+
+attributeSchema.index({
+  categoryIds: 1,
+  isActive: 1,
+  deletedAt: 1,
 });
 
 attributeSchema.index({

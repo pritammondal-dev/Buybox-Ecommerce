@@ -1006,6 +1006,16 @@ const createRefund = async ({
           refundAmount:
             requestedAmountDecimal,
         });
+
+        try {
+          const rewardService = require("./reward.service");
+          await rewardService.adjustPointsForCancelledOrRefundedOrder(
+            order._id,
+            requestedAmountDecimal
+          );
+        } catch {
+          // Non-blocking reward adjustment
+        }
       }
 
       return {

@@ -70,10 +70,26 @@ const deleteProductVariant = asyncHandler(async (req, res) => {
   });
 });
 
+const createBulkVariants = asyncHandler(async (req, res) => {
+  const variants = await productVariantService.createBulkVariants({
+    productId: req.params.productId,
+    variants: req.body.variants,
+    actor: req.user,
+    req,
+  });
+
+  return sendSuccess(res, {
+    statusCode: 201,
+    message: `${variants.length} product variants created successfully`,
+    data: { variants },
+  });
+});
+
 module.exports = {
   createProductVariant,
   getProductVariant,
   listProductVariants,
   updateProductVariant,
   deleteProductVariant,
+  createBulkVariants,
 };

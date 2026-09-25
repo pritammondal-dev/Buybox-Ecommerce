@@ -56,7 +56,11 @@ const corsOptions = {
   ],
 };
 
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+  })
+);
 app.use(cors(corsOptions));
 app.use(compression());
 app.use(cookieParser());
@@ -100,6 +104,45 @@ app.get("/health", (req, res) => {
     },
   });
 });
+
+app.get(["/liveness", "/live"], (req, res) => {
+  return res.status(200).json({
+    success: true,
+    status: "alive",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get(["/readiness", "/ready"], (req, res) => {
+  const mongoose = require("mongoose");
+  const redis = require("./config/redis");
+
+  const isMongoReady = mongoose.connection.readyState === 1;
+  const isRedisReady = redis.status === "ready" || redis.status === "connect";
+
+  if (!isMongoReady || !isRedisReady) {
+    return res.status(503).json({
+      success: false,
+      status: "unavailable",
+      ready: false,
+      timestamp: new Date().toISOString(),
+      services: {
+        database: isMongoReady ? "up" : "down",
+        cache: isRedisReady ? "up" : "down",
+      },
+    });
+  }
+
+  return res.status(200).json({
+    success: true,
+    status: "ready",
+    ready: true,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+const path = require("path");
+app.use("/uploads", express.static(path.join(__dirname, "../public/uploads")));
 
 app.use("/api/v1", routes);
 

@@ -31,6 +31,15 @@ export const shipmentService = {
   async trackShipment(trackingNumber) {
     return apiClient.get(`/shipments/tracking/${trackingNumber}`);
   },
+
+  /**
+   * Get authenticated customer shipments for a specific order
+   * @param {string} orderId
+   * @returns {Promise<Object>} { data: shipments }
+   */
+  async getMyShipmentsByOrderId(orderId) {
+    return apiClient.get(`/shipments/my/order/${orderId}`);
+  },
 };
 
 export default shipmentService;

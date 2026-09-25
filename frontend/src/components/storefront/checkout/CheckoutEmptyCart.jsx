@@ -8,7 +8,7 @@ import { Button } from "../../ui/Button.jsx";
 export function CheckoutEmptyCart() {
   return (
     <div className="mx-auto max-w-xl px-4 py-20 text-center space-y-6">
-      <div className="mx-auto flex size-20 items-center justify-center rounded-full bg-[#FFF8D6] text-[#007A55] shadow-xs">
+      <div className="mx-auto flex size-20 items-center justify-center rounded-full bg-emerald-50 text-[#004D38] shadow-xs">
         <ShoppingBag className="size-10 stroke-[1.75]" />
       </div>
 
@@ -23,7 +23,7 @@ export function CheckoutEmptyCart() {
 
       <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
         <Link href="/shop">
-          <Button className="rounded-full bg-[#007A55] hover:bg-[#006346] text-white text-xs font-bold px-6 py-3 shadow-md active:scale-95 transition-all">
+          <Button className="rounded-full bg-[#004D38] hover:bg-[#003D2C] text-white text-xs font-bold px-6 py-3 shadow-md active:scale-95 transition-all">
             Explore Products
             <ArrowRight className="size-3.5 ml-1.5" />
           </Button>

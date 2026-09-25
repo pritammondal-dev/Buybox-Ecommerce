@@ -178,6 +178,16 @@ export function ShopCatalog({
           sortedList.sort((a, b) => (b.ratingAverage || 0) - (a.ratingAverage || 0));
         } else if (currentSort === "featured") {
           sortedList.sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
+        } else if (currentSort === "discount") {
+          sortedList.sort((a, b) => {
+            const pA = Number(a.price?.$numberDecimal || a.price || 0);
+            const cA = Number(a.compareAtPrice?.$numberDecimal || a.compareAtPrice || 0);
+            const discA = cA > pA ? (cA - pA) / cA : 0;
+            const pB = Number(b.price?.$numberDecimal || b.price || 0);
+            const cB = Number(b.compareAtPrice?.$numberDecimal || b.compareAtPrice || 0);
+            const discB = cB > pB ? (cB - pB) / cB : 0;
+            return discB - discA;
+          });
         }
 
         setProducts(sortedList);

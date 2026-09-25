@@ -11,6 +11,7 @@ const Customer = require("../models/Customer");
 const Vendor = require("../models/Vendor");
 const Warehouse = require("../models/Warehouse");
 const Employee = require("../models/Employee");
+const Shipment = require("../models/Shipment");
 
 const AppError = require("../errors/AppError");
 
@@ -29,12 +30,26 @@ const {
 const {
   getEffectivePermissions,
 } = require("./authorization.service");
+const { decodeSecureId } = require("../utils/secure-id.util");
 
 /*
  * ============================================================
  * HELPERS
  * ============================================================
  */
+
+const resolveId = (value, type) => {
+  if (!value) return value;
+  const str = String(value).trim();
+  if (type && (str.startsWith("ord_") || str.startsWith("shp_") || str.startsWith("wh_") || str.startsWith("ven_"))) {
+    try {
+      return decodeSecureId(str, type, { strict: false });
+    } catch {
+      return str;
+    }
+  }
+  return str;
+};
 
 const generateShipmentNumber = () => {
   const timestamp = Date.now()
@@ -193,13 +208,13 @@ const getVendorIdByUserId = async (
  * ============================================================
  */
 
-const getShipmentAssignment = (
-  order
-) => {
-  if (
-    !order.items ||
-    order.items.length === 0
-  ) {
+const resolveShipmentAssignment = ({
+  order,
+  authenticatedVendorId = null,
+  requestedVendorId = null,
+  requestedWarehouseId = null,
+}) => {
+  if (!order.items || order.items.length === 0) {
     throw new AppError(
       "Order has no items to fulfill",
       409,
@@ -207,47 +222,74 @@ const getShipmentAssignment = (
     );
   }
 
-  const vendorIds = [
-    ...new Set(
-      order.items.map(
-        (item) =>
-          item.vendorId?.toString()
-      )
-    ),
-  ];
+  let vendorId;
 
-  const warehouseIds = [
-    ...new Set(
-      order.items.map(
-        (item) =>
-          item.warehouseId?.toString()
-      )
-    ),
-  ];
+  if (authenticatedVendorId) {
+    // Vendor self-service: identity is strictly bounded to the authenticated vendor
+    vendorId = authenticatedVendorId.toString();
 
-  /*
-   * Current shipment implementation creates one shipment
-   * when all order items belong to the same vendor and
-   * warehouse.
-   *
-   * Multi-vendor / multi-warehouse orders will later be
-   * split into multiple shipments.
-   */
-  if (
-    vendorIds.length !== 1 ||
-    warehouseIds.length !== 1
-  ) {
-    throw new AppError(
-      "Order requires multiple shipments",
-      409,
-      "MULTIPLE_SHIPMENTS_REQUIRED"
+    // Verify vendor has items in this order
+    const hasVendorItems = order.items.some(
+      (item) => item.vendorId && item.vendorId.toString() === vendorId
     );
+
+    if (!hasVendorItems) {
+      // Do not disclose order existence if vendor has no items in it
+      throw new AppError(
+        "You do not have access to this order's shipment",
+        404,
+        "SHIPMENT_NOT_FOUND"
+      );
+    }
+  } else {
+    // Admin / Manager operation
+    const allVendorIds = [
+      ...new Set(
+        order.items
+          .map((item) => item.vendorId?.toString())
+          .filter(Boolean)
+      ),
+    ];
+
+    if (requestedVendorId) {
+      const match = allVendorIds.find(
+        (id) => id === requestedVendorId.toString()
+      );
+      if (!match) {
+        throw new AppError(
+          "Requested vendor does not have items in this order",
+          400,
+          "VENDOR_NOT_IN_ORDER"
+        );
+      }
+      vendorId = requestedVendorId.toString();
+    } else {
+      if (allVendorIds.length === 1) {
+        vendorId = allVendorIds[0];
+      } else {
+        throw new AppError(
+          "Vendor ID is required for multi-vendor order shipment creation",
+          400,
+          "VENDOR_SELECTION_REQUIRED"
+        );
+      }
+    }
   }
 
-  if (
-    !vendorIds[0] ||
-    !warehouseIds[0]
-  ) {
+  // Filter order items belonging to this vendor
+  const vendorItems = order.items.filter(
+    (item) => item.vendorId && item.vendorId.toString() === vendorId
+  );
+
+  const availableWarehouseIds = [
+    ...new Set(
+      vendorItems
+        .map((item) => item.warehouseId?.toString())
+        .filter(Boolean)
+    ),
+  ];
+
+  if (availableWarehouseIds.length === 0) {
     throw new AppError(
       "Order items must have vendor and warehouse assignments",
       409,
@@ -255,10 +297,40 @@ const getShipmentAssignment = (
     );
   }
 
+  let warehouseId;
+
+  if (requestedWarehouseId) {
+    const match = availableWarehouseIds.find(
+      (id) => id === requestedWarehouseId.toString()
+    );
+    if (!match) {
+      throw new AppError(
+        "Selected warehouse does not match order items",
+        400,
+        "WAREHOUSE_MISMATCH"
+      );
+    }
+    warehouseId = requestedWarehouseId.toString();
+  } else {
+    if (availableWarehouseIds.length === 1) {
+      warehouseId = availableWarehouseIds[0];
+    } else {
+      throw new AppError(
+        "Warehouse ID is required for multi-warehouse shipment creation",
+        400,
+        "WAREHOUSE_SELECTION_REQUIRED"
+      );
+    }
+  }
+
   return {
-    vendorId: vendorIds[0],
-    warehouseId: warehouseIds[0],
+    vendorId,
+    warehouseId,
   };
+};
+
+const getShipmentAssignment = (order) => {
+  return resolveShipmentAssignment({ order });
 };
 
 const buildShipmentItems = ({
@@ -312,15 +384,20 @@ const buildShipmentItems = ({
  */
 const createShipment = async ({
   orderId,
+  warehouseId: requestedWarehouseId = null,
+  vendorId: requestedVendorId = null,
   carrier = null,
   serviceLevel = null,
   idempotencyKey,
   userId = null,
 }) => {
+  const resolvedOrderId = resolveId(orderId, "order");
   validateObjectId(
-    orderId,
+    resolvedOrderId,
     "orderId"
   );
+  const resolvedWarehouseId = requestedWarehouseId ? resolveId(requestedWarehouseId, "warehouse") : null;
+  const resolvedVendorId = requestedVendorId ? resolveId(requestedVendorId, "vendor") : null;
 
   const normalizedIdempotencyKey =
     validateIdempotencyKey(
@@ -355,7 +432,7 @@ const createShipment = async ({
   if (existingByKey) {
     if (
       existingByKey.orderId.toString() !==
-      orderId.toString()
+      resolvedOrderId.toString()
     ) {
       throw new AppError(
         "Idempotency key is already associated with another order",
@@ -391,7 +468,7 @@ const createShipment = async ({
 
     const order =
       await orderRepository.findById(
-        orderId,
+        resolvedOrderId,
         { session }
       );
 
@@ -429,27 +506,12 @@ const createShipment = async ({
     const {
       vendorId,
       warehouseId,
-    } = getShipmentAssignment(
-      order
-    );
-
-    /*
-     * Critical vendor isolation check.
-     *
-     * Vendor 2 must never create a shipment for
-     * Vendor 1's order.
-     */
-    if (
-      authenticatedVendorId &&
-      vendorId.toString() !==
-        authenticatedVendorId.toString()
-    ) {
-      throw new AppError(
-        "You do not have access to this order's shipment",
-        404,
-        "SHIPMENT_NOT_FOUND"
-      );
-    }
+    } = resolveShipmentAssignment({
+      order,
+      authenticatedVendorId,
+      requestedVendorId: resolvedVendorId,
+      requestedWarehouseId: resolvedWarehouseId,
+    });
 
     await validateVendor(
       vendorId,
@@ -536,6 +598,29 @@ const createShipment = async ({
         { session }
       );
 
+    const updatedOrderItems = (order.items || []).map((orderItem) => {
+      if (
+        orderItem.vendorId &&
+        orderItem.vendorId.toString() === vendorId.toString() &&
+        orderItem.warehouseId &&
+        orderItem.warehouseId.toString() === warehouseId.toString()
+      ) {
+        const itemObj = orderItem.toObject ? orderItem.toObject() : { ...orderItem };
+        itemObj.shipmentId = shipment._id;
+        if (!["shipped", "delivered", "cancelled"].includes(itemObj.fulfillmentStatus)) {
+          itemObj.fulfillmentStatus = "ready_to_ship";
+        }
+        return itemObj;
+      }
+      return orderItem;
+    });
+
+    await orderRepository.updateById(
+      order._id,
+      { items: updatedOrderItems },
+      { session }
+    );
+
     await session.commitTransaction();
 
     return shipment;
@@ -561,7 +646,7 @@ const createShipment = async ({
       if (existing) {
         if (
           existing.orderId.toString() !==
-          orderId.toString()
+          resolvedOrderId.toString()
         ) {
           throw new AppError(
             "Idempotency key is already associated with another order",
@@ -632,30 +717,34 @@ const synchronizeOrderForShipmentStatus =
     if (
       shipmentStatus === "picked_up"
     ) {
+      const updatedItems = (order.items || []).map((orderItem) => {
+        const matchingShipmentItem = shipment?.items
+          ? shipment.items.find(
+              (si) =>
+                si.productVariantId?.toString() ===
+                  orderItem.productVariantId?.toString() &&
+                orderItem.warehouseId?.toString() ===
+                  shipment.warehouseId?.toString()
+            )
+          : null;
+        if (matchingShipmentItem) {
+          const itemObj = orderItem.toObject ? orderItem.toObject() : { ...orderItem };
+          itemObj.inventoryStatus = "deducted";
+          itemObj.fulfillmentStatus = "shipped";
+          return itemObj;
+        }
+        return orderItem;
+      });
+
       if (
         order.status === "processing"
       ) {
-        const updatedItems = (order.items || []).map((orderItem) => {
-          const matchingShipmentItem = shipment?.items
-            ? shipment.items.find(
-                (si) =>
-                  si.productVariantId?.toString() ===
-                    orderItem.productVariantId?.toString() &&
-                  orderItem.warehouseId?.toString() ===
-                    shipment.warehouseId?.toString()
-              )
-            : null;
-          if (matchingShipmentItem) {
-            const itemObj = orderItem.toObject ? orderItem.toObject() : { ...orderItem };
-            itemObj.inventoryStatus = "deducted";
-            return itemObj;
-          }
-          return orderItem;
-        });
-
         await orderRepository.updateById(
           order._id,
-          { items: updatedItems },
+          {
+            items: updatedItems,
+            fulfillmentStatus: "partially_fulfilled",
+          },
           { session }
         );
 
@@ -670,7 +759,14 @@ const synchronizeOrderForShipmentStatus =
       if (
         order.status === "shipped"
       ) {
-        return order;
+        return orderRepository.updateById(
+          order._id,
+          {
+            items: updatedItems,
+            fulfillmentStatus: "partially_fulfilled",
+          },
+          { session }
+        );
       }
 
       throw new AppError(
@@ -686,6 +782,30 @@ const synchronizeOrderForShipmentStatus =
       shipmentStatus ===
         "out_for_delivery"
     ) {
+      const updatedItems = (order.items || []).map((orderItem) => {
+        const matchingShipmentItem = shipment?.items
+          ? shipment.items.find(
+              (si) =>
+                si.productVariantId?.toString() ===
+                  orderItem.productVariantId?.toString() &&
+                orderItem.warehouseId?.toString() ===
+                  shipment.warehouseId?.toString()
+            )
+          : null;
+        if (matchingShipmentItem) {
+          const itemObj = orderItem.toObject ? orderItem.toObject() : { ...orderItem };
+          itemObj.fulfillmentStatus = "shipped";
+          return itemObj;
+        }
+        return orderItem;
+      });
+
+      await orderRepository.updateById(
+        order._id,
+        { items: updatedItems },
+        { session }
+      );
+
       if (
         order.status ===
         "processing"
@@ -706,31 +826,92 @@ const synchronizeOrderForShipmentStatus =
     ) {
       let currentOrder = order;
 
-      if (
-        currentOrder.status ===
-        "shipped"
-      ) {
-        currentOrder =
-          await orderService
-            .transitionOrderStatus(
-              currentOrder._id,
-              "delivered",
-              { session }
-            );
-      }
+      const updatedItems = (currentOrder.items || []).map((orderItem) => {
+        const matchingShipmentItem = shipment?.items
+          ? shipment.items.find(
+              (si) =>
+                si.productVariantId?.toString() ===
+                  orderItem.productVariantId?.toString() &&
+                orderItem.warehouseId?.toString() ===
+                  shipment.warehouseId?.toString()
+            )
+          : null;
+        if (matchingShipmentItem) {
+          const itemObj = orderItem.toObject ? orderItem.toObject() : { ...orderItem };
+          itemObj.fulfillmentStatus = "delivered";
+          return itemObj;
+        }
+        return orderItem;
+      });
 
-      if (
-        currentOrder.status ===
-        "delivered"
-      ) {
+      const allShipments =
+        await shipmentRepository.findByOrderId(
+          order._id,
+          { session }
+        );
+
+      const activeShipments = allShipments.filter(
+        (s) => !["cancelled", "returned"].includes(s.status)
+      );
+
+      const allDelivered =
+        activeShipments.length > 0 &&
+        activeShipments.every(
+          (s) =>
+            s.status === "delivered" ||
+            s._id.toString() === shipment._id.toString()
+        );
+
+      const totalOrderedQuantity = (order.items || []).reduce(
+        (sum, item) => sum + item.quantity,
+        0
+      );
+
+      const totalDeliveredQuantity = activeShipments.reduce((sum, s) => {
+        const isDelivered =
+          s.status === "delivered" ||
+          s._id.toString() === shipment._id.toString();
+        if (isDelivered) {
+          return (
+            sum +
+            (s.items || []).reduce(
+              (subSum, item) => subSum + item.quantity,
+              0
+            )
+          );
+        }
+        return sum;
+      }, 0);
+
+      const isFullyDelivered =
+        allDelivered && totalDeliveredQuantity >= totalOrderedQuantity;
+
+      if (isFullyDelivered) {
+        if (
+          currentOrder.status === "shipped"
+        ) {
+          currentOrder =
+            await orderService
+              .transitionOrderStatus(
+                currentOrder._id,
+                "delivered",
+                { session }
+              );
+        }
+
+        const updatePayload = {
+          items: updatedItems,
+          fulfillmentStatus: "fulfilled",
+        };
+        if (!currentOrder.deliveredAt) {
+          updatePayload.deliveredAt = new Date();
+        }
+
         const updatedOrder =
           await orderRepository
             .updateById(
               currentOrder._id,
-              {
-                fulfillmentStatus:
-                  "fulfilled",
-              },
+              updatePayload,
               { session }
             );
 
@@ -745,7 +926,20 @@ const synchronizeOrderForShipmentStatus =
         return updatedOrder;
       }
 
-      return currentOrder;
+      // Partially fulfilled order: other shipments remain active/pending
+      const updatedOrder =
+        await orderRepository
+          .updateById(
+            currentOrder._id,
+            {
+              items: updatedItems,
+              fulfillmentStatus:
+                "partially_fulfilled",
+            },
+            { session }
+          );
+
+      return updatedOrder || currentOrder;
     }
 
     if (
@@ -767,53 +961,88 @@ const synchronizeOrderForShipmentStatus =
         return currentOrder || order;
       }
 
-      if (
-        [
-          "confirmed",
-          "processing",
-        ].includes(currentOrder.status)
-      ) {
-        const cancelledOrder =
-          await orderService
-            .transitionOrderStatus(
-              currentOrder._id,
-              "cancelled",
-              { session }
-            );
-
-        const updatedItems = (currentOrder.items || []).map((orderItem) => {
-          const matchingShipmentItem = shipment?.items
-            ? shipment.items.find(
-                (si) =>
-                  si.productVariantId?.toString() ===
-                    orderItem.productVariantId?.toString() &&
-                  orderItem.warehouseId?.toString() ===
-                    shipment.warehouseId?.toString()
-              )
-            : null;
-          if (matchingShipmentItem) {
-            const itemObj = orderItem.toObject ? orderItem.toObject() : { ...orderItem };
-            itemObj.inventoryStatus = "released";
-            itemObj.inventoryReleasedAt = new Date();
-            return itemObj;
-          }
-          return orderItem;
-        });
-
-        const allItemsReleased = updatedItems.every(
-          (item) => item.inventoryStatus === "released" || item.inventoryStatus === "deducted"
+      const allShipments =
+        await shipmentRepository.findByOrderId(
+          order._id,
+          { session }
         );
+
+      const remainingActiveShipments = allShipments.filter(
+        (s) =>
+          s._id.toString() !== shipment._id.toString() &&
+          !["cancelled", "returned"].includes(s.status)
+      );
+
+      const updatedItems = (currentOrder.items || []).map((orderItem) => {
+        const matchingShipmentItem = shipment?.items
+          ? shipment.items.find(
+              (si) =>
+                si.productVariantId?.toString() ===
+                  orderItem.productVariantId?.toString() &&
+                orderItem.warehouseId?.toString() ===
+                  shipment.warehouseId?.toString()
+            )
+          : null;
+        if (matchingShipmentItem) {
+          const itemObj = orderItem.toObject ? orderItem.toObject() : { ...orderItem };
+          itemObj.inventoryStatus = "released";
+          itemObj.inventoryReleasedAt = new Date();
+          return itemObj;
+        }
+        return orderItem;
+      });
+
+      const allItemsReleased = updatedItems.every(
+        (item) => item.inventoryStatus === "released"
+      );
+
+      // If ALL shipments for the order are cancelled and all items released, cancel the order
+      if (
+        remainingActiveShipments.length === 0 &&
+        allItemsReleased
+      ) {
+        let orderToUpdate = currentOrder;
+        if (
+          [
+            "confirmed",
+            "processing",
+          ].includes(currentOrder.status)
+        ) {
+          try {
+            orderToUpdate =
+              await orderService
+                .transitionOrderStatus(
+                  currentOrder._id,
+                  "cancelled",
+                  { session }
+                );
+          } catch (transitionErr) {
+            if (transitionErr?.code === "INVALID_ORDER_STATUS_TRANSITION") {
+              const reloaded = await orderRepository.findById(
+                currentOrder._id,
+                { session }
+              );
+              if (reloaded?.status === "cancelled") {
+                orderToUpdate = reloaded;
+              } else {
+                throw transitionErr;
+              }
+            } else {
+              throw transitionErr;
+            }
+          }
+        }
 
         const updatedOrder =
           await orderRepository
             .updateById(
-              cancelledOrder._id,
+              orderToUpdate._id,
               {
                 fulfillmentStatus:
                   "cancelled",
                 items: updatedItems,
-                inventoryStatus: allItemsReleased ? "released" : "partially_released",
-                inventoryReleasedAt: allItemsReleased ? new Date() : null,
+                inventoryStatus: "released",
+                inventoryReleasedAt: new Date(),
               },
               { session }
             );
@@ -829,7 +1058,23 @@ const synchronizeOrderForShipmentStatus =
         return updatedOrder;
       }
 
-      return currentOrder;
+      // Some shipments or items remain active: update order with partial release without cancelling entire order
+      const updatedOrder =
+        await orderRepository
+          .updateById(
+            currentOrder._id,
+            {
+              items: updatedItems,
+              inventoryStatus: "partially_released",
+              fulfillmentStatus:
+                remainingActiveShipments.length > 0
+                  ? "partially_fulfilled"
+                  : currentOrder.fulfillmentStatus,
+            },
+            { session }
+          );
+
+      return updatedOrder || currentOrder;
     }
 
     if (
@@ -963,8 +1208,9 @@ const transitionShipmentStatus =
     failureReason = undefined,
     userId = null,
   }) => {
+    const resolvedShipmentId = resolveId(shipmentId, "shipment");
     validateObjectId(
-      shipmentId,
+      resolvedShipmentId,
       "shipmentId"
     );
 
@@ -991,7 +1237,7 @@ const transitionShipmentStatus =
       const shipment =
         await shipmentRepository
           .findById(
-            shipmentId,
+            resolvedShipmentId,
             { session }
           );
 
@@ -1508,6 +1754,22 @@ const getCustomerShipments =
       );
   };
 
+const getCustomerShipmentsByOrderId =
+  async (orderId, userId) => {
+    validateObjectId(orderId, "orderId");
+    const customerId =
+      await getCustomerIdByUserId(
+        userId
+      );
+
+    const order = await orderRepository.findById(orderId);
+    if (!order || order.customerId.toString() !== customerId.toString()) {
+      throw new AppError("Order not found or unauthorized", 404, "ORDER_NOT_FOUND");
+    }
+
+    return shipmentRepository.findByOrderId(orderId);
+  };
+
 /*
  * ============================================================
  * VENDOR SELF-SERVICE
@@ -1568,6 +1830,46 @@ const getMyVendorShipments =
       );
   };
 
+const listAllShipments = async ({ page = 1, limit = 20, status, carrier, search } = {}) => {
+  const safePage = Math.max(Number(page) || 1, 1);
+  const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  const skip = (safePage - 1) * safeLimit;
+
+  const filter = {};
+  if (status) filter.status = status;
+  if (carrier) filter.carrier = carrier;
+  if (search) {
+    const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(escaped, "i");
+    filter.$or = [
+      { shipmentNumber: regex },
+      { trackingNumber: regex },
+    ];
+  }
+
+  const [items, total] = await Promise.all([
+    Shipment.find(filter)
+      .populate("orderId", "orderNumber grandTotal")
+      .populate("vendorId", "businessName")
+      .populate("warehouseId", "name code")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .lean(),
+    Shipment.countDocuments(filter),
+  ]);
+
+  return {
+    items,
+    meta: {
+      page: safePage,
+      limit: safeLimit,
+      total,
+      totalPages: Math.ceil(total / safeLimit),
+    },
+  };
+};
+
 /*
  * ============================================================
  * EXPORTS
@@ -1581,6 +1883,7 @@ module.exports = {
   getShipmentById,
   getCustomerShipmentById,
   getCustomerShipments,
+  getCustomerShipmentsByOrderId,
 
   getShipmentsByOrderId,
   getShipmentsByVendorId,
@@ -1595,6 +1898,7 @@ module.exports = {
 
   getVendorShipmentById,
   getMyVendorShipments,
+  listAllShipments,
 
   generateShipmentNumber,
 };

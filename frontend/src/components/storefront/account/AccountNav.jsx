@@ -11,6 +11,13 @@ import {
   LogOut,
   ChevronRight,
   ShieldCheck,
+  Lock,
+  Bell,
+  Award,
+  Gift,
+  Tag,
+  History,
+  CreditCard,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../../hooks/useAuth.js";
@@ -34,8 +41,15 @@ export function AccountNav() {
     { label: "Dashboard", href: "/account", icon: User },
     { label: "My Orders", href: "/account/orders", icon: Package },
     { label: "Saved Addresses", href: "/account/addresses", icon: MapPin },
+    { label: "Payment Methods", href: "/account/payment-methods", icon: CreditCard },
     { label: "Wishlist", href: "/account/wishlist", icon: Heart },
     { label: "Profile Details", href: "/account/profile", icon: ShieldCheck },
+    { label: "Security & Login", href: "/account/security", icon: Lock },
+    { label: "Notifications", href: "/account/notifications", icon: Bell },
+    { label: "Rewards & Points", href: "/account/rewards", icon: Award },
+    { label: "Gift Cards", href: "/account/gift-cards", icon: Gift },
+    { label: "My Coupons", href: "/account/coupons", icon: Tag },
+    { label: "Recently Viewed", href: "/account/recently-viewed", icon: History },
   ];
 
   return (

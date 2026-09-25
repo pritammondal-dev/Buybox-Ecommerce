@@ -7,6 +7,7 @@ const updateVendorStatusSchema = z
       "under_review",
       "approved",
       "rejected",
+      "changes_requested",
       "suspended",
       "inactive",
     ]),

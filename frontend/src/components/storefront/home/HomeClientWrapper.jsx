@@ -4,47 +4,34 @@ import React from "react";
 import { toast } from "sonner";
 import { useCart } from "../../../hooks/useCart.js";
 import { useWishlist } from "../../../hooks/useWishlist.js";
-import { FlashSaleSection } from "./FlashSaleSection.jsx";
-import { FlashDealSection } from "./FlashDealSection.jsx";
-import { BentoPromoGrid } from "./BentoPromoGrid.jsx";
+import { DealsPromoRow } from "./DealsPromoRow.jsx";
+import { MidPageBanners } from "./MidPageBanners.jsx";
 import { FeaturedProductsSection } from "./FeaturedProductsSection.jsx";
-import { BestSellersSection } from "./BestSellersSection.jsx";
 import { NewArrivalsSection } from "./NewArrivalsSection.jsx";
+import { CategoryBannersRow } from "./CategoryBannersRow.jsx";
+import { FeaturedBrands } from "./FeaturedBrands.jsx";
+import { BestSellersSection } from "./BestSellersSection.jsx";
+import { BottomPromosRow } from "./BottomPromosRow.jsx";
 import { RecentlyViewedSection } from "./RecentlyViewedSection.jsx";
-import { ExploreMoreSection } from "./ExploreMoreSection.jsx";
-import { TrustSection } from "./TrustSection.jsx";
+import { SecondaryTrustBar } from "./SecondaryTrustBar.jsx";
+import { NewsletterSection } from "./NewsletterSection.jsx";
 
 export function HomeClientWrapper({
-  initialFlashDeals = [],
+  initialBanners = [],
   initialFeaturedProducts = [],
   initialBestSellers = [],
   initialNewArrivals = [],
-  initialCampaign = null,
+  initialHotDeals = [],
+  initialFlashSale = [],
+  initialRecentlyViewed = [],
+  initialBrands = [],
 }) {
   const { addItem: addCartItem } = useCart();
-  const { items: wishlistItems, addItem: addWishlistItem, removeItem: removeWishlistItem } = useWishlist();
-
-  // Deduplicate product IDs shown in earlier sections
-  const displayedIds = React.useMemo(() => {
-    const ids = new Set();
-    (initialFlashDeals || []).forEach((p) => {
-      const id = p._id || p.id;
-      if (id) ids.add(id);
-    });
-    (initialFeaturedProducts || []).forEach((p) => {
-      const id = p._id || p.id;
-      if (id) ids.add(id);
-    });
-    (initialNewArrivals || []).forEach((p) => {
-      const id = p._id || p.id;
-      if (id) ids.add(id);
-    });
-    (initialBestSellers || []).forEach((p) => {
-      const id = p._id || p.id;
-      if (id) ids.add(id);
-    });
-    return Array.from(ids);
-  }, [initialFlashDeals, initialFeaturedProducts, initialNewArrivals, initialBestSellers]);
+  const {
+    items: wishlistItems,
+    addItem: addWishlistItem,
+    removeItem: removeWishlistItem,
+  } = useWishlist();
 
   const handleWishlistToggle = async (product, isWishlisted) => {
     const id = product._id || product.id;
@@ -72,6 +59,7 @@ export function HomeClientWrapper({
         product.productVariantId ||
         product.defaultVariantId ||
         undefined;
+
       await addCartItem({
         ...(productVariantId ? { productVariantId } : {}),
         productId,
@@ -83,6 +71,7 @@ export function HomeClientWrapper({
           sku: product.sku,
         },
       });
+
       toast.success("Added to cart", {
         description: `${product.name} was added to your shopping cart.`,
       });
@@ -93,28 +82,16 @@ export function HomeClientWrapper({
 
   return (
     <div className="flex flex-col">
-      {/* 1. Flash Sale (Campaign-backed; null if no active campaign in backend) */}
-      <FlashSaleSection
-        campaign={initialCampaign}
-        wishlistVariantIds={wishlistItems}
-        onWishlistToggle={handleWishlistToggle}
-        onAddToCart={handleAddToCart}
+      {/* 8. Tri-Promo Row: Today's Hot Deals + Flash Sale + Bank Offers */}
+      <DealsPromoRow
+        hotDealsProducts={initialHotDeals}
+        flashSaleProducts={initialFlashSale}
       />
 
-      {/* 2. Today's Hot Deals (Warm Cream background, genuine discount filter) */}
-      <FlashDealSection
-        initialProducts={initialFlashDeals}
-        wishlistVariantIds={wishlistItems}
-        onWishlistToggle={handleWishlistToggle}
-        onAddToCart={handleAddToCart}
-      />
+      {/* 9. Middle Double Banner: Work Smarter + Stylish Looks */}
+      <MidPageBanners banners={initialBanners} />
 
-      {/* 3. Bento Promotional Highlights */}
-      <div className="py-2 sm:py-4">
-        <BentoPromoGrid />
-      </div>
-
-      {/* 4. Featured Products (Slate Neutral background) */}
+      {/* 10. Featured Products (Horizontal Product Carousel with 5 cards) */}
       <FeaturedProductsSection
         initialProducts={initialFeaturedProducts}
         wishlistVariantIds={wishlistItems}
@@ -122,15 +99,7 @@ export function HomeClientWrapper({
         onAddToCart={handleAddToCart}
       />
 
-      {/* 5. Best Sellers (Gracefully hidden if not configured in CMS) */}
-      <BestSellersSection
-        initialProducts={initialBestSellers}
-        wishlistVariantIds={wishlistItems}
-        onWishlistToggle={handleWishlistToggle}
-        onAddToCart={handleAddToCart}
-      />
-
-      {/* 6. New Arrivals (Soft Emerald background) */}
+      {/* 11. New Arrivals (Horizontal Product Carousel with 5 cards) */}
       <NewArrivalsSection
         initialProducts={initialNewArrivals}
         wishlistVariantIds={wishlistItems}
@@ -138,23 +107,36 @@ export function HomeClientWrapper({
         onAddToCart={handleAddToCart}
       />
 
-      {/* 7. Recently Viewed Products (Soft Stone background, client-side history) */}
+      {/* 12. Tri-Promo Category Banners: Audio + Workspace + Smart Living */}
+      <CategoryBannersRow banners={initialBanners} />
+
+      {/* 13. Shop by Brand (Brand Partner Cards) */}
+      <FeaturedBrands initialBrands={initialBrands} />
+
+      {/* 14. Best Sellers (Horizontal Product Carousel with 5 cards) */}
+      <BestSellersSection
+        initialProducts={initialBestSellers}
+        wishlistVariantIds={wishlistItems}
+        onWishlistToggle={handleWishlistToggle}
+        onAddToCart={handleAddToCart}
+      />
+
+      {/* 15. Bottom Tri-Banner Deals: Home & Kitchen + Smart Gadgets + Monsoon Special */}
+      <BottomPromosRow banners={initialBanners} />
+
+      {/* 16. Recently Viewed (Horizontal Product Carousel) */}
       <RecentlyViewedSection
+        initialProducts={initialRecentlyViewed}
         wishlistVariantIds={wishlistItems}
         onWishlistToggle={handleWishlistToggle}
         onAddToCart={handleAddToCart}
       />
 
-      {/* 8. Explore More Products (Crisp White background, deduplicated) */}
-      <ExploreMoreSection
-        excludeIds={displayedIds}
-        wishlistVariantIds={wishlistItems}
-        onWishlistToggle={handleWishlistToggle}
-        onAddToCart={handleAddToCart}
-      />
+      {/* 17. Secondary Trust Bar (Why Buybox? Soft Green Strip) */}
+      <SecondaryTrustBar />
 
-      {/* 9. Continuous Trust Ticker & Verified Badges */}
-      <TrustSection />
+      {/* 18. Newsletter Subscription Strip */}
+      <NewsletterSection />
     </div>
   );
 }

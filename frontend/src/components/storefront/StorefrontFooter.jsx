@@ -2,18 +2,14 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { ShoppingBag, ShieldCheck, Truck, RotateCcw, Headphones, ArrowRight, CheckCircle2 } from "lucide-react";
-import { toast } from "sonner";
+import { ShoppingBag } from "lucide-react";
 import { categoryService } from "../../services/category.service.js";
 
 export function StorefrontFooter({ categories: propCategories }) {
-  const [email, setEmail] = useState("");
-  const [isSubscribed, setIsSubscribed] = useState(false);
   const [internalCategories, setInternalCategories] = useState([]);
 
   const categories = propCategories && propCategories.length > 0 ? propCategories : internalCategories;
 
-  // Fetch categories if not provided as prop
   useEffect(() => {
     if (propCategories && propCategories.length > 0) return;
 
@@ -32,254 +28,206 @@ export function StorefrontFooter({ categories: propCategories }) {
     };
   }, [propCategories]);
 
-  const handleSubscribe = (e) => {
-    e.preventDefault();
-    if (!email || !email.includes("@")) {
-      toast.error("Please enter a valid email address");
-      return;
-    }
-    setIsSubscribed(true);
-    toast.success("Thank you for subscribing to Buybox newsletter!");
-    setEmail("");
-  };
-
   return (
-    <footer className="border-t border-slate-800 bg-[#0F172A] text-slate-200">
-      {/* Trust Badges Bar (Top of Footer) */}
-      <div className="border-b border-slate-800 bg-slate-900/60">
-        <div className="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-4 py-8 sm:grid-cols-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3.5">
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[#007A55]/15 text-[#007A55]">
-              <Truck className="size-5 stroke-[2.2]" />
-            </div>
-            <div>
-              <h4 className="text-xs sm:text-sm font-bold text-white">Fast Free Shipping</h4>
-              <p className="text-[11px] text-slate-400">On all orders above ₹999</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3.5">
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[#007A55]/15 text-[#007A55]">
-              <ShieldCheck className="size-5 stroke-[2.2]" />
-            </div>
-            <div>
-              <h4 className="text-xs sm:text-sm font-bold text-white">100% Secure Checkout</h4>
-              <p className="text-[11px] text-slate-400">Razorpay & SSL Protected</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3.5">
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[#007A55]/15 text-[#007A55]">
-              <RotateCcw className="size-5 stroke-[2.2]" />
-            </div>
-            <div>
-              <h4 className="text-xs sm:text-sm font-bold text-white">Easy 30-Day Returns</h4>
-              <p className="text-[11px] text-slate-400">Hassle-free guarantee</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3.5">
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[#007A55]/15 text-[#007A55]">
-              <Headphones className="size-5 stroke-[2.2]" />
-            </div>
-            <div>
-              <h4 className="text-xs sm:text-sm font-bold text-white">Dedicated Support</h4>
-              <p className="text-[11px] text-slate-400">24/7 client hotline</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Footer Body */}
-      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:py-16 lg:px-8">
-        <div className="grid grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-5">
-          {/* Column 1 & 2: Brand Information & Newsletter */}
+    <footer className="border-t border-emerald-950/80 bg-[#081A14] text-slate-300 select-none">
+      {/* Main Footer Links */}
+      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:py-14 lg:px-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-12">
+          {/* Column 1: Brand Info & Socials */}
           <div className="lg:col-span-2 space-y-4">
             <Link href="/" className="flex items-center gap-2.5">
               <div className="flex size-9 items-center justify-center rounded-xl bg-[#007A55] text-white shadow-xs">
                 <ShoppingBag className="size-5 stroke-[2.2]" />
               </div>
-              <span className="text-2xl font-black tracking-tight text-white">Buybox</span>
+              <span className="text-2xl font-black tracking-tight text-white">
+                Buybox
+              </span>
             </Link>
 
-            <p className="max-w-sm text-xs sm:text-sm text-slate-400 leading-relaxed">
-              Buybox is a modern e-commerce marketplace engineered for high-performance audio,
-              electronics, and premium lifestyle essentials with authentic manufacturer warranties.
+            <p className="text-xs text-slate-400 leading-relaxed max-w-sm">
+              Your one-stop destination for electronics, accessories and more. Shop smart. Shop Buybox.
             </p>
 
-            {/* Newsletter Subscription */}
-            <div className="pt-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-300 mb-2">
-                Stay updated with special offers & deals
-              </p>
-              {isSubscribed ? (
-                <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 py-2">
-                  <CheckCircle2 className="size-4" />
-                  <span>You are subscribed to Buybox updates!</span>
-                </div>
-              ) : (
-                <form onSubmit={handleSubscribe} className="flex max-w-md gap-2">
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Enter your email address"
-                    className="h-10 flex-1 rounded-full border border-slate-700 bg-slate-900/90 px-4 text-xs text-white placeholder:text-slate-500 focus:border-[#007A55] focus:outline-none focus:ring-1 focus:ring-[#007A55]"
-                  />
-                  <button
-                    type="submit"
-                    className="h-10 rounded-full bg-[#007A55] px-5 text-xs font-bold text-white shadow-xs hover:bg-[#006346] active:scale-95 transition-all cursor-pointer shrink-0"
-                  >
-                    Subscribe
-                  </button>
-                </form>
-              )}
+            {/* Social Icons */}
+            <div className="flex items-center gap-3 pt-2">
+              {/* Facebook */}
+              <a
+                href="https://facebook.com"
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Facebook"
+                className="flex size-8 items-center justify-center rounded-full bg-white/10 text-white hover:bg-[#007A55] transition-colors"
+              >
+                <span className="font-black text-xs">f</span>
+              </a>
+              {/* Instagram */}
+              <a
+                href="https://instagram.com"
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Instagram"
+                className="flex size-8 items-center justify-center rounded-full bg-white/10 text-white hover:bg-[#007A55] transition-colors"
+              >
+                <span className="font-black text-xs">ig</span>
+              </a>
+              {/* YouTube */}
+              <a
+                href="https://youtube.com"
+                target="_blank"
+                rel="noreferrer"
+                aria-label="YouTube"
+                className="flex size-8 items-center justify-center rounded-full bg-white/10 text-white hover:bg-[#007A55] transition-colors"
+              >
+                <span className="font-black text-xs">▶</span>
+              </a>
+              {/* X / Twitter */}
+              <a
+                href="https://x.com"
+                target="_blank"
+                rel="noreferrer"
+                aria-label="X"
+                className="flex size-8 items-center justify-center rounded-full bg-white/10 text-white hover:bg-[#007A55] transition-colors"
+              >
+                <span className="font-black text-xs">𝕏</span>
+              </a>
             </div>
+
+            <p className="text-[11px] text-slate-500 pt-4">
+              &copy; {new Date().getFullYear()} Buybox. All rights reserved.
+            </p>
           </div>
 
-          {/* Column 3: Shop Categories (Dynamic from Backend) */}
-          <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-white mb-4">
-              Shop Categories
+          {/* Column 2: Shop by Category */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-white">
+              Shop by Category
             </h4>
-            <ul className="space-y-2.5 text-xs text-slate-400">
-              {categories.length > 0 ? (
-                categories.map((cat) => {
-                  const id = cat.id || cat._id;
-                  const slug = cat.slug || id;
-                  return (
-                    <li key={id}>
-                      <Link
-                        href={`/category/${slug}`}
-                        className="hover:text-emerald-400 transition-colors"
-                      >
-                        {cat.name}
-                      </Link>
-                    </li>
-                  );
-                })
+            <ul className="space-y-2 text-xs text-slate-400">
+              {categories && categories.length > 0 ? (
+                categories.slice(0, 5).map((cat) => (
+                  <li key={cat._id || cat.id || cat.slug}>
+                    <Link
+                      href={`/category/${cat.slug || cat.id}`}
+                      className="hover:text-emerald-300 transition-colors capitalize"
+                    >
+                      {cat.name}
+                    </Link>
+                  </li>
+                ))
               ) : (
-                <li>
-                  <Link href="/shop" className="hover:text-emerald-400 transition-colors">
-                    All Products
-                  </Link>
-                </li>
+                <>
+                  <li>
+                    <Link href="/category/mobiles" className="hover:text-emerald-300 transition-colors">
+                      Mobiles
+                    </Link>
+                  </li>
+                  <li>
+                    <Link href="/category/laptops" className="hover:text-emerald-300 transition-colors">
+                      Laptops
+                    </Link>
+                  </li>
+                  <li>
+                    <Link href="/category/audio" className="hover:text-emerald-300 transition-colors">
+                      Audio
+                    </Link>
+                  </li>
+                </>
               )}
               <li>
-                <Link
-                  href="/shop?sort=discount"
-                  className="text-rose-400 hover:text-rose-300 font-bold transition-colors"
-                >
-                  Today&apos;s Hot Deals
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/shop?sort=newest"
-                  className="hover:text-emerald-400 transition-colors"
-                >
-                  New Arrivals
+                <Link href="/shop" className="hover:text-emerald-300 transition-colors">
+                  More
                 </Link>
               </li>
             </ul>
           </div>
 
-          {/* Column 4: Customer Support */}
-          <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-white mb-4">
+          {/* Column 3: Customer Support */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-white">
               Customer Support
             </h4>
-            <ul className="space-y-2.5 text-xs text-slate-400">
+            <ul className="space-y-2 text-xs text-slate-400">
               <li>
-                <Link href="/account/orders" className="hover:text-emerald-400 transition-colors">
-                  Track My Order
+                <Link href="/help" className="hover:text-emerald-300 transition-colors">
+                  Help Center &amp; FAQs
                 </Link>
               </li>
               <li>
-                <Link href="/account/addresses" className="hover:text-emerald-400 transition-colors">
-                  Shipping Addresses
+                <Link href="/orders" className="hover:text-emerald-300 transition-colors">
+                  Track Order
                 </Link>
               </li>
               <li>
-                <Link href="/account" className="hover:text-emerald-400 transition-colors">
-                  My Account
+                <Link href="/return-policy" className="hover:text-emerald-300 transition-colors">
+                  Returns &amp; Replacements
                 </Link>
               </li>
               <li>
-                <Link href="/account/wishlist" className="hover:text-emerald-400 transition-colors">
-                  My Wishlist
+                <Link href="/shipping-policy" className="hover:text-emerald-300 transition-colors">
+                  Shipping &amp; Delivery Info
                 </Link>
               </li>
               <li>
-                <Link href="/shop" className="hover:text-emerald-400 transition-colors">
-                  Return & Refund Policy
-                </Link>
-              </li>
-              <li>
-                <Link href="/shop" className="hover:text-emerald-400 transition-colors">
-                  Help & FAQs
+                <Link href="/contact-support" className="hover:text-emerald-300 transition-colors">
+                  Contact Audio Support
                 </Link>
               </li>
             </ul>
           </div>
 
-          {/* Column 5: Company & Legal */}
-          <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-white mb-4">
-              Company & Legal
+          {/* Column 4: Company & Legal */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-white">
+              Company &amp; Legal
             </h4>
-            <ul className="space-y-2.5 text-xs text-slate-400">
+            <ul className="space-y-2 text-xs text-slate-400">
               <li>
-                <Link href="/shop" className="hover:text-emerald-400 transition-colors">
+                <Link href="/about" className="hover:text-emerald-300 transition-colors">
                   About Buybox
                 </Link>
               </li>
               <li>
-                <Link href="/shop" className="hover:text-emerald-400 transition-colors">
+                <Link href="/privacy" className="hover:text-emerald-300 transition-colors">
                   Privacy Policy
                 </Link>
               </li>
               <li>
-                <Link href="/shop" className="hover:text-emerald-400 transition-colors">
+                <Link href="/terms" className="hover:text-emerald-300 transition-colors">
                   Terms of Service
                 </Link>
               </li>
               <li>
-                <Link href="/shop" className="hover:text-emerald-400 transition-colors">
-                  Vendor Registration
+                <Link href="/refund-policy" className="hover:text-emerald-300 transition-colors">
+                  Refund Policy
                 </Link>
               </li>
               <li>
-                <Link href="/admin" className="text-emerald-400 hover:underline font-bold transition-colors">
-                  Vendor & Admin Portal
+                <Link href="/sitemap" className="hover:text-emerald-300 transition-colors">
+                  Site Directory
                 </Link>
               </li>
             </ul>
           </div>
         </div>
+      </div>
 
-        {/* Bottom Bar: Copyright & Payment Badges */}
-        <div className="mt-12 border-t border-slate-800 pt-6 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-4">
-          <p>&copy; {new Date().getFullYear()} Buybox E-Commerce. All rights reserved.</p>
-
-          {/* Accepted Payment Gateway Chips */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] text-slate-400 font-medium">100% Safe Payments:</span>
-            <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-300">
-              Razorpay
-            </span>
-            <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-300">
-              UPI
-            </span>
-            <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-300">
+      {/* Bottom Payment Badges Bar */}
+      <div className="border-t border-emerald-950/90 py-4">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-end gap-4">
+          {/* Payment Method Badges */}
+          <div className="flex items-center gap-2">
+            <div className="flex h-6 w-11 items-center justify-center rounded bg-white text-blue-700 font-black text-[10px] shadow-2xs">
+              VISA
+            </div>
+            <div className="flex h-6 w-11 items-center justify-center rounded bg-white text-red-600 font-black text-[9px] shadow-2xs">
+              MC
+            </div>
+            <div className="flex h-6 w-11 items-center justify-center rounded bg-white text-blue-500 font-bold text-[9px] shadow-2xs">
+              Maestro
+            </div>
+            <div className="flex h-6 w-11 items-center justify-center rounded bg-white text-emerald-700 font-black text-[9px] shadow-2xs">
               RuPay
-            </span>
-            <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-300">
-              Visa
-            </span>
-            <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-300">
-              Mastercard
-            </span>
+            </div>
           </div>
         </div>
       </div>

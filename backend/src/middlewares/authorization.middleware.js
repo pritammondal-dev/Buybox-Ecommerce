@@ -3,8 +3,30 @@ const AppError = require("../errors/AppError");
 const Employee = require("../models/Employee");
 const { ROLE_PERMISSIONS } = require("../constants/role-permissions.constants");
 const {
+  resolvePermissionAliases,
+} = require("../constants/permissions.constants");
+const {
   getEffectivePermissions,
 } = require("../services/authorization.service");
+
+/**
+ * Check whether an effective permission set satisfies all required permissions,
+ * including alias resolutions.
+ *
+ * @param {string[]} effectivePermissions
+ * @param {string[]} requiredPermissions
+ * @returns {boolean}
+ */
+const checkPermissionsMatch = (effectivePermissions, requiredPermissions) => {
+  if (!effectivePermissions || !Array.isArray(effectivePermissions)) {
+    return false;
+  }
+  const effectiveSet = new Set(effectivePermissions);
+  return requiredPermissions.every((reqPerm) => {
+    const aliases = resolvePermissionAliases(reqPerm);
+    return aliases.some((alias) => effectiveSet.has(alias));
+  });
+};
 
 const requirePermissions = (...requiredPermissions) => {
   return async (req, res, next) => {
@@ -14,14 +36,24 @@ const requirePermissions = (...requiredPermissions) => {
       );
     }
 
+    // Superadmin has platform-level authority and bypasses operational permission checks
+    if (req.user.role === "super_admin") {
+      req.auth = {
+        effectivePermissions: ["*"],
+        isPlatformActor: true,
+      };
+      return next();
+    }
+
     // 1. If permissionVersion is STALE (isPermissionFresh === false):
     // Server MUST NOT trust any permission state derived from the stale token/role.
     // Force permission decision to use current authoritative database state.
     if (req.user.isPermissionFresh === false) {
       try {
         const effectivePermissions = await getEffectivePermissions(req.user.id);
-        const hasAll = requiredPermissions.every((permission) =>
-          effectivePermissions.includes(permission),
+        const hasAll = checkPermissionsMatch(
+          effectivePermissions,
+          requiredPermissions,
         );
 
         if (!hasAll) {
@@ -52,8 +84,9 @@ const requirePermissions = (...requiredPermissions) => {
           const effectivePermissions = await getEffectivePermissions(
             req.user.id,
           );
-          const hasAll = requiredPermissions.every((permission) =>
-            effectivePermissions.includes(permission),
+          const hasAll = checkPermissionsMatch(
+            effectivePermissions,
+            requiredPermissions,
           );
 
           if (!hasAll) {
@@ -80,8 +113,9 @@ const requirePermissions = (...requiredPermissions) => {
     // For customers, vendors, or mock/legacy callers without an Employee record
     const userPermissions = ROLE_PERMISSIONS[req.user.role] || [];
 
-    const hasAllPermissions = requiredPermissions.every((permission) =>
-      userPermissions.includes(permission),
+    const hasAllPermissions = checkPermissionsMatch(
+      userPermissions,
+      requiredPermissions,
     );
 
     if (!hasAllPermissions) {
@@ -111,6 +145,11 @@ const requireRoles = (...allowedRoles) => {
       );
     }
 
+    // Superadmin bypasses role requirements
+    if (req.user.role === "super_admin") {
+      return next();
+    }
+
     if (!allowedRoles.includes(req.user.role)) {
       return next(
         new AppError(
@@ -128,4 +167,5 @@ const requireRoles = (...allowedRoles) => {
 module.exports = {
   requirePermissions,
   requireRoles,
+  checkPermissionsMatch,
 };

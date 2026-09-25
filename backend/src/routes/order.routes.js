@@ -13,11 +13,39 @@ const {
 } = require("../validators/order/vendor-order-id.validator");
 const {
   createOrderSchema,
+  checkoutQuoteSchema,
 } = require("../validators/order/create-order.validator");
 
 const router = express.Router();
 
 router.use(authenticate);
+
+// Authoritative checkout quote (must precede /:id)
+router.post(
+  "/quote",
+  validate(checkoutQuoteSchema),
+  orderController.getCheckoutQuote
+);
+
+// Admin order management (must precede /:id)
+router.get(
+  "/admin",
+  requirePermissions(PERMISSIONS.ORDERS_READ),
+  orderController.getAdminOrders
+);
+
+router.get(
+  "/admin/:id",
+  requirePermissions(PERMISSIONS.ORDERS_READ),
+  orderController.getAdminOrderById
+);
+
+router.post(
+  "/admin/:id/cancel",
+  requirePermissions(PERMISSIONS.ORDERS_MANAGE),
+  validate(orderIdSchema, "params"),
+  orderController.cancelAdminOrder
+);
 
 // Vendor-scoped orders (must precede /:id)
 router.get(
@@ -34,6 +62,12 @@ router.get(
 );
 
 router.get("/", orderController.getMyOrders);
+
+router.get(
+  "/:id/activity",
+  validate(orderIdSchema, "params"),
+  orderController.getOrderActivity
+);
 
 router.get(
   "/:id",
@@ -55,4 +89,3 @@ router.post(
 );
 
 module.exports = router;
-

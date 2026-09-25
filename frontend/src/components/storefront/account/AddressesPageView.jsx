@@ -20,6 +20,7 @@ import { AccountNav } from "./AccountNav.jsx";
 import { AddressForm } from "../checkout/AddressForm.jsx";
 import { DeleteAddressModal } from "../checkout/DeleteAddressModal.jsx";
 import { Skeleton } from "../../ui/Skeleton.jsx";
+import { useAddressStore } from "../../../stores/address.store.js";
 
 export function AddressesPageView() {
   const { isAuthenticated } = useAuth();
@@ -100,6 +101,7 @@ export function AddressesPageView() {
       setShowFormModal(false);
       setEditingAddress(null);
       refetchAddresses();
+      useAddressStore.getState().fetchAddresses(true).catch(() => {});
     } catch (err) {
       toast.error("Failed to Save Address", {
         description: err?.message || "Please check the form inputs.",
@@ -122,6 +124,7 @@ export function AddressesPageView() {
       setShowDeleteModal(false);
       setDeletingAddress(null);
       setAddresses((prev) => prev.filter((a) => (a._id || a.id) !== id));
+      useAddressStore.getState().fetchAddresses(true).catch(() => {});
     } catch (err) {
       toast.error("Failed to Delete Address", {
         description: err?.message || "Please try again.",
@@ -144,6 +147,7 @@ export function AddressesPageView() {
           isDefault: (a._id || a.id) === id,
         }))
       );
+      useAddressStore.getState().fetchAddresses(true).catch(() => {});
     } catch (err) {
       toast.error("Could not set default address", {
         description: err?.message,

@@ -15,7 +15,7 @@ const SupportTicket = require("../src/models/SupportTicket");
 const { PERMISSIONS } = require("../src/constants/permissions.constants");
 const { ROLES } = require("../src/constants/auth.constants");
 const { SCOPE_TYPES } = require("../src/constants/scope.constants");
-const { generateAccessToken } = require("../src/services/token.service");
+const { generateAccessToken, TOKEN_CONTEXTS } = require("../src/services/token.service");
 
 const TEST_MONGODB_URI = process.env.MONGODB_URI
   ? process.env.MONGODB_URI.replace("/buybox?", "/buybox_resource_scope_test?")
@@ -54,6 +54,9 @@ describe("Phase D — Resource Scope Migration (Category, Warehouse, Support Que
 
   async function createTestEmployee(options = {}) {
     const status = options.status || "active";
+    if (options.userRole === "super_admin" || options.userRole === ROLES.SUPER_ADMIN) {
+      await User.deleteMany({ role: "super_admin" });
+    }
     const user = await User.create({
       firstName: "Scope",
       lastName: "Staff",
@@ -99,6 +102,7 @@ describe("Phase D — Resource Scope Migration (Category, Warehouse, Support Que
     const token = generateAccessToken({
       sub: user._id.toString(),
       role: user.role,
+      context: TOKEN_CONTEXTS.ADMINISTRATOR,
       authVersion: user.authVersion,
       permissionVersion: user.permissionVersion,
     });

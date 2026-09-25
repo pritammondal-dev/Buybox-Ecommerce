@@ -1,10 +1,11 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import PropTypes from "prop-types";
 import Image from "next/image";
-import { Lock, ShieldCheck, ImageOff, Loader2 } from "lucide-react";
+import { Lock, ShieldCheck, ImageOff, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { formatCurrency, parsePrice } from "../../../utils/formatCurrency.js";
+import { STOREFRONT_BUSINESS_POLICIES } from "../../../config/business-policies.config.js";
 import { Button } from "../../ui/Button.jsx";
 
 export function CheckoutOrderSummary({
@@ -18,6 +19,8 @@ export function CheckoutOrderSummary({
   selectedAddressId = null,
   onPlaceOrder,
 }) {
+  const [isMobileListOpen, setIsMobileListOpen] = useState(false);
+
   const numericSubtotal = parsePrice(subtotal);
   const numericDiscount = parsePrice(discountTotal);
   const numericShipping = parsePrice(shippingTotal);
@@ -34,9 +37,9 @@ export function CheckoutOrderSummary({
   );
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs space-y-6 lg:sticky lg:top-24">
-      <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-        <h2 className="text-base font-black text-slate-950 uppercase tracking-wider">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-xs space-y-5 lg:sticky lg:top-24">
+      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <h2 className="text-sm font-black text-slate-950 uppercase tracking-wider">
           Order Summary
         </h2>
         <span className="text-xs font-semibold text-slate-500">
@@ -44,8 +47,28 @@ export function CheckoutOrderSummary({
         </span>
       </div>
 
-      {/* Cart Items List */}
-      <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+      {/* Mobile Toggle to view items */}
+      <div className="block lg:hidden">
+        <button
+          type="button"
+          onClick={() => setIsMobileListOpen(!isMobileListOpen)}
+          className="w-full flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors"
+        >
+          <span>View Items in Cart ({items.length})</span>
+          {isMobileListOpen ? (
+            <ChevronUp className="size-4 text-slate-500" />
+          ) : (
+            <ChevronDown className="size-4 text-slate-500" />
+          )}
+        </button>
+      </div>
+
+      {/* Cart Items List (Visible always on desktop, toggleable on mobile) */}
+      <div
+        className={`space-y-3 max-h-60 overflow-y-auto pr-1 ${
+          isMobileListOpen ? "block" : "hidden lg:block"
+        }`}
+      >
         {items.map((item, idx) => {
           const itemKey = item.productVariantId || item.id || item._id || idx;
           const itemPrice = parsePrice(item.priceSnapshot || item.price || 0);
@@ -98,7 +121,7 @@ export function CheckoutOrderSummary({
         </div>
 
         {numericDiscount > 0 && (
-          <div className="flex justify-between text-emerald-700 font-medium">
+          <div className="flex justify-between text-[#004D38] font-semibold">
             <span>Coupon Discount</span>
             <span>-{formatCurrency(numericDiscount)}</span>
           </div>
@@ -107,7 +130,11 @@ export function CheckoutOrderSummary({
         <div className="flex justify-between text-slate-600">
           <span>Shipping & Delivery</span>
           <span className="font-semibold text-slate-900">
-            {formatCurrency(numericShipping)}
+            {numericShipping === 0 ? (
+              <span className="text-[#004D38] font-bold uppercase">FREE</span>
+            ) : (
+              formatCurrency(numericShipping)
+            )}
           </span>
         </div>
 
@@ -119,8 +146,8 @@ export function CheckoutOrderSummary({
         </div>
 
         <div className="flex items-baseline justify-between border-t border-slate-200 pt-3 text-sm">
-          <span className="font-black text-slate-950">Payable Amount</span>
-          <span className="text-xl font-black text-[#007A55] tracking-tight">
+          <span className="font-black text-slate-950">Total Payable</span>
+          <span className="text-xl font-black text-[#004D38] tracking-tight">
             {formatCurrency(finalAmount)}
           </span>
         </div>
@@ -132,7 +159,7 @@ export function CheckoutOrderSummary({
           type="button"
           onClick={onPlaceOrder}
           disabled={isSubmitting || !selectedAddressId || items.length === 0}
-          className="w-full rounded-full bg-[#007A55] hover:bg-[#006346] text-white font-bold text-sm py-3.5 shadow-md active:scale-98 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full rounded-full bg-[#004D38] hover:bg-[#003D2C] text-white font-bold text-sm py-3.5 shadow-md active:scale-98 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         >
           {isSubmitting ? (
             <span className="flex items-center justify-center gap-2">
@@ -154,7 +181,7 @@ export function CheckoutOrderSummary({
         )}
 
         <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-500 pt-1">
-          <ShieldCheck className="size-4 text-[#007A55]" />
+          <ShieldCheck className="size-4 text-[#004D38]" />
           <span>Safe 256-Bit SSL Encrypted Checkout</span>
         </div>
       </div>

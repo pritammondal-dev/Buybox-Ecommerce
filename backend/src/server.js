@@ -1,5 +1,6 @@
 require("dotenv").config();
 
+// Buybox Production Server
 const env = require("./config/env");
 const logger = require("./config/logger");
 const app = require("./app");
@@ -29,11 +30,13 @@ const {
   runOrderExpirationScheduler,
   stopOrderExpirationScheduler,
 } = require("./workers/order-expiration.worker");
+const { bootstrapSuperadmin } = require("./services/bootstrap.service");
 
 const PORT = env.PORT;
 
 const startServer = async () => {
   await connectDatabase();
+  await bootstrapSuperadmin();
 
   runNotificationDispatcher();
   runCartAbandonmentScheduler();

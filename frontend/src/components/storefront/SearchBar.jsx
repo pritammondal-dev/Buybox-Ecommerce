@@ -15,6 +15,7 @@ const MAX_RECENT_SEARCHES = 5;
 export function SearchBar({
   placeholder = "Search for products, brands and categories...",
   categories = [],
+  showCategorySelect = false,
   className,
   onSearch,
 }) {
@@ -187,8 +188,8 @@ export function SearchBar({
         role="search"
         className="relative flex w-full items-center rounded-full border border-input bg-background shadow-xs transition-all focus-within:border-[#007A55] focus-within:ring-2 focus-within:ring-[#007A55]/20"
       >
-        {/* Category Scope Selector (Amazon-style) */}
-        {categories.length > 0 && (
+        {/* Category Scope Selector (optional) */}
+        {showCategorySelect && categories.length > 0 && (
           <div className="hidden md:flex items-center">
             <select
               value={selectedCategory}

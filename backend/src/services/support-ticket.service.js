@@ -62,8 +62,23 @@ const recordHistory = async ({
 const getActiveCustomer = async (userId) => {
   validateObjectId(userId, "user ID");
 
-  const customer =
+  let customer =
     await customerRepository.findByUserId(userId);
+
+  if (!customer) {
+    const user = await User.findById(userId);
+    if (user && user.isActive) {
+      try {
+        customer = await customerRepository.create({
+          userId: user._id,
+          phone: user.phone || null,
+          isActive: true,
+        });
+      } catch (err) {
+        customer = await customerRepository.findByUserId(userId);
+      }
+    }
+  }
 
   if (!customer || !customer.isActive) {
     throw new AppError(
@@ -185,12 +200,19 @@ const createTicket = async ({
 };
 
 const getMyTickets = async (userId) => {
-  const customer =
-    await getActiveCustomer(userId);
+  try {
+    const customer =
+      await getActiveCustomer(userId);
 
-  return supportTicketRepository.findByCustomer(
-    customer._id
-  );
+    return supportTicketRepository.findByCustomer(
+      customer._id
+    );
+  } catch (err) {
+    if (err.statusCode === 404 || err.code === "CUSTOMER_NOT_FOUND") {
+      return [];
+    }
+    throw err;
+  }
 };
 
 const getMyTicketById = async (

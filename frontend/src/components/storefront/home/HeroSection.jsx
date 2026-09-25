@@ -1,150 +1,256 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { ArrowRight, ChevronLeft, ChevronRight, Sparkles, Clock } from "lucide-react";
-import { Button } from "../../ui/Button.jsx";
+import { ArrowRight, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import { cn } from "../../../utils/cn.js";
+import { useBannerSlot } from "../../../hooks/useBannerSlot.js";
 
-const DEFAULT_SLIDES = [
+const DEFAULT_HERO_SLIDES = [
   {
-    badge: "Official Buybox Marketplace",
-    title: "High-Performance Tech & Lifestyle Essentials",
-    subtitle: "Explore high-fidelity audio, EDC peripherals, and smart hardware with genuine manufacturer warranties.",
-    cta: "Shop Catalog",
+    badge: "Big Summer Sale",
+    badgeIcon: "🌿",
+    title: "Upgrade Your Tech This Season",
+    subtitle: "Top brands. Unbeatable deals. Only at Buybox.",
+    cta: "Shop Now",
     href: "/shop",
-    image: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80",
-    imageAlt: "High-performance audio headphones",
+    bannerImage: "/images/banners/hero-summer-sale.png",
+    bgGradient: "bg-gradient-to-r from-[#D2EFE0] via-[#E5F5EC] to-[#C7EADB]",
+    isDark: false,
+  },
+  {
+    badge: "Mega Electronics Fest",
+    badgeIcon: "⚡",
+    title: "Next-Gen Hardware & Peripherals",
+    subtitle: "Experience cutting-edge compute, 4K displays and studio audio.",
+    cta: "Explore Now",
+    href: "/shop?sort=featured",
+    bannerImage: "/images/banners/hero-electronics-fest.png",
+    bgGradient: "bg-gradient-to-r from-[#043E2E] via-[#064E3B] to-[#022c22]",
+    isDark: true,
   },
 ];
 
-export function HeroSection({ initialBanners = [], initialBanner = null }) {
+export function HeroSection({ initialBanners = [], initialCampaign = null }) {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
 
-  // Normalize banners from backend or fallback to default
-  const banners =
-    Array.isArray(initialBanners) && initialBanners.length > 0
-      ? initialBanners
-      : (initialBanner ? [initialBanner] : []);
+  const heroAudio = useBannerSlot(initialBanners, "hero_audio");
+  const heroSmartHome = useBannerSlot(initialBanners, "hero_smart_home");
+  const heroBrandDeals = useBannerSlot(initialBanners, "hero_brand_deals");
 
-  const slides =
-    banners.length > 0
-      ? banners.map((b) => ({
-          badge: b.startsAt ? "Limited Time Campaign" : "Featured Campaign",
-          title: b.title || "Buybox Featured Campaign",
-          subtitle: "Genuine products, direct dispatch, and verified vendor quality.",
-          cta: "Shop Now",
-          href: b.linkUrl && b.linkUrl.startsWith("/") ? b.linkUrl : "/shop",
-          image: b.imageUrl && !b.imageUrl.includes("example.com") ? b.imageUrl : DEFAULT_SLIDES[0].image,
-          imageAlt: b.title || "Buybox Hero Banner",
-          endsAt: b.endsAt ? new Date(b.endsAt) : null,
-        }))
-      : DEFAULT_SLIDES;
+  const slides = useMemo(() => {
+    if (Array.isArray(initialBanners) && initialBanners.length > 0) {
+      const validBanners = initialBanners.filter(
+        (b) =>
+          (!b.slotKey || b.slotKey === "hero_main" || b.placement === "hero_main") &&
+          b.imageUrl &&
+          !b.imageUrl.includes("unsplash.com") &&
+          !b.imageUrl.includes("example.com")
+      );
+      if (validBanners.length > 0) {
+        return validBanners.map((b, i) => ({
+          badge: b.badge || (i % 2 === 1 ? "Mega Electronics Fest" : "Big Summer Sale"),
+          badgeIcon: i % 2 === 1 ? "⚡" : "🌿",
+          title: b.title || (i % 2 === 1 ? "Next-Gen Hardware & Peripherals" : "Upgrade Your Tech This Season"),
+          subtitle: b.subtitle || b.description || "Top brands. Unbeatable deals. Only at Buybox.",
+          cta: b.ctaText || (i % 2 === 1 ? "Explore Now" : "Shop Now"),
+          href: b.linkUrl || (i % 2 === 1 ? "/shop?sort=featured" : "/shop"),
+          bannerImage: b.imageUrl,
+          bgGradient: i % 2 === 1 ? "bg-gradient-to-r from-[#043E2E] via-[#064E3B] to-[#022c22]" : "bg-gradient-to-r from-[#D2EFE0] via-[#E5F5EC] to-[#C7EADB]",
+          isDark: i % 2 === 1,
+        }));
+      }
+    }
+    return DEFAULT_HERO_SLIDES;
+  }, [initialBanners]);
+
+  const nextSlide = useCallback(() => {
+    setCurrentSlide((prev) => (prev + 1) % slides.length);
+  }, [slides.length]);
+
+  const prevSlide = useCallback(() => {
+    setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length);
+  }, [slides.length]);
+
+  // Auto-advance slides
+  useEffect(() => {
+    if (slides.length <= 1 || isPaused) return;
+    const timer = setInterval(() => {
+      nextSlide();
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [slides.length, isPaused, nextSlide]);
 
   const current = slides[currentSlide] || slides[0];
 
-  const nextSlide = () => {
-    setCurrentSlide((prev) => (prev + 1) % slides.length);
-  };
-
-  const prevSlide = () => {
-    setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length);
-  };
-
   return (
-    <section aria-label="Hero Banner" className="py-6 sm:py-8">
+    <section
+      aria-label="Hero Showcase"
+      className="py-4 sm:py-6"
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+    >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Warm Hero Cream Container from Buybox Design System */}
-        <div className="relative overflow-hidden rounded-[28px] bg-[#FFF8D6] p-8 sm:p-12 lg:p-16 shadow-xs border border-amber-200/60">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-            {/* Left Column: Headline, Supporting Copy, Action Button */}
-            <div className="lg:col-span-7 space-y-5 text-center lg:text-left z-10">
-              <div className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-3.5 py-1 text-xs font-bold text-slate-800 backdrop-blur-xs border border-amber-200/50">
-                <Sparkles className="size-3.5 text-amber-500" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 items-stretch">
+          {/* Main Hero Banner (2/3 width, Left) */}
+          <div
+            className={cn(
+              "lg:col-span-2 relative overflow-hidden rounded-3xl p-4 sm:p-6 lg:p-8 flex flex-col justify-between h-[280px] sm:h-[350px] lg:h-[430px] shadow-sm border border-emerald-200/50 transition-all duration-500",
+              current.bgGradient
+            )}
+          >
+            {/* Visual Artwork Background Image */}
+            {current.bannerImage && (
+              <div className="absolute inset-0 z-0 overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={current.bannerImage}
+                  alt={current.title}
+                  className="size-full object-cover object-center md:object-right transition-transform duration-700"
+                />
+                <div
+                  className="absolute inset-0 z-[2] pointer-events-none"
+                  style={{
+                    background: current.isDark
+                      ? "linear-gradient(90deg, #043E2E 0%, #043E2E 40%, rgba(4,62,46,0.85) 60%, rgba(4,62,46,0) 80%)"
+                      : "linear-gradient(90deg, #CEEBDE 0%, #CEEBDE 44%, rgba(206,235,222,0.92) 56%, rgba(206,235,222,0) 78%)",
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Slide Navigation Buttons */}
+            <button
+              type="button"
+              onClick={prevSlide}
+              aria-label="Previous slide"
+              className="absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 z-20 flex size-8 sm:size-9 items-center justify-center rounded-full bg-white/90 text-slate-800 shadow-md backdrop-blur-xs hover:bg-white transition-all cursor-pointer"
+            >
+              <ChevronLeft className="size-4 sm:size-5" />
+            </button>
+            <button
+              type="button"
+              onClick={nextSlide}
+              aria-label="Next slide"
+              className="absolute right-2.5 sm:right-3 top-1/2 -translate-y-1/2 z-20 flex size-8 sm:size-9 items-center justify-center rounded-full bg-white/90 text-slate-800 shadow-md backdrop-blur-xs hover:bg-white transition-all cursor-pointer"
+            >
+              <ChevronRight className="size-4 sm:size-5" />
+            </button>
+
+            {/* Content & Imagery */}
+            <div className="relative z-10 pl-6 sm:pl-8 lg:pl-10 max-w-xs sm:max-w-sm lg:max-w-md flex flex-col items-start justify-center space-y-2 sm:space-y-3 my-auto">
+              {/* Badge */}
+              <div
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 sm:px-3 sm:py-1 text-[10px] sm:text-xs font-bold shadow-xs backdrop-blur-xs",
+                  current.isDark
+                    ? "bg-emerald-900/90 text-emerald-300 border border-emerald-500/30"
+                    : "bg-white/95 text-[#007A55] border border-emerald-100"
+                )}
+              >
+                <span>{current.badgeIcon}</span>
                 <span>{current.badge}</span>
               </div>
 
-              <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight text-slate-950 leading-[1.1] sm:leading-[1.15]">
+              {/* Main Heading */}
+              <h1
+                className={cn(
+                  "text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-black tracking-tight leading-tight",
+                  current.isDark ? "text-white" : "text-slate-900"
+                )}
+              >
                 {current.title}
               </h1>
 
-              <p className="mx-auto lg:mx-0 max-w-lg text-sm sm:text-base font-normal text-slate-600 leading-relaxed">
+              {/* Subtitle */}
+              <p
+                className={cn(
+                  "text-[11px] sm:text-xs lg:text-sm font-medium leading-relaxed max-w-sm line-clamp-2",
+                  current.isDark ? "text-emerald-100/90" : "text-slate-700"
+                )}
+              >
                 {current.subtitle}
               </p>
 
-              {/* Timing info if real endsAt is provided by backend */}
-              {current.endsAt && (
-                <div className="flex items-center justify-center lg:justify-start gap-1.5 text-xs font-semibold text-slate-700">
-                  <Clock className="size-3.5 text-[#007A55]" />
-                  <span>Valid until: {current.endsAt.toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" })}</span>
-                </div>
-              )}
-
-              {/* Emerald Teal Pill CTA Button */}
-              <div className="pt-2 flex justify-center lg:justify-start">
-                <Button
-                  asChild
-                  size="lg"
-                  className="rounded-full bg-[#007A55] text-white hover:bg-[#006346] font-bold text-sm px-8 py-3.5 shadow-sm gap-2 transition-transform hover:scale-105 active:scale-95 cursor-pointer"
+              {/* CTA Button */}
+              <div className="pt-1">
+                <Link
+                  href={current.href}
+                  className="inline-flex items-center gap-1.5 sm:gap-2 rounded-full bg-[#004D38] px-4 py-2 sm:px-5 sm:py-2.5 text-xs sm:text-sm font-bold text-white shadow-md hover:bg-[#003A2A] hover:shadow-lg active:scale-95 transition-all"
                 >
-                  <Link href={current.href}>
-                    <span>{current.cta}</span>
-                    <ArrowRight className="size-4" aria-hidden="true" />
-                  </Link>
-                </Button>
+                  <span>{current.cta}</span>
+                  <ArrowRight className="size-3.5 sm:size-4 stroke-[2.5]" />
+                </Link>
               </div>
             </div>
 
-            {/* Right Media Container */}
-            <div className="lg:col-span-5 flex justify-center z-10">
-              <div className="relative w-full max-w-md aspect-[4/3] sm:aspect-square rounded-2xl overflow-hidden shadow-card border border-amber-100 bg-white/60 backdrop-blur-xs">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={current.image}
-                  alt={current.imageAlt}
-                  className="size-full object-cover object-center transition-transform duration-700 hover:scale-105"
-                  loading="eager"
+            {/* Carousel Dots */}
+            <div className="relative z-10 flex items-center justify-center gap-1.5 pt-1.5 sm:pt-2">
+              {slides.map((_, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setCurrentSlide(idx)}
+                  aria-label={`Go to slide ${idx + 1}`}
+                  className={cn(
+                    "h-1.5 sm:h-2 rounded-full transition-all cursor-pointer",
+                    idx === currentSlide
+                      ? current.isDark ? "w-5 sm:w-6 bg-emerald-400" : "w-5 sm:w-6 bg-[#004D38]"
+                      : current.isDark ? "w-1.5 sm:w-2 bg-white/40 hover:bg-white/60" : "w-1.5 sm:w-2 bg-emerald-700/30 hover:bg-emerald-700/50"
+                  )}
                 />
-              </div>
+              ))}
             </div>
           </div>
 
-          {/* Slider Controls (if multiple slides exist) */}
-          {slides.length > 1 && (
-            <>
-              <button
-                type="button"
-                onClick={prevSlide}
-                aria-label="Previous slide"
-                className="absolute left-4 top-1/2 -translate-y-1/2 z-20 flex size-9 items-center justify-center rounded-full bg-slate-900 text-white shadow-md hover:bg-slate-800 transition-transform active:scale-95 cursor-pointer"
-              >
-                <ChevronLeft className="size-5" />
-              </button>
-              <button
-                type="button"
-                onClick={nextSlide}
-                aria-label="Next slide"
-                className="absolute right-4 top-1/2 -translate-y-1/2 z-20 flex size-9 items-center justify-center rounded-full bg-slate-900 text-white shadow-md hover:bg-slate-800 transition-transform active:scale-95 cursor-pointer"
-              >
-                <ChevronRight className="size-5" />
-              </button>
+          {/* Right Column: 3 Stacked Promo Cards (1/3 width, Right, Image-Only) */}
+          <div className="flex flex-col sm:grid sm:grid-cols-3 lg:flex lg:flex-col gap-3 sm:gap-4 justify-between lg:h-[430px]">
+            {/* Card 1: Audio Essentials (hero_audio) */}
+            <Link
+              href={heroAudio.linkUrl}
+              className="relative flex-1 h-[95px] sm:h-[115px] lg:h-auto overflow-hidden rounded-2xl border border-slate-200/80 shadow-2xs group hover:shadow-md transition-all bg-slate-100 block"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={heroAudio.src}
+                alt={heroAudio.altText}
+                onError={heroAudio.handleImageError}
+                className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+                loading="lazy"
+              />
+            </Link>
 
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5">
-                {slides.map((_, i) => (
-                  <button
-                    key={`hero-dot-${i}`}
-                    type="button"
-                    onClick={() => setCurrentSlide(i)}
-                    aria-label={`Go to slide ${i + 1}`}
-                    className={`h-2 rounded-full transition-all cursor-pointer ${
-                      i === currentSlide
-                        ? "w-8 bg-[#007A55]"
-                        : "w-2 bg-slate-300 hover:bg-slate-400"
-                    }`}
-                  />
-                ))}
-              </div>
-            </>
-          )}
+            {/* Card 2: Smart Devices for a Smarter Home (hero_smart_home) */}
+            <Link
+              href={heroSmartHome.linkUrl}
+              className="relative flex-1 h-[95px] sm:h-[115px] lg:h-auto overflow-hidden rounded-2xl border border-slate-200/80 shadow-2xs group hover:shadow-md transition-all bg-slate-100 block"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={heroSmartHome.src}
+                alt={heroSmartHome.altText}
+                onError={heroSmartHome.handleImageError}
+                className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+                loading="lazy"
+              />
+            </Link>
+
+            {/* Card 3: Exclusive Brand Deals (hero_brand_deals) */}
+            <Link
+              href={heroBrandDeals.linkUrl}
+              className="relative flex-1 h-[95px] sm:h-[115px] lg:h-auto overflow-hidden rounded-2xl border border-slate-200/80 shadow-2xs group hover:shadow-md transition-all bg-slate-100 block"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={heroBrandDeals.src}
+                alt={heroBrandDeals.altText}
+                onError={heroBrandDeals.handleImageError}
+                className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+                loading="lazy"
+              />
+            </Link>
+          </div>
         </div>
       </div>
     </section>

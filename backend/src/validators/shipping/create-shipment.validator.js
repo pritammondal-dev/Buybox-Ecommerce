@@ -19,6 +19,16 @@ const createShipmentSchema = z
       .min(1)
       .max(100)
       .optional(),
+
+    warehouseId: z
+      .string()
+      .regex(/^[0-9a-fA-F]{24}$/, "Invalid warehouse ID")
+      .optional(),
+
+    vendorId: z
+      .string()
+      .regex(/^[0-9a-fA-F]{24}$/, "Invalid vendor ID")
+      .optional(),
   })
   .strict();
 

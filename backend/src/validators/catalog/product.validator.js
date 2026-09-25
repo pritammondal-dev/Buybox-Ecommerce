@@ -55,6 +55,11 @@ const createProductSchema = z
       .optional()
       .default(null),
 
+    vendorId: z
+      .string()
+      .regex(/^[a-f\d]{24}$/i, "Invalid vendor ID")
+      .optional(),
+
     price: z
       .string()
       .regex(/^\d+(?:\.\d{1,2})?$/, "Invalid price"),

@@ -33,6 +33,15 @@ const updateBrandSchema = z
       .nullable()
       .optional(),
 
+    logo: z
+      .object({
+        url: z.string().nullable().optional(),
+        publicId: z.string().nullable().optional(),
+        altText: z.string().max(200).optional(),
+      })
+      .nullable()
+      .optional(),
+
     isActive: z
       .boolean()
       .optional(),

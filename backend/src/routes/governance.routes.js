@@ -3,10 +3,12 @@ const governanceController = require("../controllers/governance.controller");
 const authenticate = require("../middlewares/authentication.middleware");
 const {
   requirePermissions,
+  requireRoles,
 } = require("../middlewares/authorization.middleware");
 const validate = require("../middlewares/validate.middleware");
 const validateObjectId = require("../middlewares/validate-object-id.middleware");
 const { PERMISSIONS } = require("../constants/permissions.constants");
+const { ROLES } = require("../constants/auth.constants");
 const {
   createRoleSchema,
   updateRoleSchema,
@@ -19,6 +21,7 @@ const {
   createWorkAssignmentSchema,
   updateWorkAssignmentSchema,
   auditLogQuerySchema,
+  updateEmployeePermissionsBulkSchema,
 } = require("../validators/governance/governance.validator");
 
 const router = express.Router();
@@ -196,6 +199,21 @@ router.delete(
   governanceController.revokeRestriction,
 );
 
+router.get(
+  "/employees/:employeeId/permissions",
+  requirePermissions(PERMISSIONS.EMPLOYEES_READ),
+  validateObjectId("employeeId"),
+  governanceController.getEmployeePermissions,
+);
+
+router.put(
+  "/employees/:employeeId/permissions",
+  requireRoles(ROLES.SUPER_ADMIN),
+  validateObjectId("employeeId"),
+  validate(updateEmployeePermissionsBulkSchema),
+  governanceController.updateEmployeePermissionsBulk,
+);
+
 /* =========================================================================
    7. WORK ASSIGNMENTS GOVERNANCE
    ========================================================================= */
@@ -248,6 +266,18 @@ router.get(
   requirePermissions(PERMISSIONS.AUDIT_LOGS_READ),
   validateObjectId("id"),
   governanceController.getAuditLog,
+);
+
+/* =========================================================================
+   9. SUPERADMIN GOVERNANCE & AUTHORITY TRANSFER
+   ========================================================================= */
+
+const jobRoleController = require("../controllers/job-role.controller");
+
+router.post(
+  "/superadmin/transfer",
+  requireRoles(ROLES.SUPER_ADMIN),
+  jobRoleController.transferSuperadmin
 );
 
 module.exports = router;

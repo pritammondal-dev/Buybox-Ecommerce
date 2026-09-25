@@ -2,12 +2,21 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { Heart, ShoppingBag, Star, ImageOff } from "lucide-react";
+import { Heart, ShoppingBag, Star, ImageOff, Check } from "lucide-react";
 import { Skeleton } from "../ui/Skeleton.jsx";
 import { QuickView } from "./QuickView.jsx";
-import { formatCurrency, calculateDiscountPercentage, parsePrice } from "../../utils/formatCurrency.js";
+import {
+  formatCurrency,
+  calculateDiscountPercentage,
+  parsePrice,
+} from "../../utils/formatCurrency.js";
 import { cn } from "../../utils/cn.js";
 
+/**
+ * ProductCard
+ * Production-quality ecommerce product card designed for Amazon/Flipkart merchandising depth
+ * while maintaining Buybox's distinct aesthetic identity (#007A55 Emerald, #FFF8D6 Warm Cream, #0F172A Slate).
+ */
 export function ProductCard({
   product,
   isLoading = false,
@@ -19,18 +28,22 @@ export function ProductCard({
 }) {
   const [imageError, setImageError] = useState(false);
   const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
-  const [selectedSwatch, setSelectedSwatch] = useState(0);
 
   if (isLoading) {
     return (
-      <div className={cn("flex flex-col rounded-2xl border bg-white p-3.5 shadow-xs", className)}>
+      <div
+        className={cn(
+          "flex flex-col rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-xs",
+          className
+        )}
+      >
         <Skeleton className="aspect-square w-full rounded-xl" />
         <div className="mt-3 space-y-2">
           <Skeleton className="h-3 w-1/4" />
           <Skeleton className="h-4 w-3/4" />
           <Skeleton className="h-3 w-1/2" />
-          <Skeleton className="h-4 w-1/3" />
-          <Skeleton className="h-8 w-full rounded-full" />
+          <Skeleton className="h-5 w-1/3" />
+          <Skeleton className="h-9 w-full rounded-full" />
         </div>
       </div>
     );
@@ -50,23 +63,24 @@ export function ProductCard({
 
   const productUrl = `/product/${product.slug || product._id || product.id}`;
   const brandName = product.brand?.name || product.brandName || "";
+
   const rating =
     typeof product.ratingAverage === "number"
       ? product.ratingAverage
       : typeof product.rating === "number"
       ? product.rating
       : 0;
+
   const reviewCount =
     typeof product.ratingCount === "number"
       ? product.ratingCount
       : typeof product.reviewCount === "number"
       ? product.reviewCount
-      : (product.reviews?.length ?? 0);
+      : Array.isArray(product.reviews)
+      ? product.reviews.length
+      : 0;
 
-  const colorSwatches =
-    product.options?.find((opt) => opt.name?.toLowerCase() === "color")?.values ||
-    product.colors ||
-    [];
+  const hasRealRating = reviewCount > 0 && rating > 0;
 
   const isOutOfStock =
     product.stockStatus === "out_of_stock" ||
@@ -78,13 +92,13 @@ export function ProductCard({
     <>
       <div
         className={cn(
-          "group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-border/80 bg-white p-3.5 shadow-xs transition-all duration-300 hover:shadow-card hover:-translate-y-1 hover:border-[#007A55]/30",
+          "group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-3.5 shadow-xs transition-all duration-300 hover:shadow-card hover:-translate-y-1 hover:border-[#007A55]/40",
           className
         )}
       >
-        <div>
-          {/* Thumbnail Container */}
-          <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-slate-50 border border-slate-100">
+        <div className="flex flex-col flex-1">
+          {/* 1. Thumbnail Container with Status Badges & Wishlist Heart */}
+          <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-white border border-slate-100/80">
             <Link href={productUrl} className="block size-full" tabIndex={-1}>
               {image && !imageError ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
@@ -92,34 +106,40 @@ export function ProductCard({
                   src={image}
                   alt={product.name || "Product image"}
                   onError={() => setImageError(true)}
-                  className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  className="size-full object-contain p-2 transition-transform duration-500 group-hover:scale-105"
                   loading="lazy"
                 />
               ) : (
-                <div className="flex size-full flex-col items-center justify-center gap-1 bg-slate-50 text-slate-400">
+                <div className="flex size-full flex-col items-center justify-center gap-1.5 bg-slate-50 text-slate-400">
                   <ImageOff className="size-6 stroke-[1.5]" aria-hidden="true" />
-                  <span className="text-[10px] font-medium">Buybox Genuine</span>
+                  <span className="text-[10px] font-medium tracking-wide text-slate-400">
+                    Buybox Genuine
+                  </span>
                 </div>
               )}
             </Link>
 
-            {/* Badges: Out of Stock and Sales */}
+            {/* Top-Left: Status / Discount Badge */}
             <div className="absolute top-2.5 left-2.5 z-10 flex flex-col gap-1 items-start">
-              {isOutOfStock && (
-                <span className="rounded bg-slate-900/90 backdrop-blur-xs px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-xs">
+              {isOutOfStock ? (
+                <span className="rounded-md bg-slate-900/90 backdrop-blur-xs px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-xs">
                   Out of Stock
                 </span>
-              )}
-              {discount > 0 && (
-                <span className="rounded bg-[#E02424] px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-xs">
+              ) : discount > 0 ? (
+                <span className="rounded-md bg-[#E02424] px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-xs">
                   -{discount}% OFF
                 </span>
-              )}
+              ) : product.isFeatured ? (
+                <span className="rounded-md bg-[#007A55] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-xs">
+                  Featured
+                </span>
+              ) : null}
             </div>
 
-            {/* Top-Right Heart / Wishlist Icon */}
+            {/* Top-Right: Wishlist Heart Button */}
             <button
               type="button"
+              suppressHydrationWarning
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -127,135 +147,116 @@ export function ProductCard({
               }}
               aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
               className={cn(
-                "absolute top-2.5 right-2.5 z-10 flex size-7 items-center justify-center rounded-full bg-white shadow-sm transition-transform active:scale-95 cursor-pointer",
-                isWishlisted ? "text-red-500" : "text-slate-400 hover:text-red-500"
+                "absolute top-2.5 right-2.5 z-10 flex size-8 items-center justify-center rounded-full bg-white/95 backdrop-blur-xs shadow-sm transition-all duration-200 hover:scale-110 active:scale-90 cursor-pointer border border-slate-100",
+                isWishlisted
+                  ? "text-red-500 border-red-100 bg-red-50/80"
+                  : "text-slate-400 hover:text-red-500"
               )}
             >
-              <Heart className={cn("size-3.5", isWishlisted && "fill-current")} />
+              <Heart
+                className={cn(
+                  "size-4 transition-transform",
+                  isWishlisted && "fill-current"
+                )}
+              />
             </button>
           </div>
 
-          {/* Product Meta & Title */}
-          <div className="mt-3 space-y-1">
+          {/* 2. Product Meta, Title, Rating, Pricing & Stock */}
+          <div className="mt-3 flex flex-col flex-1">
+            {/* Brand (only if provided by backend) */}
             {brandName ? (
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block truncate">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block truncate">
                 {brandName}
               </span>
             ) : null}
 
-            <Link href={productUrl} className="group/title block">
-              <h3 className="line-clamp-1 text-sm font-bold text-slate-900 transition-colors group-hover/title:text-[#007A55]">
+            {/* Product Name (2-line maximum truncation) */}
+            <Link href={productUrl} className="group/title mt-0.5 block">
+              <h3
+                title={product.name}
+                className="line-clamp-2 min-h-[2.5rem] text-sm font-bold text-slate-900 leading-snug transition-colors group-hover/title:text-[#007A55]"
+              >
                 {product.name}
               </h3>
             </Link>
 
-            {/* Rating Row */}
-            <div className="flex items-center gap-1 pt-0.5">
-              <div className="flex items-center">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star
-                    key={`star-${i}`}
-                    className={cn(
-                      "size-3",
-                      reviewCount > 0 && rating >= i + 1
-                        ? "fill-amber-400 text-amber-400"
-                        : reviewCount > 0 && rating >= i + 0.5
-                        ? "fill-amber-400/50 text-amber-400"
-                        : "text-slate-200 fill-slate-100"
-                    )}
-                  />
-                ))}
-              </div>
-              <span className="text-[11px] font-medium text-slate-400">
-                {reviewCount > 0 ? `(${reviewCount})` : "No reviews"}
-              </span>
+            {/* Rating Row (strictly rendered ONLY if genuine review data exists) */}
+            <div className="mt-1.5 flex items-center gap-1.5 min-h-[1.25rem]">
+              {hasRealRating ? (
+                <>
+                  <div className="flex items-center gap-0.5">
+                    <Star className="size-3.5 fill-amber-400 text-amber-400" />
+                    <span className="text-xs font-bold text-slate-800">
+                      {rating.toFixed(1)}
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-medium text-slate-400">
+                    ({reviewCount})
+                  </span>
+                </>
+              ) : (
+                <span className="text-[10px] font-medium text-slate-400">
+                  Verified Hardware
+                </span>
+              )}
             </div>
 
-            {/* Price Line with Strike-Through and Discount */}
-            <div className="flex items-baseline gap-2 pt-1">
-              <span className="text-base font-extrabold text-[#007A55]">
+            {/* Price Line */}
+            <div className="mt-2 flex items-baseline gap-2 flex-wrap">
+              <span className="text-base sm:text-lg font-black tracking-tight text-[#007A55]">
                 {formatCurrency(price)}
               </span>
               {compareAtPrice > price && (
-                <span className="text-xs text-slate-400 line-through">
+                <span className="text-xs font-medium text-slate-400 line-through">
                   {formatCurrency(compareAtPrice)}
                 </span>
               )}
               {discount > 0 && (
-                <span className="text-[11px] font-bold text-[#E02424]">
-                  {discount}% OFF
+                <span className="text-[11px] font-extrabold text-[#E02424]">
+                  {discount}% off
                 </span>
               )}
             </div>
 
-            {/* Color Swatches (only if real options exist) */}
-            {colorSwatches.length > 0 && (
-              <div className="flex items-center gap-1.5 pt-1.5">
-                {colorSwatches.map((color, idx) => {
-                  const colorVal =
-                    typeof color === "string"
-                      ? color
-                      : color.hex || color.value || "#ccc";
-                  return (
-                    <button
-                      key={typeof color === "string" ? color : color.value || idx}
-                      type="button"
-                      onClick={() => setSelectedSwatch(idx)}
-                      aria-label={`Select color swatch ${idx + 1}`}
-                      style={{ backgroundColor: colorVal }}
-                      className={cn(
-                        "size-2.5 rounded-full transition-transform cursor-pointer border border-slate-200",
-                        selectedSwatch === idx
-                          ? "ring-2 ring-[#007A55] ring-offset-1 scale-110"
-                          : "hover:scale-110"
-                      )}
-                    />
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Out of Stock notice if unavailable */}
-            {isOutOfStock && (
-              <div className="pt-1.5">
+            {/* Availability Indicator */}
+            <div className="mt-1.5 flex items-center gap-1.5">
+              {isOutOfStock ? (
                 <span className="inline-flex items-center text-[11px] font-semibold text-rose-600">
                   Out of Stock
                 </span>
-              </div>
-            )}
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+                  <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  In Stock
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Action Footer: Wishlist Button & Teal Pill Add To Cart */}
-        <div className="mt-3 flex items-center gap-2 pt-2 border-t border-slate-100">
+        {/* 3. Action Footer: Single Prominent Full-Width Add To Cart Button */}
+        <div className="mt-3.5 pt-2 border-t border-slate-100">
           <button
             type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              onWishlistToggle?.(!isWishlisted);
-            }}
-            aria-label="Toggle wishlist"
-            className={cn(
-              "flex size-8 shrink-0 items-center justify-center rounded-lg border border-border text-slate-500 hover:border-[#007A55] hover:text-[#007A55] transition-colors cursor-pointer",
-              isWishlisted && "text-red-500 border-red-200 bg-red-50/50"
-            )}
-          >
-            <Heart className={cn("size-3.5", isWishlisted && "fill-current")} />
-          </button>
-
-          <button
-            type="button"
+            suppressHydrationWarning
             onClick={() => !isOutOfStock && onAddToCart?.(product)}
             disabled={isAddingToCart || isOutOfStock}
             className={cn(
-              "flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold shadow-xs transition-all",
+              "flex w-full items-center justify-center gap-2 rounded-full py-2.5 px-4 text-xs font-bold shadow-xs transition-all duration-200",
               isOutOfStock
                 ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
-                : "bg-[#007A55] text-white hover:bg-[#006346] active:scale-95 cursor-pointer disabled:opacity-50"
+                : "bg-[#007A55] text-white hover:bg-[#006346] hover:shadow-md active:scale-95 cursor-pointer disabled:opacity-50"
             )}
           >
-            <ShoppingBag className="size-3.5" />
-            <span>{isOutOfStock ? "Out of Stock" : "Add to Cart"}</span>
+            <ShoppingBag className="size-3.5 shrink-0" />
+            <span>
+              {isAddingToCart
+                ? "Adding..."
+                : isOutOfStock
+                ? "Unavailable"
+                : "Add to Cart"}
+            </span>
           </button>
         </div>
       </div>

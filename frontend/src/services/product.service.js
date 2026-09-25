@@ -122,6 +122,25 @@ export const productService = {
   async deleteVariant(id) {
     return apiClient.delete(`/product-variants/${id}`);
   },
+
+  /**
+   * Retrieve related products
+   * @param {string} id
+   * @param {number} [limit=6]
+   * @returns {Promise<Object>}
+   */
+  async getRelatedProducts(id, limit = 6) {
+    return apiClient.get(`/products/${id}/related`, { params: { limit } });
+  },
+
+  /**
+   * Retrieve recommended products
+   * @param {Object} [params]
+   * @returns {Promise<Object>}
+   */
+  async getRecommendations(params = {}) {
+    return apiClient.get("/products/recommendations", { params });
+  },
 };
 
 export default productService;

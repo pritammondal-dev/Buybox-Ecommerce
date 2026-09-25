@@ -17,6 +17,7 @@ export function CheckoutAddressSection({
   onDeleteAddress,
   isLoading = false,
   isMutating = false,
+  onContinue,
 }) {
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [editingAddress, setEditingAddress] = useState(null);
@@ -48,7 +49,7 @@ export function CheckoutAddressSection({
     <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <span className="flex size-7 items-center justify-center rounded-full bg-[#007A55] text-white text-xs font-black">
+          <span className="flex size-7 items-center justify-center rounded-full bg-[#004D38] text-white text-xs font-black">
             1
           </span>
           <h2 className="text-sm font-black uppercase tracking-wider text-slate-950">
@@ -63,7 +64,7 @@ export function CheckoutAddressSection({
             size="sm"
             onClick={() => setIsAddingNew(true)}
             disabled={isLoading || isMutating}
-            className="text-xs font-bold text-[#007A55] hover:text-[#006346] gap-1"
+            className="text-xs font-bold text-[#004D38] hover:text-[#003D2C] gap-1"
           >
             <Plus className="size-3.5" />
             Add Address
@@ -104,7 +105,7 @@ export function CheckoutAddressSection({
             type="button"
             size="sm"
             onClick={() => setIsAddingNew(true)}
-            className="bg-[#007A55] hover:bg-[#006346] text-white text-xs font-bold"
+            className="bg-[#004D38] hover:bg-[#003D2C] text-white text-xs font-bold"
           >
             <Plus className="size-3.5 mr-1" />
             Add New Address
@@ -131,6 +132,20 @@ export function CheckoutAddressSection({
         </div>
       )}
 
+      {/* Continue to Step 2 (Delivery Options) */}
+      {!isAddingNew && !editingAddress && selectedAddressId && onContinue && (
+        <div className="pt-2 flex justify-end border-t border-slate-100">
+          <Button
+            type="button"
+            onClick={onContinue}
+            disabled={isLoading || isMutating}
+            className="rounded-full bg-[#004D38] hover:bg-[#003D2C] text-white text-xs font-bold px-6 py-2.5 shadow-sm active:scale-95 transition-all"
+          >
+            Deliver to this Address
+          </Button>
+        </div>
+      )}
+
       {/* Delete Address Confirmation Modal */}
       <DeleteAddressModal
         isOpen={Boolean(deletingAddress)}
@@ -152,6 +167,7 @@ CheckoutAddressSection.propTypes = {
   onDeleteAddress: PropTypes.func.isRequired,
   isLoading: PropTypes.bool,
   isMutating: PropTypes.bool,
+  onContinue: PropTypes.func,
 };
 
 export default CheckoutAddressSection;

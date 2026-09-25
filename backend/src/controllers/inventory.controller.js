@@ -219,6 +219,66 @@ const deductReservedStock = asyncHandler(async (req, res) => {
   });
 });
 
+const getMyVendorInventory = asyncHandler(async (req, res) => {
+  const result = await inventoryService.getMyVendorInventory({
+    userId: req.user.id,
+    query: req.query,
+  });
+
+  return sendSuccess(res, {
+    message: "Vendor inventory retrieved successfully",
+    data: result.items,
+    meta: result.meta,
+  });
+});
+
+const listAllInventory = asyncHandler(async (req, res) => {
+  const result = await inventoryService.listAllInventory(req.query);
+
+  return sendSuccess(res, {
+    message: "Inventory retrieved successfully",
+    data: result.items,
+    meta: result.meta,
+  });
+});
+
+const transferStock = asyncHandler(async (req, res) => {
+  const result = await inventoryService.transferStock({
+    productVariantId: req.body.productVariantId,
+    sourceWarehouseId: req.body.sourceWarehouseId,
+    destinationWarehouseId: req.body.destinationWarehouseId,
+    quantity: req.body.quantity,
+    reason: req.body.reason,
+    actor: req.user,
+    req,
+  });
+
+  return sendSuccess(res, {
+    statusCode: 200,
+    message: result.message,
+    data: result,
+  });
+});
+
+const getInventorySummary = asyncHandler(async (req, res) => {
+  const Vendor = require("../models/Vendor");
+  let vendorId = null;
+
+  if (req.user.role === "vendor") {
+    const vendor = await Vendor.findOne({ userId: req.user.id });
+    vendorId = vendor?._id;
+  } else if (req.query.vendorId) {
+    vendorId = req.query.vendorId;
+  }
+
+  const summary = await inventoryService.getInventorySummary({ vendorId });
+
+  return sendSuccess(res, {
+    message: "Inventory summary retrieved successfully",
+    data: summary,
+  });
+});
+
 module.exports = {
   createInventory,
   getInventory,
@@ -228,4 +288,8 @@ module.exports = {
   reserveStock,
   releaseStock,
   deductReservedStock,
+  getMyVendorInventory,
+  listAllInventory,
+  transferStock,
+  getInventorySummary,
 };

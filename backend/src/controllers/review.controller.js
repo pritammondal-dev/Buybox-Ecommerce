@@ -102,12 +102,43 @@ const addVendorResponse = async (req, res, next) => {
 const markHelpful = async (req, res, next) => {
   try {
     const review = await reviewService.markHelpful(
-      req.params.reviewId
+      req.params.reviewId,
+      req.user?.id
     );
 
     return sendSuccess(res, {
       message: "Review marked as helpful",
       data: review,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getMyVendorReviews = async (req, res, next) => {
+  try {
+    const result = await reviewService.getMyVendorReviews({
+      userId: req.user.id,
+      query: req.query,
+    });
+
+    return sendSuccess(res, {
+      message: "Vendor reviews retrieved successfully",
+      data: result.items,
+      meta: result.meta,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const listAllReviews = async (req, res, next) => {
+  try {
+    const result = await reviewService.listAllReviews(req.query);
+    return sendSuccess(res, {
+      message: "Reviews retrieved successfully",
+      data: result.items,
+      meta: result.meta,
     });
   } catch (error) {
     next(error);
@@ -122,5 +153,7 @@ module.exports = {
   moderateReview,
   addVendorResponse,
   markHelpful,
+  getMyVendorReviews,
+  listAllReviews,
 };
 

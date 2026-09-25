@@ -58,6 +58,21 @@ const updateById = async (id, data, options = {}) => {
   });
 };
 
+const findAll = async ({ filter = {}, skip = 0, limit = 20, sort = { createdAt: -1 } } = {}) => {
+  const [items, total] = await Promise.all([
+    VendorSettlement.find(filter)
+      .populate("vendorId", "businessName storeName businessSlug email phone")
+      .populate("orderIds", "orderNumber status grandTotal placedAt")
+      .sort(sort)
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    VendorSettlement.countDocuments(filter),
+  ]);
+
+  return { items, total };
+};
+
 module.exports = {
   create,
   findById,
@@ -66,4 +81,5 @@ module.exports = {
   findByVendorId,
   findByPeriod,
   updateById,
-};
+  findAll,
+};

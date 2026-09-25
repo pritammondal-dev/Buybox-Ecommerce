@@ -20,8 +20,13 @@ export const useCategoryStore = create((set, get) => ({
 
     set({ isLoading: true, error: null });
     try {
-      const res = await categoryService.getCategories({ limit: 50 });
-      const list = res?.data?.categories || (Array.isArray(res?.data) ? res.data : []);
+      const res = await categoryService.getCategories({ limit: 100 });
+      const list =
+        res?.data?.categories ||
+        res?.data?.items ||
+        (Array.isArray(res?.data) ? res.data : null) ||
+        res?.items ||
+        (Array.isArray(res) ? res : []);
       const validCategories = Array.isArray(list) ? list : [];
       set({ categories: validCategories, isLoading: false, isHydrated: true });
       return validCategories;

@@ -32,6 +32,15 @@ const createBrandSchema = z.object({
     .optional()
     .default(null),
 
+  logo: z
+    .object({
+      url: z.string().nullable().optional(),
+      publicId: z.string().nullable().optional(),
+      altText: z.string().max(200).optional().default(""),
+    })
+    .nullable()
+    .optional(),
+
   isActive: z
     .boolean()
     .optional()

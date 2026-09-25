@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { ShoppingBag, Zap, Heart, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useCart } from "../../../hooks/useCart.js";
-import { useWishlist } from "../../../hooks/useWishlist.js";
 import { QuantitySelector } from "../QuantitySelector.jsx";
 import { Button } from "../../ui/Button.jsx";
 import { parsePrice } from "../../../utils/formatCurrency.js";
@@ -28,6 +27,8 @@ export function ProductActions({
     product?.defaultVariantId ||
     undefined;
   const isOutOfStock = product?.stockStatus === "out_of_stock";
+  const stockQuantity = typeof product?.stockQuantity === "number" ? product.stockQuantity : 99;
+  const maxAllowedQty = Math.max(1, Math.min(10, stockQuantity > 0 ? stockQuantity : 10));
   const price = parsePrice(product?.price || 0);
 
   const primaryImage =
@@ -88,16 +89,16 @@ export function ProductActions({
 
   return (
     <div className="space-y-4 pt-4 border-t border-slate-100">
-      {/* Quantity and Primary Action Buttons */}
+      {/* Quantity & Primary Action Buttons */}
       <div className="flex flex-wrap items-center gap-3">
         <QuantitySelector
           value={quantity}
           onChange={setQuantity}
           min={1}
-          max={99}
+          max={maxAllowedQty}
           disabled={isOutOfStock}
           size="lg"
-          className="rounded-full px-2"
+          className="rounded-full px-2 shadow-2xs"
         />
 
         {/* Add to Cart Pill Button */}
@@ -105,7 +106,7 @@ export function ProductActions({
           type="button"
           disabled={isOutOfStock || isAdding}
           onClick={handleAddToCart}
-          className="flex-1 rounded-full bg-[#007A55] hover:bg-[#006346] text-white font-bold text-sm py-3.5 px-6 shadow-md active:scale-95 transition-all gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 rounded-full bg-[#004D38] hover:bg-[#003D2C] text-white font-bold text-sm py-3.5 px-6 shadow-md active:scale-95 transition-all gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isAdding ? (
             <>
@@ -146,7 +147,7 @@ export function ProductActions({
           onClick={onWishlistToggle}
           aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
           className={cn(
-            "flex size-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white shadow-xs transition-all active:scale-95 hover:border-[#007A55] cursor-pointer",
+            "flex size-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white shadow-xs transition-all active:scale-95 hover:border-[#004D38] cursor-pointer",
             isWishlisted && "border-red-200 bg-red-50 text-red-500"
           )}
         >

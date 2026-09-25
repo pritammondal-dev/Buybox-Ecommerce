@@ -5,6 +5,7 @@ const cartRepository = require("../repositories/cart.repository");
 const ProductVariant = require("../models/ProductVariant");
 const Product = require("../models/Product");
 const Customer = require("../models/Customer");
+const User = require("../models/User");
 const AppError = require("../errors/AppError");
 
 const DEFAULT_CURRENCY = "INR";
@@ -69,18 +70,23 @@ const calculateSubtotal = (items) => {
 };
 
 const validateCustomer = async (userId) => {
-  const customer = await Customer.findOne({
+  let customer = await Customer.findOne({
     userId,
     isActive: true,
     deletedAt: null,
   });
 
   if (!customer) {
-    throw new AppError(
-      "Customer profile not found",
-      404,
-      "CUSTOMER_NOT_FOUND"
-    );
+    const user = await User.findById(userId);
+    if (user) {
+      customer = await Customer.create({ userId: user._id });
+    } else {
+      throw new AppError(
+        "Customer profile not found",
+        404,
+        "CUSTOMER_NOT_FOUND"
+      );
+    }
   }
 
   return customer;

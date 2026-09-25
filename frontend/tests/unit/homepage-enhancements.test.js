@@ -205,4 +205,67 @@ describe("Phase 9.5: Genuine Deal Filtering (Today's Hot Deals)", () => {
     assert.strictEqual(deals[0]._id, "d1");
     assert.strictEqual(deals[1]._id, "d4");
   });
+
+  it("should sort products by discount percentage descending", () => {
+    const products = [
+      { _id: "d1", price: 800, compareAtPrice: 1000 }, // 20%
+      { _id: "d2", price: 500, compareAtPrice: 1000 }, // 50%
+      { _id: "d3", price: 900, compareAtPrice: 1000 }, // 10%
+    ];
+
+    const sorted = [...products].sort((a, b) => {
+      const pA = Number(a.price || 0);
+      const cA = Number(a.compareAtPrice || 0);
+      const discA = cA > pA ? (cA - pA) / cA : 0;
+      const pB = Number(b.price || 0);
+      const cB = Number(b.compareAtPrice || 0);
+      const discB = cB > pB ? (cB - pB) / cB : 0;
+      return discB - discA;
+    });
+
+    assert.strictEqual(sorted[0]._id, "d2"); // 50% first
+    assert.strictEqual(sorted[1]._id, "d1"); // 20% second
+    assert.strictEqual(sorted[2]._id, "d3"); // 10% third
+  });
+});
+
+describe("Phase 9.5: Category Drawer & Navigation Safety", () => {
+  it("should partition root categories and nested children based on parentId", () => {
+    const categories = [
+      { _id: "cat_1", name: "Audio", slug: "audio-headphones", parentId: null },
+      { _id: "cat_2", name: "Keyboards", slug: "keyboards", parentId: null },
+      { _id: "cat_sub1", name: "Earbuds", slug: "wireless-earbuds", parentId: "cat_1" },
+    ];
+
+    const roots = categories.filter((c) => !c.parentId);
+    const subMap = new Map();
+    categories.forEach((c) => {
+      if (c.parentId) {
+        if (!subMap.has(c.parentId)) subMap.set(c.parentId, []);
+        subMap.get(c.parentId).push(c);
+      }
+    });
+
+    assert.strictEqual(roots.length, 2);
+    assert.strictEqual(subMap.get("cat_1")?.length, 1);
+    assert.strictEqual(subMap.get("cat_1")?.[0].name, "Earbuds");
+  });
+
+  it("should dynamically resolve valid category URLs and fallback to /shop when not found", () => {
+    const categories = [
+      { _id: "c1", name: "Audio & Headphones", slug: "audio-headphones" },
+    ];
+
+    const resolveCategoryHref = (keyword, cats) => {
+      const found = cats.find(
+        (c) =>
+          (c.slug || "").includes(keyword) ||
+          (c.name || "").toLowerCase().includes(keyword)
+      );
+      return found ? `/category/${found.slug || found._id}` : "/shop";
+    };
+
+    assert.strictEqual(resolveCategoryHref("audio", categories), "/category/audio-headphones");
+    assert.strictEqual(resolveCategoryHref("monitors", categories), "/shop");
+  });
 });

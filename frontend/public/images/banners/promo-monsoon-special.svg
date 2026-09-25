@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 280" width="100%" height="100%">
+  <defs>
+    <linearGradient id="skyBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EFF6FF" />
+      <stop offset="100%" stop-color="#DBEAFE" />
+    </linearGradient>
+    <linearGradient id="umbrellaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563EB" />
+      <stop offset="100%" stop-color="#1D4ED8" />
+    </linearGradient>
+    <filter id="monsoonShadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#1E40AF" flood-opacity="0.2" />
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="420" height="280" rx="20" fill="url(#skyBg)" />
+
+  <!-- Raindrops Accent -->
+  <line x1="160" y1="20" x2="150" y2="40" stroke="#93C5FD" stroke-width="1.5" stroke-linecap="round" opacity="0.6" />
+  <line x1="220" y1="35" x2="210" y2="55" stroke="#93C5FD" stroke-width="1.5" stroke-linecap="round" opacity="0.6" />
+  <line x1="380" y1="30" x2="370" y2="50" stroke="#93C5FD" stroke-width="1.5" stroke-linecap="round" opacity="0.6" />
+
+  <!-- Left Copy -->
+  <g transform="translate(28, 48)">
+    <text x="0" y="0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="800" fill="#2563EB" letter-spacing="1">
+      SEASONAL SPECIAL
+    </text>
+    <text x="0" y="32" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="24" font-weight="900" fill="#0F172A" letter-spacing="-0.5">
+      Monsoon Special
+    </text>
+    <text x="0" y="56" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="600" fill="#3B82F6">
+      Stay Prepared. Stay Stylish.
+    </text>
+    <text x="0" y="78" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="500" fill="#64748B">
+      Waterproof gear, bags &amp; essentials
+    </text>
+
+    <!-- Button -->
+    <g transform="translate(0, 98)">
+      <rect width="112" height="34" rx="17" fill="#1D4ED8" />
+      <text x="18" y="21" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">
+        Shop Now →
+      </text>
+    </g>
+  </g>
+
+  <!-- Umbrella Graphic on Right -->
+  <g transform="translate(310, 130)" filter="url(#monsoonShadow)">
+    <!-- Canopy -->
+    <path d="M -75,30 C -75,-60 75,-60 75,30 Q 37.5,18 0,30 Q -37.5,18 -75,30 Z" fill="url(#umbrellaGrad)" stroke="#1E40AF" stroke-width="1.5" />
+    <path d="M 0,-58 L 0,30" stroke="#1E40AF" stroke-width="1.5" opacity="0.4" />
+    <path d="M -38,-42 C -30,-10 -35,10 -37.5,18" stroke="#1E40AF" stroke-width="1.5" opacity="0.4" fill="none" />
+    <path d="M 38,-42 C 30,-10 35,10 37.5,18" stroke="#1E40AF" stroke-width="1.5" opacity="0.4" fill="none" />
+
+    <!-- Tip -->
+    <rect x="-2" y="-66" width="4" height="8" rx="2" fill="#94A3B8" />
+
+    <!-- Shaft & J-handle -->
+    <path d="M 0,30 L 0,80 C 0,94 -16,94 -16,84" fill="none" stroke="#334155" stroke-width="4" stroke-linecap="round" />
+  </g>
+</svg>

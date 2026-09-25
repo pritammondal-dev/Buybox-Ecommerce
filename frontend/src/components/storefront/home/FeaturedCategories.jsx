@@ -1,137 +1,179 @@
 "use client";
 
-import React from "react";
+import React, { useRef } from "react";
 import Link from "next/link";
-import {
-  Shirt,
-  UserCheck,
-  Baby,
-  Smile,
-  Glasses,
-  Watch,
-  Headphones,
-  Laptop,
-  Tv,
-  Folder,
-  ArrowRight,
-} from "lucide-react";
-import { useCategoryStore } from "../../../stores/category.store.js";
-import { Skeleton } from "../../ui/Skeleton.jsx";
+import { ArrowRight, ChevronRight, ChevronLeft } from "lucide-react";
+import { cn } from "../../../utils/cn.js";
 
-function getCategoryIcon(name = "") {
-  const lower = name.toLowerCase();
-  if (lower.includes("audio") || lower.includes("headphone") || lower.includes("speaker")) return Headphones;
-  if (lower.includes("computer") || lower.includes("laptop") || lower.includes("tech")) return Laptop;
-  if (lower.includes("electronic") || lower.includes("appliance")) return Tv;
-  if (lower.includes("women")) return Shirt;
-  if (lower.includes("men")) return UserCheck;
-  if (lower.includes("kid") || lower.includes("baby")) return Baby;
-  if (lower.includes("watch") || lower.includes("jewelry")) return Watch;
-  if (lower.includes("access") || lower.includes("glass")) return Glasses;
-  return Folder;
-}
+const DEFAULT_SHOP_CATEGORIES = [
+  {
+    name: "Mobiles",
+    slug: "mobiles",
+    count: "350+ products",
+    bgTint: "bg-[#E0F2FE] border-sky-200/80 hover:border-sky-400",
+    image: "https://images.unsplash.com/photo-1598327105666-5b89351aff97?auto=format&fit=crop&w=300&q=80",
+  },
+  {
+    name: "Laptops",
+    slug: "laptops",
+    count: "280+ products",
+    bgTint: "bg-[#E0F7FA] border-cyan-200/80 hover:border-cyan-400",
+    image: "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=300&q=80",
+  },
+  {
+    name: "Audio",
+    slug: "audio",
+    count: "420+ products",
+    bgTint: "bg-[#FEF3C7] border-amber-200/80 hover:border-amber-400",
+    image: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=300&q=80",
+  },
+  {
+    name: "TV & Home Appliances",
+    slug: "tv-appliances",
+    count: "190+ products",
+    bgTint: "bg-[#F1F5F9] border-slate-300/80 hover:border-slate-400",
+    image: "https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?auto=format&fit=crop&w=300&q=80",
+  },
+  {
+    name: "Accessories",
+    slug: "accessories",
+    count: "650+ products",
+    bgTint: "bg-[#DCFCE7] border-emerald-200/80 hover:border-emerald-400",
+    image: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=300&q=80",
+  },
+  {
+    name: "Smart Home",
+    slug: "smart-home",
+    count: "150+ products",
+    bgTint: "bg-[#ECFCCB] border-lime-200/80 hover:border-lime-400",
+    image: "https://images.unsplash.com/photo-1543512214-318c7553f230?auto=format&fit=crop&w=300&q=80",
+  },
+  {
+    name: "Gaming",
+    slug: "gaming",
+    count: "200+ products",
+    bgTint: "bg-[#F3E8FF] border-purple-200/80 hover:border-purple-400",
+    image: "https://images.unsplash.com/photo-1612287233207-6f81c96a41f6?auto=format&fit=crop&w=300&q=80",
+  },
+  {
+    name: "Fashion",
+    slug: "fashion",
+    count: "380+ products",
+    bgTint: "bg-[#FFE4E6] border-rose-200/80 hover:border-rose-400",
+    image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?auto=format&fit=crop&w=300&q=80",
+  },
+];
 
 export function FeaturedCategories({ initialCategories = [] }) {
-  const storeCategories = useCategoryStore((state) => state.categories);
-  const isLoading = useCategoryStore((state) => state.isLoading);
+  const scrollRef = useRef(null);
 
-  // Prioritize server-rendered initialCategories or storeCategories
-  const categories =
-    initialCategories && initialCategories.length > 0
-      ? initialCategories
-      : storeCategories;
+  // Authoritative: dynamically render database categories, using their real names, slugs, and images
+  const categories = React.useMemo(() => {
+    if (Array.isArray(initialCategories) && initialCategories.length > 0) {
+      return initialCategories.map((cat, idx) => {
+        const def =
+          DEFAULT_SHOP_CATEGORIES.find(
+            (d) => d.slug === cat.slug || cat.name?.toLowerCase().includes(d.slug)
+          ) || DEFAULT_SHOP_CATEGORIES[idx % DEFAULT_SHOP_CATEGORIES.length];
 
-  if (isLoading && categories.length === 0) {
-    return (
-      <section aria-label="Product Categories" className="py-8 sm:py-10">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between pb-6 border-b border-slate-100">
-            <Skeleton className="h-6 w-48 rounded-lg" />
-            <Skeleton className="h-4 w-24 rounded-lg" />
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 pt-6">
-            {Array.from({ length: 6 }).map((_, idx) => (
-              <div
-                key={`cat-skel-${idx}`}
-                className="flex flex-col items-center justify-center rounded-2xl border border-slate-100 bg-white p-5 text-center shadow-xs"
-              >
-                <Skeleton className="size-16 rounded-full mb-3" />
-                <Skeleton className="h-4 w-20 rounded-md mb-1.5" />
-                <Skeleton className="h-3 w-12 rounded-md" />
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-    );
-  }
+        return {
+          name: cat.name,
+          slug: cat.slug || cat._id,
+          count: cat.productCount ? `${cat.productCount} products` : def?.count || "Explore products",
+          bgTint: def?.bgTint || "bg-[#E0F2FE] border-sky-200/80 hover:border-sky-400",
+          image:
+            cat.image?.url ||
+            def?.image ||
+            "https://images.unsplash.com/photo-1598327105666-5b89351aff97?auto=format&fit=crop&w=300&q=80",
+        };
+      });
+    }
+    return DEFAULT_SHOP_CATEGORIES;
+  }, [initialCategories]);
 
-  // Gracefully hide if no categories in backend
-  if (categories.length === 0) {
-    return null;
-  }
+  const scroll = (direction) => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollBy({
+        left: direction === "left" ? -280 : 280,
+        behavior: "smooth",
+      });
+    }
+  };
 
   return (
-    <section aria-label="Shop by Category" className="py-8 sm:py-10">
+    <section aria-label="Shop by Category" className="py-6 sm:py-8">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between pb-6 border-b border-slate-100">
+        {/* Header */}
+        <div className="flex items-end justify-between mb-5">
           <div>
             <h2 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900">
               Shop by Category
             </h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Explore authentic hardware across our verified product lines
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">
+              Explore top categories and find what you need.
             </p>
           </div>
           <Link
             href="/shop"
-            className="flex items-center gap-1.5 text-xs font-bold text-[#007A55] hover:text-[#006346] transition-colors"
+            className="group inline-flex items-center gap-1 text-xs sm:text-sm font-bold text-[#007A55] hover:text-[#006346] transition-colors"
           >
             <span>View All</span>
-            <ArrowRight className="size-3.5" />
+            <ArrowRight className="size-3.5 group-hover:translate-x-0.5 transition-transform" />
           </Link>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 pt-6">
-          {categories.map((cat) => {
-            const id = cat.id || cat._id;
-            const slug = cat.slug || id;
-            const Icon = getCategoryIcon(cat.name);
-            const imageUrl = cat.image?.url || null;
-
-            return (
-              <Link
-                key={id}
-                href={`/category/${slug}`}
-                className="group flex flex-col items-center justify-center rounded-2xl border border-border/80 bg-white p-5 text-center shadow-xs transition-all duration-300 hover:border-[#007A55]/40 hover:shadow-card hover:-translate-y-1 cursor-pointer"
-              >
-                {/* Category Icon / Image Circle */}
-                <div className="relative flex size-16 items-center justify-center rounded-full bg-slate-50 text-slate-700 transition-colors duration-300 group-hover:bg-emerald-50 group-hover:text-[#007A55] mb-3 overflow-hidden">
-                  {imageUrl ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
+        {/* Carousel / Grid */}
+        <div className="relative">
+          <div
+            ref={scrollRef}
+            className="flex items-center gap-4 sm:gap-5 overflow-x-auto scrollbar-none py-2"
+            style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+          >
+            {categories.map((cat) => {
+              const href = `/category/${cat.slug}`;
+              return (
+                <Link
+                  key={cat.slug}
+                  href={href}
+                  className="flex flex-col items-center shrink-0 w-28 sm:w-32 group/cat transition-transform duration-200 hover:-translate-y-1 text-center"
+                >
+                  {/* Circular pastel icon container */}
+                  <div
+                    className={cn(
+                      "size-20 sm:size-24 rounded-full flex items-center justify-center p-3 border transition-all duration-300 shadow-2xs group-hover/cat:shadow-md",
+                      cat.bgTint
+                    )}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={imageUrl}
+                      src={cat.image}
                       alt={cat.name}
-                      className="size-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      className="size-full object-contain rounded-full group-hover/cat:scale-110 transition-transform duration-300"
                       loading="lazy"
                     />
-                  ) : (
-                    <Icon className="size-7 stroke-[1.7]" aria-hidden="true" />
-                  )}
-                </div>
-
-                <span className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-[#007A55] transition-colors line-clamp-1">
-                  {cat.name}
-                </span>
-
-                {cat.description && (
-                  <span className="mt-1 text-[11px] font-medium text-slate-400 line-clamp-1">
-                    {cat.description}
+                  </div>
+                  {/* Category Name */}
+                  <span className="mt-2.5 text-xs sm:text-sm font-bold text-slate-800 group-hover/cat:text-[#007A55] transition-colors line-clamp-1">
+                    {cat.name}
                   </span>
-                )}
-              </Link>
-            );
-          })}
+                  {/* Count */}
+                  <span className="text-[10px] sm:text-[11px] font-medium text-slate-400 mt-0.5">
+                    {cat.count}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+
+          {/* Right Scroll Arrow */}
+          <button
+            type="button"
+            onClick={() => scroll("right")}
+            aria-label="Scroll categories right"
+            className="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10 size-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-md hover:bg-slate-50 hover:text-[#007A55] transition-all cursor-pointer"
+          >
+            <ChevronRight className="size-4" />
+          </button>
         </div>
       </div>
     </section>

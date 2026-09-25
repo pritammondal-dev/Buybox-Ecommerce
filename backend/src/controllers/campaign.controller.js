@@ -123,6 +123,53 @@ const scheduleCampaign = async (req, res, next) => {
   }
 };
 
+const Campaign = require("../models/Campaign");
+
+const getActiveCampaigns = async (req, res, next) => {
+  try {
+    const now = new Date();
+    const campaigns = await Campaign.find({
+      status: "active",
+      isActive: true,
+      startsAt: { $lte: now },
+      endsAt: { $gte: now },
+    })
+      .populate("productIds", "name slug price compareAtPrice images ratingAverage stockStatus")
+      .populate("couponIds", "code discountAmount discountType minOrderAmount")
+      .sort({ startsAt: -1 })
+      .lean();
+
+    return apiResponse.sendSuccess(res, {
+      message: "Active campaigns retrieved successfully",
+      data: campaigns,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getCampaignBySlug = async (req, res, next) => {
+  try {
+    const { slug } = req.params;
+    const campaign = await Campaign.findOne({ slug: slug.toLowerCase() })
+      .populate("productIds", "name slug price compareAtPrice images ratingAverage stockStatus description")
+      .populate("categoryIds", "name slug")
+      .populate("couponIds", "code discountAmount discountType minOrderAmount title")
+      .lean();
+
+    if (!campaign) {
+      return res.status(404).json({ success: false, message: "Campaign not found" });
+    }
+
+    return apiResponse.sendSuccess(res, {
+      message: "Campaign retrieved successfully",
+      data: campaign,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createCampaign,
   getCampaignById,
@@ -132,4 +179,6 @@ module.exports = {
   deactivateCampaign,
   transitionCampaignStatus,
   scheduleCampaign,
+  getActiveCampaigns,
+  getCampaignBySlug,
 };

@@ -17,10 +17,44 @@ const createOrderSchema = z
       .transform((value) => value.toUpperCase())
       .optional()
       .nullable(),
+
+    deliveryOptionId: z
+      .string()
+      .trim()
+      .max(50)
+      .optional()
+      .default("standard"),
+  })
+  .strict();
+
+const checkoutQuoteSchema = z
+  .object({
+    shippingAddressId: z
+      .string()
+      .regex(/^[0-9a-fA-F]{24}$/, "Invalid shipping address ID")
+      .optional()
+      .nullable(),
+
+    couponCode: z
+      .string()
+      .trim()
+      .min(3)
+      .max(50)
+      .transform((value) => value.toUpperCase())
+      .optional()
+      .nullable(),
+
+    deliveryOptionId: z
+      .string()
+      .trim()
+      .max(50)
+      .optional()
+      .default("standard"),
   })
   .strict();
 
 module.exports = {
   createOrderSchema,
+  checkoutQuoteSchema,
 };
 

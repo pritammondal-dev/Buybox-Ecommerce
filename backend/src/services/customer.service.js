@@ -1,15 +1,21 @@
 const customerRepository = require("../repositories/customer.repository");
+const User = require("../models/User");
 const AppError = require("../errors/AppError");
 
 const getCustomerProfile = async (userId) => {
-  const customer = await customerRepository.findByUserId(userId);
+  let customer = await customerRepository.findByUserId(userId);
 
   if (!customer) {
-    throw new AppError(
-      "Customer profile not found",
-      404,
-      "CUSTOMER_NOT_FOUND"
-    );
+    const user = await User.findById(userId);
+    if (user && user.role === "customer") {
+      customer = await customerRepository.create({ userId });
+    } else {
+      throw new AppError(
+        "Customer profile not found",
+        404,
+        "CUSTOMER_NOT_FOUND"
+      );
+    }
   }
 
   return customer;

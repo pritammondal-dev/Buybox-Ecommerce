@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { cartService } from "../services/cart.service.js";
 import { normalizeApiError } from "../lib/api/api-error.js";
+import { parsePrice } from "../utils/formatCurrency.js";
 
 /**
  * Cart Store
@@ -75,20 +76,24 @@ export const useCartStore = create(
       },
 
       /**
-       * Get subtotal of active cart
+       * Get subtotal of active cart dynamically from authoritative item prices & quantities
        * @param {boolean} isAuthenticated
        */
       getSubtotal: (isAuthenticated = false) => {
-        if (isAuthenticated && get().serverCart?.subtotal !== undefined) {
-          return Number(get().serverCart.subtotal) || 0;
-        }
-
-        const items = get().getItems(false);
-        return items.reduce((total, item) => {
-          const price = Number(item.unitPrice || item.price) || 0;
+        const items = get().getItems(isAuthenticated);
+        // Dynamic sum(current authoritative item price * quantity)
+        const computedSubtotal = items.reduce((total, item) => {
+          const price = parsePrice(item.unitPrice ?? item.price ?? item.priceSnapshot ?? 0);
           const qty = Number(item.quantity) || 0;
           return total + price * qty;
         }, 0);
+
+        if (isAuthenticated && get().serverCart?.subtotal !== undefined) {
+          const parsed = parsePrice(get().serverCart.subtotal);
+          return parsed > 0 ? parsed : computedSubtotal;
+        }
+
+        return computedSubtotal;
       },
 
       /**
@@ -117,10 +122,21 @@ export const useCartStore = create(
        * @param {Object} [payload.itemSnapshot] Optional display metadata for guest items
        * @param {boolean} isAuthenticated
        */
-      addItem: async (
-        { productVariantId, productId, quantity = 1, itemSnapshot = {} },
-        isAuthenticated = false
-      ) => {
+      addItem: async (payload, isAuthenticated = false) => {
+        let productVariantId;
+        let productId;
+        let quantity = 1;
+        let itemSnapshot = {};
+
+        if (typeof payload === "string") {
+          productId = payload;
+        } else if (payload && typeof payload === "object") {
+          productVariantId = payload.productVariantId;
+          productId = payload.productId || payload.id || payload._id;
+          quantity = typeof payload.quantity === "number" ? payload.quantity : 1;
+          itemSnapshot = payload.itemSnapshot || {};
+        }
+
         // Record metadata snapshot if provided
         const key = productVariantId || productId;
         if (itemSnapshot && Object.keys(itemSnapshot).length > 0 && key) {
@@ -270,6 +286,20 @@ export const useCartStore = create(
               isLoading: false,
             });
           } catch (err) {
+            // If active cart was already converted by order creation, handle 404 gracefully
+            if (
+              err?.statusCode === 404 ||
+              err?.status === 404 ||
+              err?.message?.includes?.("Active cart not found") ||
+              err?.code === "CART_NOT_FOUND"
+            ) {
+              set({
+                serverCart: { items: [], subtotal: "0.00", itemCount: 0 },
+                isLoading: false,
+                error: null,
+              });
+              return;
+            }
             const normalized = normalizeApiError(err);
             set({ isLoading: false, error: normalized.message });
             throw normalized;
@@ -277,6 +307,19 @@ export const useCartStore = create(
         } else {
           set({ guestCart: { items: [] } });
         }
+      },
+
+      /**
+       * Idempotently reset client cart state after successful order creation
+       * without attempting an invalid DELETE /cart on an already-converted cart.
+       */
+      consumeCart: () => {
+        set({
+          serverCart: { items: [], subtotal: "0.00", itemCount: 0 },
+          guestCart: { items: [] },
+          isLoading: false,
+          error: null,
+        });
       },
 
       /**

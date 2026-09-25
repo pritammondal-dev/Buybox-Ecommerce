@@ -15,6 +15,7 @@ const createVendorShipment = async (
   const shipment =
     await shipmentService.createShipment({
       orderId: req.body.orderId,
+      warehouseId: req.body.warehouseId,
       carrier: req.body.carrier,
       serviceLevel: req.body.serviceLevel,
       idempotencyKey:
@@ -42,6 +43,8 @@ const createShipment = async (
   const shipment =
     await shipmentService.createShipment({
       orderId: req.body.orderId,
+      vendorId: req.body.vendorId,
+      warehouseId: req.body.warehouseId,
       carrier: req.body.carrier,
       serviceLevel: req.body.serviceLevel,
       idempotencyKey:
@@ -223,6 +226,22 @@ const getMyShipmentById = async (
   });
 };
 
+const getMyShipmentsByOrderId = async (
+  req,
+  res
+) => {
+  const shipments =
+    await shipmentService.getCustomerShipmentsByOrderId(
+      req.params.orderId,
+      req.user.id
+    );
+
+  return apiResponse.sendSuccess(res, {
+    message: "Order shipments retrieved successfully",
+    data: shipments,
+  });
+};
+
 /*
  * Vendor self-service
  */
@@ -260,6 +279,19 @@ const getMyVendorShipmentById = async (
   });
 };
 
+const listAllShipments = async (req, res, next) => {
+  try {
+    const result = await shipmentService.listAllShipments(req.query);
+    return apiResponse.sendSuccess(res, {
+      message: "Shipments retrieved successfully",
+      data: result.items,
+      meta: result.meta,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createShipment,
   createVendorShipment,
@@ -272,6 +304,8 @@ module.exports = {
   getShipmentByTrackingNumber,
   getMyShipments,
   getMyShipmentById,
+  getMyShipmentsByOrderId,
   getMyVendorShipments,
   getMyVendorShipmentById,
+  listAllShipments,
 };

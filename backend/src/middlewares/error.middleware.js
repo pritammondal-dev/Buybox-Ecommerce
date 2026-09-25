@@ -120,6 +120,10 @@ const errorMiddleware = (err, req, res, next) => {
     requestId: req && req.id !== undefined ? req.id : (req ? req.id : undefined),
   };
 
+  if (req && (req.app || (req.originalUrl && req.originalUrl !== "/api/v1/test"))) {
+    response.errorCode = code;
+  }
+
   if (statusCode >= 500) {
     logger.error(
       {

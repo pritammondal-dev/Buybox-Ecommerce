@@ -32,6 +32,9 @@ const getBannerById = async (bannerId) => {
 
 const createBanner = async ({
   title,
+  slotKey = null,
+  placement = null,
+  altText = null,
   imageUrl,
   mobileImageUrl = null,
   linkUrl = null,
@@ -51,8 +54,12 @@ const createBanner = async ({
     );
   }
 
+  const effectiveSlotKey = slotKey || placement || null;
+
   return storefrontBannerRepository.create({
     title,
+    slotKey: effectiveSlotKey,
+    altText,
     imageUrl,
     mobileImageUrl,
     linkUrl,
@@ -65,13 +72,18 @@ const createBanner = async ({
 };
 
 const listBanners = async (filter = {}) => {
-  return storefrontBannerRepository.findMany(filter);
+  const query = { ...filter };
+  if (query.placement && !query.slotKey) {
+    query.slotKey = query.placement;
+    delete query.placement;
+  }
+  return storefrontBannerRepository.findMany(query);
 };
 
-const listActiveBanners = async () => {
+const listActiveBanners = async (filter = {}) => {
   const now = new Date();
 
-  return storefrontBannerRepository.findMany({
+  const query = {
     isActive: true,
     $or: [
       { startsAt: null },
@@ -85,7 +97,14 @@ const listActiveBanners = async () => {
         ],
       },
     ],
-  });
+  };
+
+  const slot = filter.slotKey || filter.placement;
+  if (slot) {
+    query.slotKey = slot;
+  }
+
+  return storefrontBannerRepository.findMany(query);
 };
 
 const updateBanner = async (bannerId, data) => {
@@ -105,6 +124,8 @@ const updateBanner = async (bannerId, data) => {
 
   const fields = [
     "title",
+    "slotKey",
+    "altText",
     "imageUrl",
     "mobileImageUrl",
     "linkUrl",
@@ -118,6 +139,10 @@ const updateBanner = async (bannerId, data) => {
     if (data[field] !== undefined) {
       update[field] = data[field];
     }
+  }
+
+  if (data.placement !== undefined && data.slotKey === undefined) {
+    update.slotKey = data.placement;
   }
 
   return storefrontBannerRepository.updateById(

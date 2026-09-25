@@ -56,6 +56,15 @@ export const categoryService = {
   async deleteCategory(id) {
     return apiClient.delete(`/categories/${id}`);
   },
+
+  /**
+   * Get dynamic attributes attached to a category
+   * @param {string} categoryId
+   * @returns {Promise<Object>}
+   */
+  async getCategoryAttributes(categoryId) {
+    return apiClient.get(`/categories/${categoryId}/attributes`);
+  },
 };
 
 export default categoryService;

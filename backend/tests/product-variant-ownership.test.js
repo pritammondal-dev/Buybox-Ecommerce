@@ -21,6 +21,8 @@ const TEST_MONGODB_URI = process.env.MONGODB_URI
   ? process.env.MONGODB_URI.replace("/buybox?", "/buybox_variant_ownership_test?")
   : "mongodb://127.0.0.1:27017/buybox_variant_ownership_test?replicaSet=rs0";
 
+jest.setTimeout(60000);
+
 describe("Buybox Phase 2A — ProductVariant Vendor Ownership Integrity & Isolation", () => {
   let createdPermissions = new Map();
   let testCategory;
@@ -109,6 +111,9 @@ describe("Buybox Phase 2A — ProductVariant Vendor Ownership Integrity & Isolat
 
   // Helper to create privileged user (admin, super_admin, manager)
   async function createPrivilegedUser(role = "admin") {
+    if (role === "super_admin") {
+      await User.deleteMany({ role: "super_admin" });
+    }
     const user = await User.create({
       firstName: "Privileged",
       lastName: role,

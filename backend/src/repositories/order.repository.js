@@ -89,6 +89,29 @@ const transitionStatusIfCurrent = async (
   );
 };
 
+const appendPaymentAttempt = async (
+  orderId,
+  { attempt, timelineEvent } = {},
+  options = {}
+) => {
+  const update = {};
+  if (attempt || timelineEvent) {
+    update.$push = {};
+    if (attempt) {
+      if (!attempt.attemptNumber) {
+        const existing = await Order.findById(orderId).select("paymentAttempts").lean();
+        attempt.attemptNumber = (existing?.paymentAttempts?.length || 0) + 1;
+      }
+      update.$push.paymentAttempts = attempt;
+    }
+    if (timelineEvent) update.$push.timeline = timelineEvent;
+  }
+  return Order.findByIdAndUpdate(orderId, update, {
+    new: true,
+    session: options.session,
+  });
+};
+
 const findByVendor = async ({
   vendorId,
   filter = {},
@@ -124,6 +147,27 @@ const findByIdAndVendor = async (orderId, vendorId, options = {}) => {
     .lean();
 };
 
+const findAll = async ({
+  filter = {},
+  skip = 0,
+  limit = 20,
+  sort = { createdAt: -1 },
+  options = {},
+} = {}) => {
+  const [items, total] = await Promise.all([
+    Order.find(filter)
+      .session(options.session || null)
+      .sort(sort)
+      .skip(skip)
+      .limit(limit)
+      .populate("customerId", "userId firstName lastName email phone")
+      .lean(),
+    Order.countDocuments(filter).session(options.session || null),
+  ]);
+
+  return { items, total };
+};
+
 module.exports = {
   create,
   findById,
@@ -131,8 +175,10 @@ module.exports = {
   findByCustomer,
   findByVendor,
   findByIdAndVendor,
+  findAll,
   findByCustomerIdAndIdempotencyKey,
   findEligibleForExpiration,
   transitionStatusIfCurrent,
   updateById,
+  appendPaymentAttempt,
 };

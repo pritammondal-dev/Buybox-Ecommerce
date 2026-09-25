@@ -99,6 +99,13 @@ const reviewSchema = new mongoose.Schema(
       min: 0,
     },
 
+    helpfulVoters: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Customer",
+      },
+    ],
+
     metadata: {
       type: Map,
       of: String,
