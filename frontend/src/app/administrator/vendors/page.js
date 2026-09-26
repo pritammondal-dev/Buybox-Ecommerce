@@ -234,7 +234,7 @@ export default function AdminVendorsPage() {
               <thead className="bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-700">
                 <tr>
                   <th className="px-5 py-3.5">Vendor / Store</th>
-                  <th className="px-5 py-3.5">Vendor Name / Contact</th>
+                  <th className="px-5 py-3.5">Vendor Name / Contact</th>\n                  <th className="px-5 py-3.5">GSTIN</th>
                   <th className="px-5 py-3.5">Status</th>
                   <th className="px-5 py-3.5">Submitted</th>
                   <th className="px-5 py-3.5 text-right">Action</th>
