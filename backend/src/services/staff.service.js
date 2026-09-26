@@ -195,7 +195,7 @@ const getStaffById = async (userId) => {
  * Strictly requires Superadmin authorization.
  */
 const createStaff = async (payload, actor, req = null) => {
-  const { email, password, firstName, lastName, role, jobTitle, department, jobRoleId } =
+  const { email, password, firstName, lastName, phone, role, jobTitle, department, jobRoleId } =
     payload;
 
   // Cannot create super_admin via staff provisioning API
@@ -257,6 +257,7 @@ const createStaff = async (payload, actor, req = null) => {
     password: hashedPassword,
     firstName: firstName.trim(),
     lastName: lastName.trim(),
+    phone: phone?.trim() || undefined,
     role: role || (targetJobRole ? (targetJobRole.slug.includes("editor") ? "editor" : "admin") : "staff"),
     isActive: true,
     isEmailVerified: true,
@@ -367,7 +368,8 @@ const updateStaff = async (userId, payload, actor, req = null) => {
   }
 
   if (payload.firstName !== undefined) user.firstName = payload.firstName;
-  if (payload.lastName !== undefined) user.lastName = payload.lastName;\n  if (payload.phone !== undefined) user.phone = payload.phone?.trim() || undefined;
+  if (payload.lastName !== undefined) user.lastName = payload.lastName;
+  if (payload.phone !== undefined) user.phone = payload.phone?.trim() || undefined;\n  if (payload.phone !== undefined) user.phone = payload.phone?.trim() || undefined;
   await user.save();
 
   if (employee) {
