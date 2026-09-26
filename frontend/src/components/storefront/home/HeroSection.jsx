@@ -2,34 +2,11 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { ArrowRight, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "../../../utils/cn.js";
 import { useBannerSlot } from "../../../hooks/useBannerSlot.js";
 
-const DEFAULT_HERO_SLIDES = [
-  {
-    badge: "Big Summer Sale",
-    badgeIcon: "🌿",
-    title: "Upgrade Your Tech This Season",
-    subtitle: "Top brands. Unbeatable deals. Only at Buybox.",
-    cta: "Shop Now",
-    href: "/shop",
-    bannerImage: "/images/banners/hero-summer-sale.png",
-    bgGradient: "bg-gradient-to-r from-[#D2EFE0] via-[#E5F5EC] to-[#C7EADB]",
-    isDark: false,
-  },
-  {
-    badge: "Mega Electronics Fest",
-    badgeIcon: "⚡",
-    title: "Next-Gen Hardware & Peripherals",
-    subtitle: "Experience cutting-edge compute, 4K displays and studio audio.",
-    cta: "Explore Now",
-    href: "/shop?sort=featured",
-    bannerImage: "/images/banners/hero-electronics-fest.png",
-    bgGradient: "bg-gradient-to-r from-[#043E2E] via-[#064E3B] to-[#022c22]",
-    isDark: true,
-  },
-];
+
 
 export function HeroSection({ initialBanners = [], initialCampaign = null }) {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -97,7 +74,7 @@ export function HeroSection({ initialBanners = [], initialCampaign = null }) {
           <div
             className={cn(
               "lg:col-span-2 relative overflow-hidden rounded-3xl p-4 sm:p-6 lg:p-8 flex flex-col justify-between h-[280px] sm:h-[350px] lg:h-[430px] shadow-sm border border-emerald-200/50 transition-all duration-500",
-              current.bgGradient
+              current?.bgGradient || "bg-slate-50"
             )}
           >
             {/* Visual Artwork Background Image */}
@@ -112,7 +89,7 @@ export function HeroSection({ initialBanners = [], initialCampaign = null }) {
                 <div
                   className="absolute inset-0 z-[2] pointer-events-none"
                   style={{
-                    background: current.isDark
+                    background: current?.isDark
                       ? "linear-gradient(90deg, #043E2E 0%, #043E2E 40%, rgba(4,62,46,0.85) 60%, rgba(4,62,46,0) 80%)"
                       : "linear-gradient(90deg, #CEEBDE 0%, #CEEBDE 44%, rgba(206,235,222,0.92) 56%, rgba(206,235,222,0) 78%)",
                   }}
@@ -160,7 +137,7 @@ export function HeroSection({ initialBanners = [], initialCampaign = null }) {
                   current?.isDark ? "text-white" : "text-slate-900"
                 )}
               >
-                {current.title}
+                {current?.title}
               </h1>
 
               {/* Subtitle */}
