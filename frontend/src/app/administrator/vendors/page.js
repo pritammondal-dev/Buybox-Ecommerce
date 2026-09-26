@@ -292,6 +292,10 @@ export default function AdminVendorsPage() {
                         </div>
                       </td>
 
+                      <td className="px-5 py-4 font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                        {vendor.taxInformation?.gstin || vendor.taxInformation?.taxId || "Pending"}
+                      </td>
+
                       <td className="px-5 py-4">
                         <StatusBadge status={vendor.onboardingStatus || "pending"} />
                         {vendor.onboardingStatus === "rejected" && vendor.rejectionReason && (
