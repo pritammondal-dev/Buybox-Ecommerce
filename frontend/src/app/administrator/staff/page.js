@@ -52,6 +52,7 @@ export default function StaffManagementPage() {
   const [createForm, setCreateForm] = useState({
     firstName: "",
     lastName: "",
+    phone: "",
     email: "",
     password: "",
     role: "editor",
@@ -111,6 +112,7 @@ export default function StaffManagementPage() {
       setCreateForm({
         firstName: "",
         lastName: "",
+        phone: "",
         email: "",
         password: "",
         role: "editor",
@@ -699,6 +701,19 @@ export default function StaffManagementPage() {
                     className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="font-semibold text-gray-700 dark:text-gray-300 block mb-1">
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  value={createForm.phone}
+                  onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })}
+                  placeholder="+91XXXXXXXXXX"
+                  className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none mb-3"
+                />
               </div>
 
               <div>
