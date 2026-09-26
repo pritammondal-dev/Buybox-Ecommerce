@@ -62,7 +62,7 @@ export function HeroSection({ initialBanners = [], initialCampaign = null }) {
         }));
       }
     }
-    return DEFAULT_HERO_SLIDES;
+    return [];
   }, [initialBanners]);
 
   const nextSlide = useCallback(() => {
@@ -82,7 +82,7 @@ export function HeroSection({ initialBanners = [], initialCampaign = null }) {
     return () => clearInterval(timer);
   }, [slides.length, isPaused, nextSlide]);
 
-  const current = slides[currentSlide] || slides[0];
+  const current = slides[currentSlide] || null;
 
   return (
     <section
@@ -101,12 +101,12 @@ export function HeroSection({ initialBanners = [], initialCampaign = null }) {
             )}
           >
             {/* Visual Artwork Background Image */}
-            {current.bannerImage && (
+            {current?.bannerImage && (
               <div className="absolute inset-0 z-0 overflow-hidden">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={current.bannerImage}
-                  alt={current.title}
+                  alt={current?.title}
                   className="size-full object-cover object-center md:object-right transition-transform duration-700"
                 />
                 <div
@@ -149,15 +149,15 @@ export function HeroSection({ initialBanners = [], initialCampaign = null }) {
                     : "bg-white/95 text-[#007A55] border border-emerald-100"
                 )}
               >
-                <span>{current.badgeIcon}</span>
-                <span>{current.badge}</span>
+                <span>{current?.badgeIcon}</span>
+                <span>{current?.badge}</span>
               </div>
 
               {/* Main Heading */}
               <h1
                 className={cn(
                   "text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-black tracking-tight leading-tight",
-                  current.isDark ? "text-white" : "text-slate-900"
+                  current?.isDark ? "text-white" : "text-slate-900"
                 )}
               >
                 {current.title}
@@ -167,19 +167,19 @@ export function HeroSection({ initialBanners = [], initialCampaign = null }) {
               <p
                 className={cn(
                   "text-[11px] sm:text-xs lg:text-sm font-medium leading-relaxed max-w-sm line-clamp-2",
-                  current.isDark ? "text-emerald-100/90" : "text-slate-700"
+                  current?.isDark ? "text-emerald-100/90" : "text-slate-700"
                 )}
               >
-                {current.subtitle}
+                {current?.subtitle}
               </p>
 
               {/* CTA Button */}
               <div className="pt-1">
                 <Link
-                  href={current.href}
+                  href={current?.href || "/shop"}
                   className="inline-flex items-center gap-1.5 sm:gap-2 rounded-full bg-[#004D38] px-4 py-2 sm:px-5 sm:py-2.5 text-xs sm:text-sm font-bold text-white shadow-md hover:bg-[#003A2A] hover:shadow-lg active:scale-95 transition-all"
                 >
-                  <span>{current.cta}</span>
+                  <span>{current?.cta}</span>
                   <ArrowRight className="size-3.5 sm:size-4 stroke-[2.5]" />
                 </Link>
               </div>
