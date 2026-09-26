@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 
 const storefrontBannerRepository = require("../repositories/storefront-banner.repository");
-const AppError = require("../errors/AppError");
+const AppError = require("../errors/AppError");\nconst { recordAuditLog, sanitizeAuditState } = require("./governance.service");
 
 const validateObjectId = (value, fieldName) => {
   if (!mongoose.isValidObjectId(value)) {
@@ -107,8 +107,8 @@ const listActiveBanners = async (filter = {}) => {
   return storefrontBannerRepository.findMany(query);
 };
 
-const updateBanner = async (bannerId, data) => {
-  await getBannerById(bannerId);
+const updateBanner = async (bannerId, data, actorId = null, req = null) => {
+  const before = await getBannerById(bannerId);
 
   if (data.startsAt && data.endsAt) {
     if (new Date(data.startsAt) >= new Date(data.endsAt)) {
@@ -151,7 +151,7 @@ const updateBanner = async (bannerId, data) => {
   );
 };
 
-const deleteBanner = async (bannerId) => {
+const deleteBanner = async (bannerId, actorId = null, req = null) => {
   await getBannerById(bannerId);
 
   await storefrontBannerRepository.deleteById(bannerId);
