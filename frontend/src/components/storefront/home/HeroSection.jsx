@@ -61,6 +61,10 @@ export function HeroSection({ initialBanners = [], initialCampaign = null }) {
 
   const current = slides[currentSlide] || null;
 
+  if (!current && !heroAudio.imageUrl && !heroSmartHome.imageUrl && !heroBrandDeals.imageUrl) {
+    return null;
+  }
+
   return (
     <section
       aria-label="Hero Showcase"
