@@ -367,7 +367,7 @@ const updateStaff = async (userId, payload, actor, req = null) => {
   }
 
   if (payload.firstName !== undefined) user.firstName = payload.firstName;
-  if (payload.lastName !== undefined) user.lastName = payload.lastName;
+  if (payload.lastName !== undefined) user.lastName = payload.lastName;\n  if (payload.phone !== undefined) user.phone = payload.phone?.trim() || undefined;
   await user.save();
 
   if (employee) {
