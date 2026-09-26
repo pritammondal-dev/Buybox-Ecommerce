@@ -1,7 +1,8 @@
 const mongoose = require("mongoose");
 
 const storefrontBannerRepository = require("../repositories/storefront-banner.repository");
-const AppError = require("../errors/AppError");\nconst { recordAuditLog, sanitizeAuditState } = require("./governance.service");
+const AppError = require("../errors/AppError");
+const { recordAuditLog, sanitizeAuditState } = require("./governance.service");
 
 const validateObjectId = (value, fieldName) => {
   if (!mongoose.isValidObjectId(value)) {
@@ -56,7 +57,7 @@ const createBanner = async ({
 
   const effectiveSlotKey = slotKey || placement || null;
 
-  return storefrontBannerRepository.create({
+  const created = await storefrontBannerRepository.create({
     title,
     slotKey: effectiveSlotKey,
     altText,
