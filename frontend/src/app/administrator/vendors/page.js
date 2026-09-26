@@ -233,8 +233,9 @@ export default function AdminVendorsPage() {
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-700">
                 <tr>
-                  <th className="px-5 py-3.5">Store / Brand</th>
-                  <th className="px-5 py-3.5">Applicant & Contact</th>
+                  <th className="px-5 py-3.5">Vendor / Store</th>
+                  <th className="px-5 py-3.5">Vendor Name / Contact</th>
+                  <th className="px-5 py-3.5">GSTIN</th>
                   <th className="px-5 py-3.5">Status</th>
                   <th className="px-5 py-3.5">Submitted</th>
                   <th className="px-5 py-3.5 text-right">Action</th>
@@ -281,7 +282,7 @@ export default function AdminVendorsPage() {
                               <Mail className="h-3 w-3 text-slate-400" />
                               {applicantEmail}
                             </span>
-                            {vendor.phone && (
+                            {(vendor.phone || vendor.userId?.phone) && (
                               <span className="flex items-center gap-1">
                                 <Phone className="h-3 w-3 text-slate-400" />
                                 {vendor.phone}
@@ -289,6 +290,10 @@ export default function AdminVendorsPage() {
                             )}
                           </div>
                         </div>
+                      </td>
+
+                      <td className="px-5 py-4 font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                        {vendor.taxInformation?.gstin || vendor.taxInformation?.taxId || "Pending"}
                       </td>
 
                       <td className="px-5 py-4">
