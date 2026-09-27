@@ -2,34 +2,11 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { ArrowRight, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "../../../utils/cn.js";
 import { useBannerSlot } from "../../../hooks/useBannerSlot.js";
 
-const DEFAULT_HERO_SLIDES = [
-  {
-    badge: "Big Summer Sale",
-    badgeIcon: "🌿",
-    title: "Upgrade Your Tech This Season",
-    subtitle: "Top brands. Unbeatable deals. Only at Buybox.",
-    cta: "Shop Now",
-    href: "/shop",
-    bannerImage: "/images/banners/hero-summer-sale.png",
-    bgGradient: "bg-gradient-to-r from-[#D2EFE0] via-[#E5F5EC] to-[#C7EADB]",
-    isDark: false,
-  },
-  {
-    badge: "Mega Electronics Fest",
-    badgeIcon: "⚡",
-    title: "Next-Gen Hardware & Peripherals",
-    subtitle: "Experience cutting-edge compute, 4K displays and studio audio.",
-    cta: "Explore Now",
-    href: "/shop?sort=featured",
-    bannerImage: "/images/banners/hero-electronics-fest.png",
-    bgGradient: "bg-gradient-to-r from-[#043E2E] via-[#064E3B] to-[#022c22]",
-    isDark: true,
-  },
-];
+
 
 export function HeroSection({ initialBanners = [], initialCampaign = null }) {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -62,7 +39,7 @@ export function HeroSection({ initialBanners = [], initialCampaign = null }) {
         }));
       }
     }
-    return DEFAULT_HERO_SLIDES;
+    return [];
   }, [initialBanners]);
 
   const nextSlide = useCallback(() => {
@@ -82,7 +59,11 @@ export function HeroSection({ initialBanners = [], initialCampaign = null }) {
     return () => clearInterval(timer);
   }, [slides.length, isPaused, nextSlide]);
 
-  const current = slides[currentSlide] || slides[0];
+  const current = slides[currentSlide] || null;
+
+  if (!current && !heroAudio.imageUrl && !heroSmartHome.imageUrl && !heroBrandDeals.imageUrl) {
+    return null;
+  }
 
   return (
     <section
@@ -97,22 +78,22 @@ export function HeroSection({ initialBanners = [], initialCampaign = null }) {
           <div
             className={cn(
               "lg:col-span-2 relative overflow-hidden rounded-3xl p-4 sm:p-6 lg:p-8 flex flex-col justify-between h-[280px] sm:h-[350px] lg:h-[430px] shadow-sm border border-emerald-200/50 transition-all duration-500",
-              current.bgGradient
+              current?.bgGradient || "bg-slate-50"
             )}
           >
             {/* Visual Artwork Background Image */}
-            {current.bannerImage && (
+            {current?.bannerImage && (
               <div className="absolute inset-0 z-0 overflow-hidden">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={current.bannerImage}
-                  alt={current.title}
+                  alt={current?.title}
                   className="size-full object-cover object-center md:object-right transition-transform duration-700"
                 />
                 <div
                   className="absolute inset-0 z-[2] pointer-events-none"
                   style={{
-                    background: current.isDark
+                    background: current?.isDark
                       ? "linear-gradient(90deg, #043E2E 0%, #043E2E 40%, rgba(4,62,46,0.85) 60%, rgba(4,62,46,0) 80%)"
                       : "linear-gradient(90deg, #CEEBDE 0%, #CEEBDE 44%, rgba(206,235,222,0.92) 56%, rgba(206,235,222,0) 78%)",
                   }}
@@ -149,37 +130,37 @@ export function HeroSection({ initialBanners = [], initialCampaign = null }) {
                     : "bg-white/95 text-[#007A55] border border-emerald-100"
                 )}
               >
-                <span>{current.badgeIcon}</span>
-                <span>{current.badge}</span>
+                <span>{current?.badgeIcon}</span>
+                <span>{current?.badge}</span>
               </div>
 
               {/* Main Heading */}
               <h1
                 className={cn(
                   "text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-black tracking-tight leading-tight",
-                  current.isDark ? "text-white" : "text-slate-900"
+                  current?.isDark ? "text-white" : "text-slate-900"
                 )}
               >
-                {current.title}
+                {current?.title}
               </h1>
 
               {/* Subtitle */}
               <p
                 className={cn(
                   "text-[11px] sm:text-xs lg:text-sm font-medium leading-relaxed max-w-sm line-clamp-2",
-                  current.isDark ? "text-emerald-100/90" : "text-slate-700"
+                  current?.isDark ? "text-emerald-100/90" : "text-slate-700"
                 )}
               >
-                {current.subtitle}
+                {current?.subtitle}
               </p>
 
               {/* CTA Button */}
               <div className="pt-1">
                 <Link
-                  href={current.href}
+                  href={current?.href || "/shop"}
                   className="inline-flex items-center gap-1.5 sm:gap-2 rounded-full bg-[#004D38] px-4 py-2 sm:px-5 sm:py-2.5 text-xs sm:text-sm font-bold text-white shadow-md hover:bg-[#003A2A] hover:shadow-lg active:scale-95 transition-all"
                 >
-                  <span>{current.cta}</span>
+                  <span>{current?.cta}</span>
                   <ArrowRight className="size-3.5 sm:size-4 stroke-[2.5]" />
                 </Link>
               </div>

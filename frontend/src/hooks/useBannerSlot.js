@@ -1,72 +1,59 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { BANNER_SLOT_MAP } from "../constants/banner-slots.constants.js";
 
 /**
- * Pure resolution function to determine slot artwork
- * Priority:
- * 1. Active admin-managed banner from the backend API.
- * 2. Existing local image fallback from public/images/banners.
- *
- * @param {Array} banners - List of active banners from API
- * @param {string} slotKey - Target slot identifier (e.g. "hero_audio")
- * @returns {Object} { imageUrl, mobileImageUrl, linkUrl, altText, isCustom, fallbackImage, slotKey, bannerId }
+ * Resolve a banner slot from the authoritative active-banner API response.
+ * There is intentionally NO promotional/static fallback here: when Superadmin
+ * deactivates a banner, the slot becomes empty instead of showing stale artwork.
  */
 export function resolveBannerSlot(banners = [], slotKey) {
-  const defaultSlot = BANNER_SLOT_MAP[slotKey] || {
-    slotKey,
-    defaultImage: "/images/banners/banner-work-smarter.png",
-    defaultLink: "/shop",
-    defaultAlt: "Buybox Promotional Banner",
-  };
-
   if (!Array.isArray(banners) || banners.length === 0) {
     return {
-      imageUrl: defaultSlot.defaultImage,
-      mobileImageUrl: defaultSlot.defaultImage,
-      linkUrl: defaultSlot.defaultLink,
-      altText: defaultSlot.defaultAlt,
+      imageUrl: null,
+      mobileImageUrl: null,
+      linkUrl: null,
+      altText: "",
       isCustom: false,
-      fallbackImage: defaultSlot.defaultImage,
+      fallbackImage: null,
       slotKey,
       bannerId: null,
     };
   }
 
-  // Find banner explicitly mapped to this slotKey or placement
   const customBanner = banners.find(
     (b) =>
       b &&
       (b.slotKey === slotKey || b.placement === slotKey) &&
-      b.isActive !== false &&
+      b.isActive === true &&
       b.imageUrl &&
       typeof b.imageUrl === "string" &&
       b.imageUrl.trim().length > 0
   );
 
-  if (customBanner) {
+  if (!customBanner) {
     return {
-      imageUrl: customBanner.imageUrl,
-      mobileImageUrl: customBanner.mobileImageUrl || customBanner.imageUrl,
-      linkUrl: customBanner.linkUrl || defaultSlot.defaultLink,
-      altText: customBanner.altText || customBanner.title || defaultSlot.defaultAlt,
-      isCustom: true,
-      fallbackImage: defaultSlot.defaultImage,
+      imageUrl: null,
+      mobileImageUrl: null,
+      linkUrl: null,
+      altText: "",
+      isCustom: false,
+      fallbackImage: null,
       slotKey,
-      bannerId: customBanner._id || customBanner.id || null,
+      bannerId: null,
     };
   }
 
   return {
-    imageUrl: defaultSlot.defaultImage,
-    mobileImageUrl: defaultSlot.defaultImage,
-    linkUrl: defaultSlot.defaultLink,
-    altText: defaultSlot.defaultAlt,
-    isCustom: false,
-    fallbackImage: defaultSlot.defaultImage,
+    imageUrl: customBanner.imageUrl,
+    mobileImageUrl: customBanner.mobileImageUrl || customBanner.imageUrl,
+    linkUrl: customBanner.linkUrl || "/shop",
+    altText: customBanner.altText || customBanner.title || "Buybox Promotional Banner",
+    isCustom: true,
+    fallbackImage: null,
     slotKey,
-    bannerId: null,
+    bannerId: customBanner._id || customBanner.id || null,
   };
 }
 
@@ -85,7 +72,7 @@ export function useBannerSlot(banners, slotKey) {
   const [failedUrl, setFailedUrl] = useState(null);
 
   const isFailed = failedUrl === resolved.imageUrl;
-  const src = isFailed ? resolved.fallbackImage : resolved.imageUrl;
+  const src = isFailed ? null : resolved.imageUrl;
 
   const handleImageError = useCallback(() => {
     setFailedUrl(resolved.imageUrl);

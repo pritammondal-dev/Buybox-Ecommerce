@@ -356,7 +356,7 @@ const listVendors = async (query = {}) => {
     .sort({ [sortField]: sortDirection })
     .skip(skip)
     .limit(safeLimit)
-    .populate("userId", "firstName lastName email avatar role isActive createdAt")
+    .populate("userId", "firstName lastName email avatar role isActive createdAt phone")
     .populate("approvedBy", "firstName lastName email")
     .populate("rejectedBy", "firstName lastName email")
     .populate("changesRequestedBy", "firstName lastName email")
