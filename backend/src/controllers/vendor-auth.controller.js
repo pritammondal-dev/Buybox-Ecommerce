@@ -47,21 +47,12 @@ const login = asyncHandler(async (req, res) => {
     throw new AppError("Invalid email or password", 401, "INVALID_CREDENTIALS");
   }
 
-  if (!user.isActive) {
-    throw new AppError("User account is inactive", 403, "ACCOUNT_INACTIVE");
-  }
-
-  // Reject Customer accounts
-  if (user.role === ROLES.CUSTOMER) {
-    throw new AppError(
-      "Your account is registered as a Customer. Please sign in with your Seller account credentials or apply as a new vendor.",
-      403,
-      "CUSTOMER_ACCESS_DENIED"
-    );
+  if (!user.isActive || user.deletedAt) {
+    throw new AppError("User account is inactive or deactivated", 403, "ACCOUNT_INACTIVE");
   }
 
   // Reject internal staff accounts
-  if ([ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.EDITOR].includes(user.role)) {
+  if ([ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.EDITOR, ROLES.SUPPORT, ROLES.MANAGER].includes(user.role)) {
     throw new AppError(
       "Access restricted. Internal staff accounts cannot sign in through the vendor portal.",
       403,
@@ -69,22 +60,38 @@ const login = asyncHandler(async (req, res) => {
     );
   }
 
-  // Require Vendor role
-  if (user.role !== ROLES.VENDOR) {
+  // Require linked Vendor profile (permits shared Customer/Vendor identities)
+  const vendor = await Vendor.findOne({ userId: user._id });
+  if (!vendor) {
     throw new AppError(
-      "Access restricted. Vendor credentials required.",
+      "No seller account found for these credentials. Please register your store to apply as a vendor.",
       403,
-      "INSUFFICIENT_ROLE"
+      "VENDOR_PROFILE_REQUIRED"
     );
   }
 
-  const vendor = await Vendor.findOne({ userId: user._id });
+  if (vendor.deletedAt || vendor.onboardingStatus === "inactive") {
+    throw new AppError(
+      "Vendor account has been deactivated. Please contact platform administration.",
+      403,
+      "VENDOR_DEACTIVATED"
+    );
+  }
+
+  if (!vendor.isActive || vendor.onboardingStatus === "suspended") {
+    throw new AppError(
+      "Vendor account is suspended. Access to the merchant center is disabled.",
+      403,
+      "VENDOR_SUSPENDED"
+    );
+  }
 
   // Generate tokens with vendor context and audience
   const accessToken = generateAccessToken(
     {
       sub: user._id.toString(),
-      role: user.role,
+      role: ROLES.VENDOR,
+      roles: user.roles || [ROLES.CUSTOMER, ROLES.VENDOR],
       authVersion: user.authVersion || 1,
       permissionVersion: user.permissionVersion || 1,
     },
@@ -136,7 +143,8 @@ const login = asyncHandler(async (req, res) => {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        role: user.role,
+        role: ROLES.VENDOR,
+        roles: user.roles || [ROLES.CUSTOMER, ROLES.VENDOR],
         isEmailVerified: Boolean(user.isEmailVerified),
         vendor: vendor
           ? {

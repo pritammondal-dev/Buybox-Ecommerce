@@ -1,0 +1,76 @@
+[
+  {
+    "v": 2,
+    "key": {
+      "_id": 1
+    },
+    "name": "_id_"
+  },
+  {
+    "v": 2,
+    "key": {
+      "transferNumber": 1
+    },
+    "name": "transferNumber_1",
+    "unique": true
+  },
+  {
+    "v": 2,
+    "key": {
+      "sourceWarehouseId": 1
+    },
+    "name": "sourceWarehouseId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "destinationWarehouseId": 1
+    },
+    "name": "destinationWarehouseId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "status": 1
+    },
+    "name": "status_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "createdBy": 1
+    },
+    "name": "createdBy_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "sourceWarehouseId": 1,
+      "status": 1
+    },
+    "name": "sourceWarehouseId_1_status_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "destinationWarehouseId": 1,
+      "status": 1
+    },
+    "name": "destinationWarehouseId_1_status_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "status": 1,
+      "createdAt": -1
+    },
+    "name": "status_1_createdAt_-1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "idempotencyKey": 1
+    },
+    "name": "idempotencyKey_1"
+  }
+]

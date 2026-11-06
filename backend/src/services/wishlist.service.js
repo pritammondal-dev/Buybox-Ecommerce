@@ -119,6 +119,16 @@ const getWishlist = async (userId) => {
 };
 
 const addItem = async (userId, { productId, productVariantId = null }) => {
+  const { isFeatureEnabled } = require("./storefront-settings.service");
+  const wishlistEnabled = await isFeatureEnabled("wishlist");
+  if (!wishlistEnabled) {
+    throw new AppError(
+      "Customer wishlist is currently disabled by platform administration",
+      403,
+      "WISHLIST_DISABLED"
+    );
+  }
+
   const customer = await validateCustomer(userId);
   const product = await validateProduct(productId);
 

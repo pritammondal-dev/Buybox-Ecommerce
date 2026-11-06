@@ -45,6 +45,15 @@ export default async function OffersPage() {
   return (
     <Suspense fallback={<OffersFallback />}>
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 space-y-10">
+        {/* Breadcrumb Navigation */}
+        <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Link href="/" className="hover:text-[#004D38] transition-colors">Home</Link>
+          <span>/</span>
+          <Link href="/campaigns" className="hover:text-[#004D38] transition-colors">Campaigns</Link>
+          <span>/</span>
+          <span className="font-bold text-slate-900">Special Offers</span>
+        </nav>
+
         {/* Banner */}
         <div className="rounded-3xl bg-gradient-to-br from-[#004D38] via-[#006346] to-slate-900 p-8 sm:p-12 text-white shadow-lg space-y-3">
           <div className="inline-flex items-center gap-2 rounded-full bg-amber-400/20 px-3.5 py-1 text-xs font-black uppercase tracking-wider text-amber-300 border border-amber-300/30">
@@ -107,6 +116,9 @@ export default async function OffersPage() {
               <Sparkles className="size-5 text-amber-500" />
               <span>Ongoing Seasonal Events ({campaigns.length})</span>
             </h2>
+            <Link href="/campaigns" className="text-xs font-bold text-[#004D38] hover:underline">
+              View All Campaigns
+            </Link>
           </div>
 
           {campaigns.length === 0 ? (
@@ -118,15 +130,28 @@ export default async function OffersPage() {
               {campaigns.map((camp) => (
                 <div
                   key={camp._id || camp.slug}
-                  className="flex flex-col justify-between rounded-2xl border bg-white p-6 shadow-xs hover:border-[#004D38] transition-colors"
+                  className="flex flex-col justify-between overflow-hidden rounded-2xl border bg-white shadow-xs hover:border-[#004D38] transition-colors"
                 >
-                  <div className="space-y-2">
-                    <h3 className="text-base font-black text-slate-900">{camp.name}</h3>
+                  {camp.bannerUrl && (
+                    <Link href={`/campaign/${camp.slug}`} className="block relative h-36 w-full overflow-hidden bg-slate-100">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={camp.bannerUrl}
+                        alt={camp.name}
+                        className="size-full object-cover hover:scale-105 transition-transform duration-300"
+                        loading="lazy"
+                      />
+                    </Link>
+                  )}
+                  <div className="p-6 space-y-2">
+                    <Link href={`/campaign/${camp.slug}`} className="hover:text-[#004D38] transition-colors">
+                      <h3 className="text-base font-black text-slate-900">{camp.name}</h3>
+                    </Link>
                     <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
                       {camp.description || "Limited-time deals on selected brand collections."}
                     </p>
                   </div>
-                  <div className="pt-4 mt-4 border-t flex items-center justify-between">
+                  <div className="px-6 pb-6 pt-2 border-t border-slate-100 flex items-center justify-between">
                     <span className="text-xs text-slate-500 font-medium">
                       {camp.productIds?.length || 0} Products
                     </span>

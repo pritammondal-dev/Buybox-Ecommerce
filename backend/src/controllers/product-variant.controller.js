@@ -85,11 +85,40 @@ const createBulkVariants = asyncHandler(async (req, res) => {
   });
 });
 
+const updateBulkVariants = asyncHandler(async (req, res) => {
+  const variants = await productVariantService.updateBulkVariants({
+    productId: req.params.productId,
+    updates: req.body.updates,
+    actor: req.user,
+    req,
+  });
+
+  return sendSuccess(res, {
+    message: `${variants.length} product variants updated successfully`,
+    data: { variants },
+  });
+});
+
+const restoreProductVariant = asyncHandler(async (req, res) => {
+  const variant = await productVariantService.restoreProductVariant({
+    id: req.params.id,
+    actor: req.user,
+    req,
+  });
+
+  return sendSuccess(res, {
+    message: "Product variant restored successfully",
+    data: { variant },
+  });
+});
+
 module.exports = {
   createProductVariant,
   getProductVariant,
   listProductVariants,
   updateProductVariant,
   deleteProductVariant,
+  restoreProductVariant,
   createBulkVariants,
+  updateBulkVariants,
 };

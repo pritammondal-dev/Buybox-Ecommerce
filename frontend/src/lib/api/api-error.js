@@ -101,7 +101,7 @@ export function normalizeApiError(error) {
       status,
       code,
       requestId,
-      details: data?.data || data?.errors || null,
+      details: data?.details || data?.data || data?.errors || null,
       rawError: error,
     });
   }

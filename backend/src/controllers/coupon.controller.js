@@ -1,11 +1,16 @@
 const couponService = require("../services/coupon.service");
 const Customer = require("../models/Customer");
+const Coupon = require("../models/Coupon");
 const AppError = require("../errors/AppError");
 const apiResponse = require("../utils/apiResponse");
+const { isFeatureEnabled } = require("../services/storefront-settings.service");
 
 const createCoupon = async (req, res, next) => {
   try {
-    const coupon = await couponService.createCoupon(req.body);
+    const coupon = await couponService.createCoupon({
+      ...req.body,
+      actorId: req.user?.id,
+    });
 
     return apiResponse.sendSuccess(res, {
       statusCode: 201,
@@ -49,7 +54,10 @@ const updateCoupon = async (req, res, next) => {
   try {
     const coupon = await couponService.updateCoupon(
       req.params.couponId,
-      req.body
+      {
+        ...req.body,
+        actorId: req.user?.id,
+      }
     );
 
     return apiResponse.sendSuccess(res, {
@@ -64,7 +72,8 @@ const updateCoupon = async (req, res, next) => {
 const activateCoupon = async (req, res, next) => {
   try {
     const coupon = await couponService.activateCoupon(
-      req.params.couponId
+      req.params.couponId,
+      req.user?.id
     );
 
     return apiResponse.sendSuccess(res, {
@@ -79,11 +88,28 @@ const activateCoupon = async (req, res, next) => {
 const deactivateCoupon = async (req, res, next) => {
   try {
     const coupon = await couponService.deactivateCoupon(
-      req.params.couponId
+      req.params.couponId,
+      req.user?.id
     );
 
     return apiResponse.sendSuccess(res, {
       message: "Coupon deactivated successfully",
+      data: coupon,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const deleteCoupon = async (req, res, next) => {
+  try {
+    const coupon = await couponService.deleteCoupon(
+      req.params.couponId,
+      req.user?.id
+    );
+
+    return apiResponse.sendSuccess(res, {
+      message: "Coupon archived successfully",
       data: coupon,
     });
   } catch (error) {
@@ -128,29 +154,50 @@ const validateCoupon = async (req, res, next) => {
   }
 };
 
-const Coupon = require("../models/Coupon");
-
 const getActiveCoupons = async (req, res, next) => {
   try {
+    const couponsEnabled = await isFeatureEnabled("coupons");
+    if (!couponsEnabled) {
+      return apiResponse.sendSuccess(res, {
+        message: "Coupons feature currently disabled",
+        data: [],
+      });
+    }
+
     const now = new Date();
     const coupons = await Coupon.find({
       status: "active",
       isActive: true,
+      deletedAt: null,
       startsAt: { $lte: now },
       expiresAt: { $gte: now },
     })
-      .select("code title description discountType discountAmount minOrderAmount maxDiscountAmount scope startsAt expiresAt")
-      .sort({ discountAmount: -1 })
+      .select("code description type value minOrderAmount maxDiscountAmount scope startsAt expiresAt usageLimit usageCount perCustomerLimit")
+      .sort({ createdAt: -1 })
       .lean();
+
+    const formatted = coupons.map((c) => {
+      const valStr = c.value?.toString() || "0";
+      const minStr = c.minOrderAmount?.toString() || "0";
+      const maxStr = c.maxDiscountAmount?.toString() || null;
+
+      return {
+        ...c,
+        value: valStr,
+        discountValue: Number(valStr),
+        discountAmount: valStr,
+        discountType: c.type,
+        minOrderAmount: Number(minStr),
+        maxDiscount: maxStr ? Number(maxStr) : null,
+        maxDiscountAmount: maxStr,
+        validUntil: c.expiresAt,
+        title: c.code,
+      };
+    });
 
     return apiResponse.sendSuccess(res, {
       message: "Active coupons retrieved successfully",
-      data: coupons.map((c) => ({
-        ...c,
-        discountAmount: c.discountAmount?.toString(),
-        minOrderAmount: c.minOrderAmount?.toString(),
-        maxDiscountAmount: c.maxDiscountAmount?.toString(),
-      })),
+      data: formatted,
     });
   } catch (error) {
     return next(error);
@@ -164,6 +211,7 @@ module.exports = {
   updateCoupon,
   activateCoupon,
   deactivateCoupon,
+  deleteCoupon,
   validateCoupon,
   getActiveCoupons,
 };

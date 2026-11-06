@@ -30,28 +30,28 @@ router.use(authenticate);
 
 router.get(
   "/",
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   validate(storefrontBannerListQuerySchema, "query"),
   storefrontBannerController.listBanners
 );
 
 router.get(
   "/:bannerId",
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   validate(storefrontBannerIdParamsSchema, "params"),
   storefrontBannerController.getBannerById
 );
 
 router.post(
   "/",
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_CREATE),
   validate(createStorefrontBannerSchema),
   storefrontBannerController.createBanner
 );
 
 router.patch(
   "/:bannerId",
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_EDIT),
   validate(storefrontBannerIdParamsSchema, "params"),
   validate(updateStorefrontBannerSchema),
   storefrontBannerController.updateBanner
@@ -59,7 +59,7 @@ router.patch(
 
 router.delete(
   "/:bannerId",
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_DELETE),
   validate(storefrontBannerIdParamsSchema, "params"),
   storefrontBannerController.deleteBanner
 );

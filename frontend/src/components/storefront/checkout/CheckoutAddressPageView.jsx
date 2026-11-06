@@ -7,6 +7,7 @@ import { Plus, MapPin, ArrowRight, ShieldCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../../hooks/useAuth.js";
 import { useCart } from "../../../hooks/useCart.js";
+import { useStorefrontSettings } from "../../../hooks/useStorefrontSettings.js";
 import { useCheckoutStore } from "../../../stores/checkout.store.js";
 import { addressService } from "../../../services/address.service.js";
 import { useAddressStore } from "../../../stores/address.store.js";
@@ -21,6 +22,8 @@ import { Button } from "../../ui/Button.jsx";
 export function CheckoutAddressPageView() {
   const router = useRouter();
   const { isAuthenticated, isInitialized } = useAuth();
+  const { isFeatureEnabled } = useStorefrontSettings();
+  const guestCheckoutEnabled = isFeatureEnabled("guestCheckout");
   const { items = [], subtotal = 0, isHydrated } = useCart();
   const {
     selectedAddressId,
@@ -166,14 +169,24 @@ export function CheckoutAddressPageView() {
           </div>
           <h2 className="text-lg font-black text-slate-900">Sign in to Checkout</h2>
           <p className="text-xs text-slate-600">
-            Please log in to your Buybox account to access your saved delivery addresses.
+            {guestCheckoutEnabled
+              ? "Sign in to access your saved delivery addresses, or continue as guest to complete your purchase."
+              : "Guest checkout is currently disabled. Please log in or create an account to securely access your saved delivery addresses. Your cart items are preserved."}
           </p>
-          <Link
-            href="/auth/login?redirect=/checkout/address"
-            className="block w-full rounded-full bg-[#004D38] hover:bg-[#003D2C] py-3 text-xs font-bold text-white shadow-sm transition-all"
-          >
-            Sign In to Continue
-          </Link>
+          <div className="flex flex-col gap-2.5 pt-2">
+            <Link
+              href="/auth/login?redirect=/checkout"
+              className="block w-full rounded-full bg-[#004D38] hover:bg-[#003D2C] py-3 text-xs font-bold text-white shadow-sm transition-all"
+            >
+              Sign In to Continue
+            </Link>
+            <Link
+              href="/auth/register?redirect=/checkout"
+              className="block w-full rounded-full border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 py-3 text-xs font-bold shadow-xs transition-all"
+            >
+              Create an Account
+            </Link>
+          </div>
         </div>
       </div>
     );

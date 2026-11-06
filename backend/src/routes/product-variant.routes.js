@@ -19,6 +19,11 @@ const {
   updateProductVariantSchema,
 } = require("../validators/catalog/update-product-variant.validator");
 
+const {
+  createBulkVariantsSchema,
+  updateBulkVariantsSchema,
+} = require("../validators/catalog/bulk-variant.validator");
+
 const router = express.Router();
 
 router.use(authenticate);
@@ -49,7 +54,16 @@ router.post(
 router.post(
   "/product/:productId/bulk",
   requirePermissions(PERMISSIONS.PRODUCTS_CREATE),
+  validate(createBulkVariantsSchema),
   productVariantController.createBulkVariants
+);
+
+// Update bulk variants
+router.patch(
+  "/product/:productId/bulk",
+  requirePermissions(PERMISSIONS.PRODUCTS_UPDATE),
+  validate(updateBulkVariantsSchema),
+  productVariantController.updateBulkVariants
 );
 
 // Update variant
@@ -58,6 +72,13 @@ router.patch(
   requirePermissions(PERMISSIONS.PRODUCTS_UPDATE),
   validate(updateProductVariantSchema),
   productVariantController.updateProductVariant
+);
+
+// Restore variant
+router.post(
+  "/:id/restore",
+  requirePermissions(PERMISSIONS.PRODUCTS_UPDATE),
+  productVariantController.restoreProductVariant
 );
 
 // Delete variant

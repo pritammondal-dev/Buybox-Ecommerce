@@ -130,8 +130,8 @@ export default function AdminSettlementDetailPage() {
         </div>
       </div>
 
-      {/* Vendor Profile & Bank Overview */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+      {/* Vendor Profile & Payout Destination Overview */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">
             Merchant Partner
@@ -143,15 +143,58 @@ export default function AdminSettlementDetailPage() {
           <p className="text-xs text-slate-500 mt-0.5">{vendor.email} • {vendor.phone || "No phone"}</p>
         </div>
 
-        {vendor.bankAccount && (
-          <div className="text-right text-xs">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-              Bank Details
-            </span>
-            <span className="font-mono text-slate-800 font-semibold">{vendor.bankAccount.accountNumber}</span>
-            <span className="text-slate-500 block font-mono text-[11px]">{vendor.bankAccount.ifscCode}</span>
-          </div>
-        )}
+        {/* Authoritative Destination Snapshot & Current Account Details */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 text-xs">
+          {settlement.payoutDestination ? (
+            <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-3 text-right">
+              <div className="flex items-center justify-end gap-1.5 mb-1">
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  Payout Destination Snapshot
+                </span>
+              </div>
+              <p className="font-bold text-slate-800">{settlement.payoutDestination.bankName || "Bank Destination"}</p>
+              <p className="font-mono text-slate-800 font-semibold">
+                {settlement.payoutDestination.accountNumberMasked || settlement.payoutDestination.accountNumber}
+              </p>
+              <p className="font-mono text-slate-500 text-[11px]">IFSC: {settlement.payoutDestination.ifscCode}</p>
+              {settlement.payoutDestination.snapshotAt && (
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  Snapshotted: {new Date(settlement.payoutDestination.snapshotAt).toLocaleDateString("en-IN")}
+                </p>
+              )}
+            </div>
+          ) : settlement.currentActiveBank ? (
+            <div className="bg-blue-50/60 border border-blue-200/80 rounded-2xl p-3 text-right">
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 block mb-1">
+                Active Bank (Pending Disbursement)
+              </span>
+              <p className="font-bold text-slate-800">{settlement.currentActiveBank.bankName}</p>
+              <p className="font-mono text-slate-800 font-semibold">{settlement.currentActiveBank.accountNumberMasked}</p>
+              <p className="font-mono text-slate-500 text-[11px]">IFSC: {settlement.currentActiveBank.ifscCode}</p>
+            </div>
+          ) : vendor.bankAccount ? (
+            <div className="text-right">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                Bank Details
+              </span>
+              <span className="font-mono text-slate-800 font-semibold">
+                {vendor.bankAccount.accountNumberMasked || vendor.bankAccount.accountNumber}
+              </span>
+              <span className="text-slate-500 block font-mono text-[11px]">{vendor.bankAccount.ifscCode}</span>
+            </div>
+          ) : null}
+
+          {/* Historical destination vs current active bank difference indicator */}
+          {settlement.payoutDestination && settlement.currentActiveBank && 
+           String(settlement.payoutDestination.bankAccountId) !== String(settlement.currentActiveBank._id) && (
+            <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-3 text-[11px] text-amber-900 max-w-[220px]">
+              <span className="font-bold block text-[10px] uppercase tracking-wide text-amber-800 mb-0.5">
+                Notice: Account Switched
+              </span>
+              Active account is now {settlement.currentActiveBank.bankName} ({settlement.currentActiveBank.accountNumberMasked}). Statement retains original payout snapshot.
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Accounting Breakdown */}
@@ -179,6 +222,17 @@ export default function AdminSettlementDetailPage() {
               -₹{Number(settlement.discounts || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
             </span>
           </div>
+
+          {Number(settlement.platformSubsidy || 0) > 0 && (
+            <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200/80">
+              <span className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider block mb-1">
+                Platform Promo Subsidy
+              </span>
+              <span className="text-xl font-black text-indigo-700">
+                +₹{Number(settlement.platformSubsidy || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+              </span>
+            </div>
+          )}
 
           <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/60">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">

@@ -2,6 +2,7 @@ const RefreshToken = require("../models/RefreshToken");
 const User = require("../models/User");
 const Employee = require("../models/Employee");
 const AppError = require("../errors/AppError");
+const { ADMIN_INACTIVITY_TIMEOUT_MS } = require("../constants/auth.constants");
 
 const {
   verifyRefreshToken,
@@ -109,9 +110,9 @@ const rotateRefreshToken = async ({
     );
   }
 
-  if (!user.isActive) {
+  if (!user.isActive || user.deletedAt) {
     throw new AppError(
-      "User account is inactive",
+      "User account is inactive or deactivated",
       403,
       "ACCOUNT_INACTIVE"
     );
@@ -125,17 +126,36 @@ const rotateRefreshToken = async ({
     );
   }
 
-  // If administrator session, ensure employee status is active
-  if (expectedContext === "administrator" || decoded.context === "administrator") {
-    const employee = await Employee.findOne({ userId: user._id });
-    if (employee && employee.status !== "active") {
-      throw new AppError(
-        "Staff member account is suspended or terminated",
-        403,
-        "STAFF_SUSPENDED"
-      );
+    // If administrator session, ensure employee status is active and enforce 30-minute inactivity
+    if (expectedContext === "administrator" || decoded.context === "administrator") {
+      const employee = await Employee.findOne({ userId: user._id });
+      if (employee && employee.status !== "active") {
+        throw new AppError(
+          "Staff member account is suspended or terminated",
+          403,
+          "STAFF_SUSPENDED"
+        );
+      }
+
+      if (user.adminLastActiveAt) {
+        const elapsed = Date.now() - new Date(user.adminLastActiveAt).getTime();
+        if (elapsed > ADMIN_INACTIVITY_TIMEOUT_MS) {
+          storedToken.revokedAt = new Date();
+          storedToken.revokedByIp = ipAddress;
+          await storedToken.save();
+
+          throw new AppError(
+            "Administrator session has expired due to inactivity. Please log in again.",
+            401,
+            "ADMIN_INACTIVITY_TIMEOUT"
+          );
+        }
+      } else {
+        // Initialize if not previously set
+        user.adminLastActiveAt = new Date();
+        await user.save();
+      }
     }
-  }
 
   const sessionContext = decoded.context || expectedContext;
 

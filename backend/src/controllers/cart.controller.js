@@ -2,7 +2,7 @@ const cartService = require("../services/cart.service");
 const apiResponse = require("../utils/apiResponse");
 
 const getCart = async (req, res) => {
-  const cart = await cartService.getCart(req.user.id);
+  const cart = await cartService.getCart(req.user);
 
   return apiResponse.sendSuccess(res, {
     message: "Cart retrieved successfully",
@@ -14,7 +14,7 @@ const addItem = async (req, res) => {
   const { productVariantId, productId, quantity } = req.body;
 
   const cart = await cartService.addItem(
-    req.user.id,
+    req.user,
     { productVariantId, productId },
     quantity
   );
@@ -26,12 +26,11 @@ const addItem = async (req, res) => {
   });
 };
 
-
 const updateItemQuantity = async (req, res) => {
   const { productVariantId, quantity } = req.body;
 
   const cart = await cartService.updateItemQuantity(
-    req.user.id,
+    req.user,
     productVariantId,
     quantity
   );
@@ -46,7 +45,7 @@ const removeItem = async (req, res) => {
   const { productVariantId } = req.body;
 
   const cart = await cartService.removeItem(
-    req.user.id,
+    req.user,
     productVariantId
   );
 
@@ -57,7 +56,7 @@ const removeItem = async (req, res) => {
 };
 
 const clearCart = async (req, res) => {
-  const cart = await cartService.clearCart(req.user.id);
+  const cart = await cartService.clearCart(req.user);
 
   return apiResponse.sendSuccess(res, {
     message: "Cart cleared successfully",
@@ -66,10 +65,20 @@ const clearCart = async (req, res) => {
 };
 
 const recoverCart = async (req, res) => {
-  const cart = await cartService.recoverCart(req.user.id);
+  const cart = await cartService.recoverCart(req.user);
 
   return apiResponse.sendSuccess(res, {
     message: "Cart recovered successfully",
+    data: cart,
+  });
+};
+
+const mergeCart = async (req, res) => {
+  const guestId = req.body?.guestId || req.guestId || (req.user?.isGuest ? req.user.guestId : null);
+  const cart = await cartService.migrateGuestCartToServer(req.user.id, guestId);
+
+  return apiResponse.sendSuccess(res, {
+    message: "Cart merged successfully",
     data: cart,
   });
 };
@@ -81,4 +90,5 @@ module.exports = {
   removeItem,
   clearCart,
   recoverCart,
+  mergeCart,
 };

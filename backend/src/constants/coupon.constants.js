@@ -7,6 +7,7 @@ const COUPON_STATUSES = Object.freeze({
   ACTIVE: "active",
   INACTIVE: "inactive",
   EXPIRED: "expired",
+  ARCHIVED: "archived",
 });
 
 const COUPON_SCOPE_TYPES = Object.freeze({

@@ -63,12 +63,13 @@ describe("Banner Slot Artwork Resolver Contract Tests", () => {
     assert.strictEqual(resolvedNull.imageUrl, BANNER_SLOT_MAP.hero_brand_deals.defaultImage);
   });
 
-  it("3. Priority 2: falls back to local asset when banner is inactive (isActive: false)", () => {
+  it("3. Deactivated banner (isActive: false) is hidden completely (isVisible: false, imageUrl: null)", () => {
     const resolved = resolveBannerSlot(mockApiBanners, "hero_smart_home");
 
     assert.strictEqual(resolved.isCustom, false);
-    assert.strictEqual(resolved.imageUrl, BANNER_SLOT_MAP.hero_smart_home.defaultImage);
-    assert.strictEqual(resolved.linkUrl, BANNER_SLOT_MAP.hero_smart_home.defaultLink);
+    assert.strictEqual(resolved.isActive, false);
+    assert.strictEqual(resolved.isVisible, false);
+    assert.strictEqual(resolved.imageUrl, null);
   });
 
   it("4. Priority 2: falls back to local asset when custom imageUrl is empty or invalid", () => {

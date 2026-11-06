@@ -80,6 +80,11 @@ const slotKeyField = z
 const createStorefrontBannerSchema = z.object({
   title: z.string().trim().min(1).max(200),
 
+  subtitle: z.string().trim().max(300).nullable().optional(),
+  ctaText: z.string().trim().max(50).nullable().optional(),
+  badge: z.string().trim().max(50).nullable().optional(),
+  campaignId: objectId.nullable().optional(),
+
   slotKey: slotKeyField,
 
   placement: slotKeyField,
@@ -115,6 +120,11 @@ const createStorefrontBannerSchema = z.object({
 const updateStorefrontBannerSchema = z
   .object({
     title: z.string().trim().min(1).max(200).optional(),
+
+    subtitle: z.string().trim().max(300).nullable().optional(),
+    ctaText: z.string().trim().max(50).nullable().optional(),
+    badge: z.string().trim().max(50).nullable().optional(),
+    campaignId: objectId.nullable().optional(),
 
     slotKey: slotKeyField,
 

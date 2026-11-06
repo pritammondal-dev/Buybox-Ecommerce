@@ -1,0 +1,1243 @@
+{
+  "inventory": {
+    "referenced": [],
+    "orphans": [
+      {
+        "filename": "media_1790334295218_37c28cd1.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1790334295218_37c28cd1.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1790334295218_37c28cd1.png"
+      },
+      {
+        "filename": "media_1790334344355_9f8c656a.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1790334344355_9f8c656a.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1790334344355_9f8c656a.png"
+      },
+      {
+        "filename": "media_1790334521998_4e5f6f46.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1790334521998_4e5f6f46.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1790334521998_4e5f6f46.png"
+      },
+      {
+        "filename": "media_1790334571490_d0c4fba7.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1790334571490_d0c4fba7.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1790334571490_d0c4fba7.png"
+      },
+      {
+        "filename": "media_1790334622205_47d01b22.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1790334622205_47d01b22.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1790334622205_47d01b22.png"
+      },
+      {
+        "filename": "media_1790334713092_a579269c.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1790334713092_a579269c.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1790334713092_a579269c.png"
+      },
+      {
+        "filename": "media_1790655930393_d99ff3fd.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1790655930393_d99ff3fd.png",
+        "size": 650000,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1790655930393_d99ff3fd.png"
+      },
+      {
+        "filename": "media_1790655992359_fec73d6f.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1790655992359_fec73d6f.png",
+        "size": 523548,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1790655992359_fec73d6f.png"
+      },
+      {
+        "filename": "media_1791701460384_1e5b2611.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1791701460384_1e5b2611.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1791701460384_1e5b2611.png"
+      },
+      {
+        "filename": "media_1791701518140_6f4bcca9.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1791701518140_6f4bcca9.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1791701518140_6f4bcca9.png"
+      },
+      {
+        "filename": "media_1793078813243_c5ee2a35.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793078813243_c5ee2a35.png",
+        "size": 12,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793078813243_c5ee2a35.png"
+      },
+      {
+        "filename": "media_1793078813248_372e841f.ico",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793078813248_372e841f.ico",
+        "size": 8,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793078813248_372e841f.ico"
+      },
+      {
+        "filename": "media_1793078844692_cffa09df.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793078844692_cffa09df.png",
+        "size": 12,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793078844692_cffa09df.png"
+      },
+      {
+        "filename": "media_1793078844698_ea534325.ico",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793078844698_ea534325.ico",
+        "size": 8,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793078844698_ea534325.ico"
+      },
+      {
+        "filename": "media_1793078880235_0457ceb8.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793078880235_0457ceb8.png",
+        "size": 12,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793078880235_0457ceb8.png"
+      },
+      {
+        "filename": "media_1793078880241_d46b2990.ico",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793078880241_d46b2990.ico",
+        "size": 8,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793078880241_d46b2990.ico"
+      },
+      {
+        "filename": "media_1793079023021_1821e934.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793079023021_1821e934.png",
+        "size": 12,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793079023021_1821e934.png"
+      },
+      {
+        "filename": "media_1793079023026_b42fa1aa.ico",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793079023026_b42fa1aa.ico",
+        "size": 8,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793079023026_b42fa1aa.ico"
+      },
+      {
+        "filename": "media_1793079191581_011cd278.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793079191581_011cd278.png",
+        "size": 12,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793079191581_011cd278.png"
+      },
+      {
+        "filename": "media_1793079191587_a2e8c005.ico",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793079191587_a2e8c005.ico",
+        "size": 8,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793079191587_a2e8c005.ico"
+      },
+      {
+        "filename": "media_1793079547036_8338eae4.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793079547036_8338eae4.png",
+        "size": 1140505,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793079547036_8338eae4.png"
+      },
+      {
+        "filename": "media_1793079593617_3e5668e6.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793079593617_3e5668e6.png",
+        "size": 1140505,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793079593617_3e5668e6.png"
+      },
+      {
+        "filename": "media_1793081008593_ef338e25.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793081008593_ef338e25.png",
+        "size": 12,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793081008593_ef338e25.png"
+      },
+      {
+        "filename": "media_1793081008600_3381a4a7.ico",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793081008600_3381a4a7.ico",
+        "size": 8,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793081008600_3381a4a7.ico"
+      },
+      {
+        "filename": "media_1793081131154_6e9d6fc6.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793081131154_6e9d6fc6.png",
+        "size": 12,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793081131154_6e9d6fc6.png"
+      },
+      {
+        "filename": "media_1793081131168_8a4e0ad2.ico",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793081131168_8a4e0ad2.ico",
+        "size": 8,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793081131168_8a4e0ad2.ico"
+      },
+      {
+        "filename": "media_1793083663275_f6d00f32.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793083663275_f6d00f32.png",
+        "size": 12,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793083663275_f6d00f32.png"
+      },
+      {
+        "filename": "media_1793083663281_e47fafa7.ico",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793083663281_e47fafa7.ico",
+        "size": 8,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793083663281_e47fafa7.ico"
+      },
+      {
+        "filename": "media_1793083742064_e063c573.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793083742064_e063c573.png",
+        "size": 12,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793083742064_e063c573.png"
+      },
+      {
+        "filename": "media_1793083742070_084fb016.ico",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793083742070_084fb016.ico",
+        "size": 8,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793083742070_084fb016.ico"
+      },
+      {
+        "filename": "media_1793087459018_35ac5d70.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793087459018_35ac5d70.png",
+        "size": 12,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793087459018_35ac5d70.png"
+      },
+      {
+        "filename": "media_1793087459027_6afbd784.ico",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793087459027_6afbd784.ico",
+        "size": 8,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793087459027_6afbd784.ico"
+      },
+      {
+        "filename": "media_1793092468883_7ad882c7.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793092468883_7ad882c7.png",
+        "size": 1776438,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793092468883_7ad882c7.png"
+      },
+      {
+        "filename": "media_1793099166741_9563cda4.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793099166741_9563cda4.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793099166741_9563cda4.png"
+      },
+      {
+        "filename": "media_1793099322514_3c2d6a99.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793099322514_3c2d6a99.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793099322514_3c2d6a99.png"
+      },
+      {
+        "filename": "media_1793100714694_aa45c44b.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793100714694_aa45c44b.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793100714694_aa45c44b.png"
+      },
+      {
+        "filename": "media_1793102339318_2e2cdfd8.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793102339318_2e2cdfd8.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793102339318_2e2cdfd8.png"
+      },
+      {
+        "filename": "media_1793104347093_79ec6526.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793104347093_79ec6526.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793104347093_79ec6526.png"
+      },
+      {
+        "filename": "media_1793161802797_f57170ed.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793161802797_f57170ed.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793161802797_f57170ed.png"
+      },
+      {
+        "filename": "media_1793162587058_82e2cf4c.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\media_1793162587058_82e2cf4c.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/media_1793162587058_82e2cf4c.png"
+      },
+      {
+        "filename": "product_1792124537468_be2a84da.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792124537468_be2a84da.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792124537468_be2a84da.png"
+      },
+      {
+        "filename": "product_1792124651900_98c4b6d7.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792124651900_98c4b6d7.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792124651900_98c4b6d7.png"
+      },
+      {
+        "filename": "product_1792124680939_c3fcb956.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792124680939_c3fcb956.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792124680939_c3fcb956.png"
+      },
+      {
+        "filename": "product_1792302761622_62807a92.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792302761622_62807a92.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792302761622_62807a92.png"
+      },
+      {
+        "filename": "product_1792305861317_457d8f62.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792305861317_457d8f62.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792305861317_457d8f62.png"
+      },
+      {
+        "filename": "product_1792314541064_28519d62.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792314541064_28519d62.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792314541064_28519d62.png"
+      },
+      {
+        "filename": "product_1792315170834_6fe30a12.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792315170834_6fe30a12.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792315170834_6fe30a12.png"
+      },
+      {
+        "filename": "product_1792315202331_f319228c.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792315202331_f319228c.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792315202331_f319228c.png"
+      },
+      {
+        "filename": "product_1792315455698_2c1e9f16.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792315455698_2c1e9f16.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792315455698_2c1e9f16.png"
+      },
+      {
+        "filename": "product_1792739520066_5e376fbc.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792739520066_5e376fbc.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792739520066_5e376fbc.png"
+      },
+      {
+        "filename": "product_1792740836713_87bfbbc3.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792740836713_87bfbbc3.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792740836713_87bfbbc3.png"
+      },
+      {
+        "filename": "product_1792745611407_91ea4d0b.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792745611407_91ea4d0b.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792745611407_91ea4d0b.jpg"
+      },
+      {
+        "filename": "product_1792745611652_0a54a636.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792745611652_0a54a636.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792745611652_0a54a636.png"
+      },
+      {
+        "filename": "product_1792745611656_8e32c203.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792745611656_8e32c203.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792745611656_8e32c203.png"
+      },
+      {
+        "filename": "product_1792745611659_1a0cf01b.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792745611659_1a0cf01b.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792745611659_1a0cf01b.png"
+      },
+      {
+        "filename": "product_1792745611662_8411aade.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792745611662_8411aade.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792745611662_8411aade.png"
+      },
+      {
+        "filename": "product_1792745611792_8198bbaf.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792745611792_8198bbaf.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792745611792_8198bbaf.jpg"
+      },
+      {
+        "filename": "product_1792745611841_3f5d2591.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792745611841_3f5d2591.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792745611841_3f5d2591.jpg"
+      },
+      {
+        "filename": "product_1792745612107_afd01127.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792745612107_afd01127.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792745612107_afd01127.png"
+      },
+      {
+        "filename": "product_1792745612339_f58e6fd6.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792745612339_f58e6fd6.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792745612339_f58e6fd6.png"
+      },
+      {
+        "filename": "product_1792745612440_82fde6fb.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792745612440_82fde6fb.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792745612440_82fde6fb.png"
+      },
+      {
+        "filename": "product_1792746038404_c1f7e2d5.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792746038404_c1f7e2d5.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792746038404_c1f7e2d5.jpg"
+      },
+      {
+        "filename": "product_1792746038653_641be263.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792746038653_641be263.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792746038653_641be263.png"
+      },
+      {
+        "filename": "product_1792746038656_474c9041.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792746038656_474c9041.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792746038656_474c9041.png"
+      },
+      {
+        "filename": "product_1792746038660_f30e50bb.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792746038660_f30e50bb.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792746038660_f30e50bb.png"
+      },
+      {
+        "filename": "product_1792746038663_f2d33c30.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792746038663_f2d33c30.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792746038663_f2d33c30.png"
+      },
+      {
+        "filename": "product_1792746038782_b6805b18.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792746038782_b6805b18.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792746038782_b6805b18.jpg"
+      },
+      {
+        "filename": "product_1792746038824_e1ff8534.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792746038824_e1ff8534.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792746038824_e1ff8534.jpg"
+      },
+      {
+        "filename": "product_1792746039069_803d0e86.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792746039069_803d0e86.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792746039069_803d0e86.png"
+      },
+      {
+        "filename": "product_1792746039276_460ad6dd.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792746039276_460ad6dd.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792746039276_460ad6dd.png"
+      },
+      {
+        "filename": "product_1792746039377_345f3f17.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792746039377_345f3f17.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792746039377_345f3f17.png"
+      },
+      {
+        "filename": "product_1792746039453_8ba366a2.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792746039453_8ba366a2.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792746039453_8ba366a2.png"
+      },
+      {
+        "filename": "product_1792750358373_6f8a9fcb.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792750358373_6f8a9fcb.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792750358373_6f8a9fcb.jpg"
+      },
+      {
+        "filename": "product_1792750358695_77090068.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792750358695_77090068.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792750358695_77090068.png"
+      },
+      {
+        "filename": "product_1792750358700_b3ec48d7.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792750358700_b3ec48d7.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792750358700_b3ec48d7.png"
+      },
+      {
+        "filename": "product_1792750358705_979d2468.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792750358705_979d2468.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792750358705_979d2468.png"
+      },
+      {
+        "filename": "product_1792750358709_33a9b097.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792750358709_33a9b097.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792750358709_33a9b097.png"
+      },
+      {
+        "filename": "product_1792750358864_2789c4e9.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792750358864_2789c4e9.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792750358864_2789c4e9.jpg"
+      },
+      {
+        "filename": "product_1792750358923_6879be7e.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792750358923_6879be7e.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792750358923_6879be7e.jpg"
+      },
+      {
+        "filename": "product_1792750359260_017edfbc.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792750359260_017edfbc.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792750359260_017edfbc.png"
+      },
+      {
+        "filename": "product_1792750362946_603afd7b.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792750362946_603afd7b.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792750362946_603afd7b.png"
+      },
+      {
+        "filename": "product_1792750363116_a39d2070.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792750363116_a39d2070.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792750363116_a39d2070.png"
+      },
+      {
+        "filename": "product_1792750363267_5406c022.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792750363267_5406c022.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792750363267_5406c022.png"
+      },
+      {
+        "filename": "product_1792750363928_0ad4ce77.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792750363928_0ad4ce77.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792750363928_0ad4ce77.png"
+      },
+      {
+        "filename": "product_1792750363991_88b1ec1c.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792750363991_88b1ec1c.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792750363991_88b1ec1c.png"
+      },
+      {
+        "filename": "product_1792751095612_5179620d.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751095612_5179620d.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751095612_5179620d.jpg"
+      },
+      {
+        "filename": "product_1792751095946_01a0eaaa.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751095946_01a0eaaa.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751095946_01a0eaaa.png"
+      },
+      {
+        "filename": "product_1792751095950_779e36c7.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751095950_779e36c7.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751095950_779e36c7.png"
+      },
+      {
+        "filename": "product_1792751095955_42009ec6.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751095955_42009ec6.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751095955_42009ec6.png"
+      },
+      {
+        "filename": "product_1792751095959_c2c3cb8f.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751095959_c2c3cb8f.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751095959_c2c3cb8f.png"
+      },
+      {
+        "filename": "product_1792751096143_4c68f05c.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751096143_4c68f05c.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751096143_4c68f05c.jpg"
+      },
+      {
+        "filename": "product_1792751096208_f02e4a5c.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751096208_f02e4a5c.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751096208_f02e4a5c.jpg"
+      },
+      {
+        "filename": "product_1792751096540_e07db954.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751096540_e07db954.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751096540_e07db954.png"
+      },
+      {
+        "filename": "product_1792751100007_1f649e0f.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751100007_1f649e0f.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751100007_1f649e0f.png"
+      },
+      {
+        "filename": "product_1792751100174_f4b27f96.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751100174_f4b27f96.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751100174_f4b27f96.png"
+      },
+      {
+        "filename": "product_1792751100304_6b9529d6.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751100304_6b9529d6.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751100304_6b9529d6.png"
+      },
+      {
+        "filename": "product_1792751100715_bca50328.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751100715_bca50328.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751100715_bca50328.png"
+      },
+      {
+        "filename": "product_1792751231891_ecce7974.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751231891_ecce7974.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751231891_ecce7974.jpg"
+      },
+      {
+        "filename": "product_1792751232222_a714bf26.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751232222_a714bf26.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751232222_a714bf26.png"
+      },
+      {
+        "filename": "product_1792751232227_5c4b57b9.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751232227_5c4b57b9.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751232227_5c4b57b9.png"
+      },
+      {
+        "filename": "product_1792751232232_3dd73f85.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751232232_3dd73f85.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751232232_3dd73f85.png"
+      },
+      {
+        "filename": "product_1792751232238_4674cc3c.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751232238_4674cc3c.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751232238_4674cc3c.png"
+      },
+      {
+        "filename": "product_1792751232419_3718fd15.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751232419_3718fd15.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751232419_3718fd15.jpg"
+      },
+      {
+        "filename": "product_1792751232489_44133821.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751232489_44133821.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751232489_44133821.jpg"
+      },
+      {
+        "filename": "product_1792751232872_9969ddb6.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751232872_9969ddb6.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751232872_9969ddb6.png"
+      },
+      {
+        "filename": "product_1792751236693_7c096a81.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751236693_7c096a81.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751236693_7c096a81.png"
+      },
+      {
+        "filename": "product_1792751236862_290fed9e.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751236862_290fed9e.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751236862_290fed9e.png"
+      },
+      {
+        "filename": "product_1792751236998_f0d3f513.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751236998_f0d3f513.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751236998_f0d3f513.png"
+      },
+      {
+        "filename": "product_1792751237414_ecda3221.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792751237414_ecda3221.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792751237414_ecda3221.png"
+      },
+      {
+        "filename": "product_1792752075223_3211b073.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792752075223_3211b073.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792752075223_3211b073.jpg"
+      },
+      {
+        "filename": "product_1792752075729_0ff2b29b.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792752075729_0ff2b29b.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792752075729_0ff2b29b.png"
+      },
+      {
+        "filename": "product_1792752075733_07504ee3.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792752075733_07504ee3.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792752075733_07504ee3.png"
+      },
+      {
+        "filename": "product_1792752075738_c67bde34.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792752075738_c67bde34.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792752075738_c67bde34.png"
+      },
+      {
+        "filename": "product_1792752075743_bd7f82e4.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792752075743_bd7f82e4.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792752075743_bd7f82e4.png"
+      },
+      {
+        "filename": "product_1792752075994_087606ce.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792752075994_087606ce.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792752075994_087606ce.jpg"
+      },
+      {
+        "filename": "product_1792752076085_636b4b59.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792752076085_636b4b59.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792752076085_636b4b59.jpg"
+      },
+      {
+        "filename": "product_1792752076675_319ddbe9.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792752076675_319ddbe9.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792752076675_319ddbe9.png"
+      },
+      {
+        "filename": "product_1792752080515_925ae6ad.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792752080515_925ae6ad.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792752080515_925ae6ad.png"
+      },
+      {
+        "filename": "product_1792752080783_86d811b0.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792752080783_86d811b0.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792752080783_86d811b0.png"
+      },
+      {
+        "filename": "product_1792752081002_7ca82615.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792752081002_7ca82615.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792752081002_7ca82615.png"
+      },
+      {
+        "filename": "product_1792752081869_168a9265.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792752081869_168a9265.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792752081869_168a9265.png"
+      },
+      {
+        "filename": "product_1792754899876_b772d84d.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792754899876_b772d84d.jpg",
+        "size": 17204,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792754899876_b772d84d.jpg"
+      },
+      {
+        "filename": "product_1792754899970_87bff9bd.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792754899970_87bff9bd.jpg",
+        "size": 17204,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792754899970_87bff9bd.jpg"
+      },
+      {
+        "filename": "product_1792754899989_6d7a32c4.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792754899989_6d7a32c4.jpg",
+        "size": 17204,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792754899989_6d7a32c4.jpg"
+      },
+      {
+        "filename": "product_1792754900014_e4ec1583.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792754900014_e4ec1583.png",
+        "size": 158812,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792754900014_e4ec1583.png"
+      },
+      {
+        "filename": "product_1792754900038_00bcf110.webp",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792754900038_00bcf110.webp",
+        "size": 30262,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792754900038_00bcf110.webp"
+      },
+      {
+        "filename": "product_1792754900055_97c15fb4.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792754900055_97c15fb4.jpg",
+        "size": 51672,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792754900055_97c15fb4.jpg"
+      },
+      {
+        "filename": "product_1792774794968_c645334c.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792774794968_c645334c.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792774794968_c645334c.jpg"
+      },
+      {
+        "filename": "product_1792774795182_d41655fa.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792774795182_d41655fa.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792774795182_d41655fa.png"
+      },
+      {
+        "filename": "product_1792774795186_d734aea2.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792774795186_d734aea2.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792774795186_d734aea2.png"
+      },
+      {
+        "filename": "product_1792774795189_4b34026a.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792774795189_4b34026a.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792774795189_4b34026a.png"
+      },
+      {
+        "filename": "product_1792774795193_4c23cf3b.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792774795193_4c23cf3b.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792774795193_4c23cf3b.png"
+      },
+      {
+        "filename": "product_1792774795317_0ab3e33b.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792774795317_0ab3e33b.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792774795317_0ab3e33b.jpg"
+      },
+      {
+        "filename": "product_1792774795378_cad9b7b1.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792774795378_cad9b7b1.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792774795378_cad9b7b1.jpg"
+      },
+      {
+        "filename": "product_1792774795699_50ca29fa.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792774795699_50ca29fa.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792774795699_50ca29fa.png"
+      },
+      {
+        "filename": "product_1792774798510_d001466e.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792774798510_d001466e.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792774798510_d001466e.png"
+      },
+      {
+        "filename": "product_1792774798790_6c8cbf24.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792774798790_6c8cbf24.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792774798790_6c8cbf24.png"
+      },
+      {
+        "filename": "product_1792774798882_25d8c2b4.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792774798882_25d8c2b4.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792774798882_25d8c2b4.png"
+      },
+      {
+        "filename": "product_1792774799210_3820aa5d.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792774799210_3820aa5d.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792774799210_3820aa5d.png"
+      },
+      {
+        "filename": "product_1792813420929_396e23d6.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792813420929_396e23d6.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792813420929_396e23d6.jpg"
+      },
+      {
+        "filename": "product_1792813421160_35318dd8.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792813421160_35318dd8.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792813421160_35318dd8.png"
+      },
+      {
+        "filename": "product_1792813421162_fe92a79c.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792813421162_fe92a79c.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792813421162_fe92a79c.png"
+      },
+      {
+        "filename": "product_1792813421165_9dc41cb9.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792813421165_9dc41cb9.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792813421165_9dc41cb9.png"
+      },
+      {
+        "filename": "product_1792813421168_4ca07cb7.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792813421168_4ca07cb7.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792813421168_4ca07cb7.png"
+      },
+      {
+        "filename": "product_1792813421300_883b5367.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792813421300_883b5367.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792813421300_883b5367.jpg"
+      },
+      {
+        "filename": "product_1792813421351_d865c5ac.jpg",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792813421351_d865c5ac.jpg",
+        "size": 134,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792813421351_d865c5ac.jpg"
+      },
+      {
+        "filename": "product_1792813421597_8c71c8a8.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792813421597_8c71c8a8.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792813421597_8c71c8a8.png"
+      },
+      {
+        "filename": "product_1792813424259_9d5700ea.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792813424259_9d5700ea.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792813424259_9d5700ea.png"
+      },
+      {
+        "filename": "product_1792813424367_39b27c3c.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792813424367_39b27c3c.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792813424367_39b27c3c.png"
+      },
+      {
+        "filename": "product_1792813424463_5375154a.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792813424463_5375154a.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792813424463_5375154a.png"
+      },
+      {
+        "filename": "product_1792813424766_b656a4d5.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792813424766_b656a4d5.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792813424766_b656a4d5.png"
+      },
+      {
+        "filename": "product_1792989401048_77ff1152.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1792989401048_77ff1152.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1792989401048_77ff1152.png"
+      },
+      {
+        "filename": "product_1793162599453_70af6fd5.png",
+        "fullPath": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\public\\uploads\\product_1793162599453_70af6fd5.png",
+        "size": 70,
+        "isPrivate": false,
+        "prefix": "uploads",
+        "storageKey": "uploads/product_1793162599453_70af6fd5.png"
+      }
+    ],
+    "missing": []
+  },
+  "results": {
+    "mode": "dry-run",
+    "startedAt": "2026-10-28T05:21:12.143Z",
+    "totalDiscovered": 153,
+    "eligibleForUpload": 0,
+    "uploaded": [],
+    "skippedExisting": [],
+    "failed": [],
+    "dbUpdatesCount": 0,
+    "completedAt": "2026-10-28T05:21:12.143Z"
+  }
+}

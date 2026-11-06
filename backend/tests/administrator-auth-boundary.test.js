@@ -161,6 +161,20 @@ describe("Buybox Final Authentication Architecture & Security Boundary Test Suit
       );
     }
 
+    const dashboardPerm = await Permission.findOne({ slug: PERMISSIONS.DASHBOARD_VIEW });
+    if (dashboardPerm) {
+      await EmployeePermissionGrant.findOneAndUpdate(
+        { employeeId: editorEmployee._id, permissionId: dashboardPerm._id },
+        {
+          employeeId: editorEmployee._id,
+          permissionId: dashboardPerm._id,
+          grantedBy: superadminUser._id,
+          isActive: true,
+        },
+        { upsert: true }
+      );
+    }
+
     const edtLogin = await request(app)
       .post("/api/v1/administrator/auth/login")
       .send({ email: "test.editor@buybox.internal", password: "EditorSecret123!" });
@@ -495,5 +509,9 @@ describe("Buybox Final Authentication Architecture & Security Boundary Test Suit
       .post("/api/v1/auth/refresh")
       .set("Cookie", adminCookie);
     expect(resAdminOnCust.status).toBe(401);
+  });
+
+  afterAll(async () => {
+    await mongoose.connection.close();
   });
 });

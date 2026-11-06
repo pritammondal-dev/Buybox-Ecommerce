@@ -2,10 +2,19 @@ const express = require("express");
 
 const vendorController = require("../controllers/vendor.controller");
 const orderController = require("../controllers/order.controller");
+const orderFulfillmentController = require("../controllers/order-fulfillment.controller");
+const fulfillmentOpsController = require("../controllers/fulfillment-operations.controller");
 const shipmentController = require("../controllers/shipment.controller");
 const returnRequestController = require("../controllers/return-request.controller");
 const vendorSettlementController = require("../controllers/vendor-settlement.controller");
-const authenticate = require("../middlewares/authentication.middleware");
+const vendorBankAccountController = require("../controllers/vendor-bank-account.controller");
+const vendorWalletController = require("../controllers/vendor-wallet.controller");
+const withdrawalRequestController = require("../controllers/withdrawal-request.controller");
+const {
+  createWithdrawalRequestSchema,
+  withdrawalQuerySchema,
+} = require("../validators/finance/withdrawal-request.validator");
+const { authenticate, authenticateVendor } = require("../middlewares/authentication.middleware");
 const validate = require("../middlewares/validate.middleware");
 const {
   requirePermissions,
@@ -47,12 +56,61 @@ const {
   vendorOrderTransitionSchema,
   vendorOrderQuerySchema,
   createVendorOrderShipmentSchema,
+  vendorOrderAcceptSchema,
+  vendorOrderRejectSchema,
+  vendorOrderFulfillmentDetailsSchema,
+  vendorOrderConfirmFulfillmentSchema,
 } = require("../validators/order/vendor-order.validator");
 const {
   rejectReturnSchema,
   restockReturnSchema,
   returnActionNotesSchema,
+  inspectReturnSchema,
+  cancelReturnSchema,
+  schedulePickupSchema,
+  fulfillExchangeSchema,
 } = require("../validators/order/return-request.validator");
+
+const {
+  suspendAccountSchema,
+  reactivateAccountSchema,
+  resetPasswordSchema,
+  deleteAccountSchema,
+  updateVendorAdminSchema,
+} = require("../validators/admin/account-management.validator");
+
+const {
+  submitBankAccountSchema,
+  resubmitBankAccountSchema,
+  approveBankAccountSchema,
+  rejectBankAccountSchema,
+  unmaskBankAccountSchema,
+  adminCreateBankAccountSchema,
+  adminUpdateBankAccountSchema,
+  adminStatusBankAccountSchema,
+  adminDeleteBankAccountSchema,
+  listBankApplicationsQuerySchema,
+} = require("../validators/vendor/vendor-bank-account.validator");
+
+const multer = require("multer");
+const kycUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+});
+const brandingUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB
+});
+
+const {
+  updateStoreBrandingSchema,
+} = require("../validators/vendor/vendor-branding.validator");
+
+const {
+  uploadKycDocumentSchema,
+  reviewKycDocumentSchema,
+  listKycQueueQuerySchema,
+} = require("../validators/vendor/vendor-kyc.validator");
 
 const {
   PERMISSIONS,
@@ -106,16 +164,25 @@ const resolveVendorIdParam = (paramName = "id", { strict = false } = {}) => {
 };
 
 /*
- * Public Vendor Onboarding Registration
+ * Public Vendor Onboarding Registration (Supports optional authentication for existing customer shared identity)
  */
+const authenticateOptional = authenticate.authenticateOptional || ((req, res, next) => next());
+
 router.post(
   "/register",
   authRegistrationLimiter,
+  authenticateOptional,
   validate(registerVendorSchema),
   vendorController.registerVendor
 );
 
+/*
+ * Public Storefront Routing
+ */
+router.get("/store/:slug", vendorController.getPublicStore);
+
 router.use(authenticate);
+router.use("/me", authenticateVendor);
 
 const {
   requireApprovedVendor,
@@ -141,6 +208,12 @@ router.get(
  * Vendor Orders & Fulfillment
  */
 router.get(
+  "/me/orders/shipment-partners",
+  requireApprovedVendor,
+  orderFulfillmentController.getShipmentPartners
+);
+
+router.get(
   "/me/orders",
   requireApprovedVendor,
   validate(vendorOrderQuerySchema, "query"),
@@ -152,6 +225,46 @@ router.get(
   requireApprovedVendor,
   validate(vendorOrderIdSchema, "params"),
   orderController.getMyVendorOrderById
+);
+
+router.get(
+  "/me/orders/:orderId/packing-slip",
+  requireApprovedVendor,
+  requirePermissions(PERMISSIONS.ORDERS_READ_OWN),
+  validate(vendorOrderIdSchema, "params"),
+  fulfillmentOpsController.getOrderPackingSlip
+);
+
+router.post(
+  "/me/orders/:orderId/accept",
+  requireApprovedVendor,
+  validate(vendorOrderIdSchema, "params"),
+  validate(vendorOrderAcceptSchema),
+  orderFulfillmentController.acceptVendorOrder
+);
+
+router.post(
+  "/me/orders/:orderId/reject",
+  requireApprovedVendor,
+  validate(vendorOrderIdSchema, "params"),
+  validate(vendorOrderRejectSchema),
+  orderFulfillmentController.rejectVendorOrder
+);
+
+router.patch(
+  "/me/orders/:orderId/fulfillment-details",
+  requireApprovedVendor,
+  validate(vendorOrderIdSchema, "params"),
+  validate(vendorOrderFulfillmentDetailsSchema),
+  orderFulfillmentController.updateVendorFulfillmentDetails
+);
+
+router.post(
+  "/me/orders/:orderId/confirm-fulfillment",
+  requireApprovedVendor,
+  validate(vendorOrderIdSchema, "params"),
+  validate(vendorOrderConfirmFulfillmentSchema),
+  orderFulfillmentController.confirmVendorFulfillment
 );
 
 router.post(
@@ -226,6 +339,40 @@ router.post(
 );
 
 router.post(
+  "/me/returns/:returnId/schedule-pickup",
+  requireApprovedVendor,
+  validate(schedulePickupSchema),
+  returnRequestController.schedulePickup
+);
+
+router.post(
+  "/me/returns/:returnId/confirm-pickup",
+  requireApprovedVendor,
+  returnRequestController.confirmPickup
+);
+
+router.post(
+  "/me/returns/:returnId/exchange",
+  requireApprovedVendor,
+  validate(fulfillExchangeSchema),
+  returnRequestController.fulfillExchange
+);
+
+router.post(
+  "/me/returns/:returnId/cancel",
+  requireApprovedVendor,
+  validate(cancelReturnSchema),
+  returnRequestController.cancelReturn
+);
+
+router.post(
+  "/me/returns/:returnId/inspect",
+  requireApprovedVendor,
+  validate(inspectReturnSchema),
+  returnRequestController.inspectReturn
+);
+
+router.post(
   "/me/returns/:returnId/receive",
   requireApprovedVendor,
   validate(restockReturnSchema),
@@ -243,6 +390,44 @@ router.post(
  * Vendor Finance & Settlements
  */
 router.get(
+  "/me/wallet",
+  requireApprovedVendor,
+  vendorWalletController.getMyWallet
+);
+
+router.get(
+  "/me/wallet/transactions",
+  requireApprovedVendor,
+  vendorWalletController.getMyWalletTransactions
+);
+
+router.get(
+  "/me/wallet/clearance-timeline",
+  requireApprovedVendor,
+  vendorWalletController.getMyClearanceTimeline
+);
+
+router.post(
+  "/me/withdrawals",
+  requireApprovedVendor,
+  validate(createWithdrawalRequestSchema),
+  withdrawalRequestController.submitWithdrawal
+);
+
+router.get(
+  "/me/withdrawals",
+  requireApprovedVendor,
+  validate(withdrawalQuerySchema, "query"),
+  withdrawalRequestController.getMyWithdrawals
+);
+
+router.get(
+  "/me/withdrawals/:id",
+  requireApprovedVendor,
+  withdrawalRequestController.getMyWithdrawalById
+);
+
+router.get(
   "/me/finance",
   requireApprovedVendor,
   vendorSettlementController.getVendorFinanceSummary
@@ -258,6 +443,35 @@ router.get(
   "/me/settlements/:settlementId",
   requireApprovedVendor,
   vendorSettlementController.getMyVendorSettlementById
+);
+
+/*
+ * Vendor Bank Account Management (Max 3, AES-256-GCM Encrypted, HMAC Blind Indexed)
+ */
+router.get(
+  "/me/bank-accounts",
+  requireApprovedVendor,
+  vendorBankAccountController.getMyBankAccounts
+);
+
+router.post(
+  "/me/bank-accounts",
+  requireApprovedVendor,
+  validate(submitBankAccountSchema),
+  vendorBankAccountController.submitMyBankAccount
+);
+
+router.patch(
+  "/me/bank-accounts/:id/active",
+  requireApprovedVendor,
+  vendorBankAccountController.switchMyActiveBankAccount
+);
+
+router.post(
+  "/me/bank-accounts/:id/resubmit",
+  requireApprovedVendor,
+  validate(resubmitBankAccountSchema),
+  vendorBankAccountController.resubmitMyBankAccount
 );
 
 router.get(
@@ -287,8 +501,118 @@ router.post(
 );
 
 /*
+ * Vendor Store Branding Self-Service
+ */
+router.get(
+  "/me/branding",
+  requireRoles(ROLES.VENDOR),
+  vendorController.getMyBranding
+);
+
+router.patch(
+  "/me/branding",
+  requireRoles(ROLES.VENDOR),
+  validate(updateStoreBrandingSchema),
+  vendorController.updateMyBranding
+);
+
+router.post(
+  "/me/branding/upload",
+  requireRoles(ROLES.VENDOR),
+  brandingUpload.single("file"),
+  vendorController.uploadBrandingAsset
+);
+
+/*
+ * Vendor KYC Document Management Self-Service
+ */
+router.get(
+  "/me/kyc",
+  requireRoles(ROLES.VENDOR),
+  vendorController.getMyKycStatus
+);
+
+router.post(
+  "/me/kyc/upload",
+  requireRoles(ROLES.VENDOR),
+  kycUpload.single("file"),
+  validate(uploadKycDocumentSchema),
+  vendorController.uploadMyKycDocument
+);
+
+router.get(
+  "/me/kyc/documents/:documentId/download",
+  requireRoles(ROLES.VENDOR),
+  vendorController.downloadMyKycDocument
+);
+
+/*
  * Admin/vendor management & review workflow
  */
+
+/*
+ * Administrative Reviewer Queue: Vendor KYC Queue & Document Review
+ * Route: GET /api/v1/admin/vendors/kyc/queue
+ */
+router.get(
+  "/kyc/queue",
+  requirePermissions(PERMISSIONS.VENDORS_KYC_VIEW),
+  validate(listKycQueueQuerySchema, "query"),
+  vendorController.listKycQueue
+);
+
+router.post(
+  "/:id/kyc/documents/:documentId/review",
+  resolveVendorIdParam("id", { strict: false }),
+  requirePermissions(PERMISSIONS.VENDORS_KYC_REVIEW),
+  validate(reviewKycDocumentSchema),
+  vendorController.reviewKycDocument
+);
+
+router.get(
+  "/:id/kyc/documents/:documentId/download",
+  resolveVendorIdParam("id", { strict: false }),
+  requirePermissions(PERMISSIONS.VENDORS_KYC_VIEW),
+  vendorController.downloadVendorKycDocument
+);
+
+/*
+ * Administrative Reviewer Queue: Bank Account Applications across all vendors
+ * Route: GET /api/v1/admin/vendors/bank-accounts/applications
+ */
+router.get(
+  "/bank-accounts/applications",
+  requirePermissions(PERMISSIONS.VENDORS_BANK_ACCOUNTS_VIEW),
+  validate(listBankApplicationsQuerySchema, "query"),
+  vendorBankAccountController.listPendingApplications
+);
+
+router.post(
+  "/bank-accounts/:accountId/approve",
+  requirePermissions(PERMISSIONS.VENDORS_BANK_ACCOUNTS_APPROVE),
+  validate(approveBankAccountSchema),
+  vendorBankAccountController.approveVendorBankAccount
+);
+
+router.post(
+  "/bank-accounts/:accountId/reject",
+  requirePermissions(PERMISSIONS.VENDORS_BANK_ACCOUNTS_REJECT),
+  validate(rejectBankAccountSchema),
+  vendorBankAccountController.rejectVendorBankAccount
+);
+
+router.post(
+  "/bank-accounts/:accountId/under-review",
+  requirePermissions(PERMISSIONS.VENDORS_BANK_ACCOUNTS_REVIEW),
+  vendorBankAccountController.markVendorBankAccountUnderReview
+);
+
+router.post(
+  "/bank-accounts/:accountId/unmask",
+  requirePermissions(PERMISSIONS.VENDORS_BANK_ACCOUNTS_VIEW_UNMASKED),
+  validate(unmaskBankAccountSchema),
+  vendorBankAccountController.unmaskVendorBankAccount
+);
 
 router.get(
   "/",
@@ -307,6 +631,57 @@ router.get(
     allowGlobalPlatformActor: true,
   }),
   vendorController.getVendor
+);
+
+router.get(
+  "/:id/overview",
+  resolveVendorIdParam("id", { strict: false }),
+  requirePermissions(PERMISSIONS.VENDORS_READ),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
+  vendorController.getVendorOverview
+);
+
+router.patch(
+  "/:id",
+  resolveVendorIdParam("id", { strict: false }),
+  requirePermissions(PERMISSIONS.VENDORS_MANAGE),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
+  validate(updateVendorAdminSchema),
+  vendorController.updateVendorAdmin
+);
+
+router.post(
+  "/:id/suspend",
+  resolveVendorIdParam("id", { strict: false }),
+  requirePermissions(PERMISSIONS.VENDORS_SUSPEND),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
+  validate(suspendAccountSchema),
+  vendorController.suspendVendor
+);
+
+router.post(
+  "/:id/reactivate",
+  resolveVendorIdParam("id", { strict: false }),
+  requirePermissions(PERMISSIONS.VENDORS_SUSPEND),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
+  validate(reactivateAccountSchema),
+  vendorController.reactivateVendor
 );
 
 router.patch(
@@ -335,6 +710,18 @@ router.post(
 );
 
 router.post(
+  "/:id/verify-email",
+  resolveVendorIdParam("id", { strict: false }),
+  requirePermissions(PERMISSIONS.VENDORS_MANAGE),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
+  vendorController.verifyVendorEmailByAdmin
+);
+
+router.post(
   "/:id/reject",
   resolveVendorIdParam("id", { strict: true }),
   requirePermissions(PERMISSIONS.VENDORS_MANAGE),
@@ -358,6 +745,162 @@ router.post(
   }),
   validate(requestChangesSchema),
   vendorController.requestChanges
+);
+
+router.post(
+  "/:id/reset-password",
+  resolveVendorIdParam("id", { strict: false }),
+  requirePermissions(PERMISSIONS.VENDORS_RESET_PASSWORD),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
+  validate(resetPasswordSchema),
+  vendorController.resetVendorPassword
+);
+
+router.delete(
+  "/:id",
+  resolveVendorIdParam("id", { strict: false }),
+  requirePermissions(PERMISSIONS.VENDORS_DELETE),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
+  validate(deleteAccountSchema),
+  vendorController.deleteVendor
+);
+
+/*
+ * Administrative Per-Vendor Bank Account Management
+ */
+router.get(
+  "/:id/bank-accounts",
+  resolveVendorIdParam("id", { strict: false }),
+  requirePermissions(PERMISSIONS.VENDORS_BANK_ACCOUNTS_VIEW),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
+  vendorBankAccountController.getVendorBankAccounts
+);
+
+router.post(
+  "/:id/bank-accounts",
+  resolveVendorIdParam("id", { strict: false }),
+  requirePermissions(PERMISSIONS.VENDORS_BANK_ACCOUNTS_MANAGE),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
+  validate(adminCreateBankAccountSchema),
+  vendorBankAccountController.adminAddVendorBankAccount
+);
+
+router.get(
+  "/:id/bank-accounts/:accountId",
+  resolveVendorIdParam("id", { strict: false }),
+  requirePermissions(PERMISSIONS.VENDORS_BANK_ACCOUNTS_VIEW),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
+  vendorBankAccountController.getVendorBankAccountById
+);
+
+router.post(
+  "/:id/bank-accounts/:accountId/unmask",
+  resolveVendorIdParam("id", { strict: false }),
+  requirePermissions(PERMISSIONS.VENDORS_BANK_ACCOUNTS_VIEW_UNMASKED),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
+  validate(unmaskBankAccountSchema),
+  vendorBankAccountController.unmaskVendorBankAccount
+);
+
+router.post(
+  "/:id/bank-accounts/:accountId/approve",
+  resolveVendorIdParam("id", { strict: false }),
+  requirePermissions(PERMISSIONS.VENDORS_BANK_ACCOUNTS_APPROVE),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
+  validate(approveBankAccountSchema),
+  vendorBankAccountController.approveVendorBankAccount
+);
+
+router.post(
+  "/:id/bank-accounts/:accountId/reject",
+  resolveVendorIdParam("id", { strict: false }),
+  requirePermissions(PERMISSIONS.VENDORS_BANK_ACCOUNTS_REJECT),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
+  validate(rejectBankAccountSchema),
+  vendorBankAccountController.rejectVendorBankAccount
+);
+
+router.post(
+  "/:id/bank-accounts/:accountId/under-review",
+  resolveVendorIdParam("id", { strict: false }),
+  requirePermissions(PERMISSIONS.VENDORS_BANK_ACCOUNTS_REVIEW),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
+  vendorBankAccountController.markVendorBankAccountUnderReview
+);
+
+router.patch(
+  "/:id/bank-accounts/:accountId",
+  resolveVendorIdParam("id", { strict: false }),
+  requirePermissions(PERMISSIONS.VENDORS_BANK_ACCOUNTS_MANAGE),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
+  validate(adminUpdateBankAccountSchema),
+  vendorBankAccountController.adminUpdateVendorBankAccount
+);
+
+router.patch(
+  "/:id/bank-accounts/:accountId/status",
+  resolveVendorIdParam("id", { strict: false }),
+  requirePermissions(PERMISSIONS.VENDORS_BANK_ACCOUNTS_MANAGE),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
+  validate(adminStatusBankAccountSchema),
+  vendorBankAccountController.adminSetStatusVendorBankAccount
+);
+
+router.delete(
+  "/:id/bank-accounts/:accountId",
+  resolveVendorIdParam("id", { strict: false }),
+  requirePermissions(PERMISSIONS.VENDORS_BANK_ACCOUNTS_MANAGE),
+  requireScope({
+    scopeType: SCOPE_TYPES.VENDOR,
+    resolveScopeId: "params.id",
+    allowGlobalPlatformActor: true,
+  }),
+  validate(adminDeleteBankAccountSchema),
+  vendorBankAccountController.adminDeleteVendorBankAccount
 );
 
 module.exports = router;

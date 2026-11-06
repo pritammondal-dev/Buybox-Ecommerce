@@ -1,0 +1,151 @@
+[
+  {
+    "v": 2,
+    "key": {
+      "_id": 1
+    },
+    "name": "_id_"
+  },
+  {
+    "v": 2,
+    "key": {
+      "orderId": 1
+    },
+    "name": "orderId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "customerId": 1
+    },
+    "name": "customerId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "gateway": 1
+    },
+    "name": "gateway_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "gatewayOrderId": 1
+    },
+    "name": "gatewayOrderId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "gatewayPaymentId": 1
+    },
+    "name": "gatewayPaymentId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "status": 1
+    },
+    "name": "status_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "idempotencyKey": 1
+    },
+    "name": "idempotencyKey_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "orderId": 1,
+      "createdAt": -1
+    },
+    "name": "orderId_1_createdAt_-1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "customerId": 1,
+      "createdAt": -1
+    },
+    "name": "customerId_1_createdAt_-1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "gateway": 1,
+      "gatewayOrderId": 1
+    },
+    "name": "gateway_1_gatewayOrderId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "gateway": 1,
+      "gatewayPaymentId": 1
+    },
+    "name": "gateway_1_gatewayPaymentId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "gateway": 1,
+      "idempotencyKey": 1
+    },
+    "name": "gateway_1_idempotencyKey_1",
+    "unique": true,
+    "partialFilterExpression": {
+      "idempotencyKey": {
+        "$type": "string"
+      }
+    }
+  },
+  {
+    "v": 2,
+    "key": {
+      "orderId": 1,
+      "gateway": 1,
+      "idempotencyKey": 1
+    },
+    "name": "orderId_gateway_idempotencyKey_unique",
+    "unique": true,
+    "partialFilterExpression": {
+      "idempotencyKey": {
+        "$type": "string"
+      },
+      "status": {
+        "$in": [
+          "created",
+          "pending",
+          "authorized",
+          "captured"
+        ]
+      }
+    }
+  },
+  {
+    "v": 2,
+    "key": {
+      "orderId": 1
+    },
+    "name": "orderId_active_payment_unique",
+    "unique": true,
+    "partialFilterExpression": {
+      "status": {
+        "$in": [
+          "created",
+          "pending",
+          "authorized"
+        ]
+      }
+    }
+  },
+  {
+    "v": 2,
+    "key": {
+      "guestId": 1
+    },
+    "name": "guestId_1"
+  }
+]

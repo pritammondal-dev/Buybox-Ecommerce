@@ -62,7 +62,7 @@ describe("Buybox End-to-End Vendor Fulfillment, Return & Settlement Suite", () =
     await mongoose.connect(TEST_MONGODB_URI);
     try {
       await Promise.all([
-        User.deleteMany({ email: /@buybox\.test$/ }),
+        User.deleteMany({ $or: [{ email: /@buybox\.test$/ }, { role: ROLES.SUPER_ADMIN }] }),
         Customer.deleteMany({}),
         Vendor.deleteMany({}),
         Warehouse.deleteMany({}),

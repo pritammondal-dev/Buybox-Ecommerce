@@ -14,6 +14,7 @@ import { MobileFilterDrawer } from "./MobileFilterDrawer.jsx";
 import { productService } from "../../../services/product.service.js";
 import { useCart } from "../../../hooks/useCart.js";
 import { useWishlist } from "../../../hooks/useWishlist.js";
+import { getCategoryHref } from "../../../utils/category.util.js";
 
 const PAGE_LIMIT = 12;
 
@@ -224,10 +225,8 @@ export function CategoryListingView({
   // Filter Handlers
   const handleCategoryChange = (selectedCat) => {
     if (!selectedCat) return;
-    const catSlug = selectedCat.slug || selectedCat._id || selectedCat.id;
-    if (catSlug) {
-      router.push(`/category/${catSlug}`);
-    }
+    const href = getCategoryHref(selectedCat);
+    router.push(href);
   };
 
   const handleBrandToggle = (brandId) => {

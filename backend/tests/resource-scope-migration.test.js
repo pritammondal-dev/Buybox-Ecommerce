@@ -539,4 +539,11 @@ describe("Phase D — Resource Scope Migration (Category, Warehouse, Support Que
       expect(resTck.status).toBe(200);
     });
   });
+
+  afterAll(async () => {
+    if (mongoose.connection.readyState !== 0) {
+      await User.deleteMany({ email: { $regex: /@test\.com$/ } });
+      await Employee.deleteMany({ employeeNumber: { $regex: /^EMP_/ } });
+    }
+  });
 });

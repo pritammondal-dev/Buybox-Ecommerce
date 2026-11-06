@@ -1,0 +1,95 @@
+[
+  {
+    "v": 2,
+    "key": {
+      "_id": 1
+    },
+    "name": "_id_"
+  },
+  {
+    "v": 2,
+    "key": {
+      "journalId": 1
+    },
+    "name": "journalId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "orderId": 1
+    },
+    "name": "orderId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "paymentId": 1
+    },
+    "name": "paymentId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "refundId": 1
+    },
+    "name": "refundId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "settlementId": 1
+    },
+    "name": "settlementId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "payoutId": 1
+    },
+    "name": "payoutId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "vendorId": 1
+    },
+    "name": "vendorId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "journalId": 1,
+      "createdAt": 1
+    },
+    "name": "journalId_1_createdAt_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "vendorId": 1,
+      "createdAt": -1
+    },
+    "name": "vendorId_1_createdAt_-1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "orderId": 1,
+      "createdAt": -1
+    },
+    "name": "orderId_1_createdAt_-1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "idempotencyKey": 1
+    },
+    "name": "idempotencyKey_1",
+    "unique": true,
+    "partialFilterExpression": {
+      "idempotencyKey": {
+        "$type": "string"
+      }
+    }
+  }
+]

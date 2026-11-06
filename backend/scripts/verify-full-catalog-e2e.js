@@ -326,21 +326,21 @@ async function runVerification() {
       ],
       [
         "Nike Air Max Precision Runner", parentSku, `${parentSku}-BLK-8`,
-        "Fashion", "Nike", 7999.0, 9999.0, 4500.0, 30,
+        "Fashion", "Buybox", 7999.0, 9999.0, 4500.0, 30,
         "Black", "8", "Breathable Mesh", "890987654321", "standard",
         0.75, "30x20x12", "High-performance running shoe with Air cushioning.",
         "https://images.unsplash.com/photo-1542291026-7eec264c27ff", "running,shoes,nike,sport"
       ],
       [
         "Nike Air Max Precision Runner", parentSku, `${parentSku}-BLK-9`,
-        "Fashion", "Nike", 7999.0, 9999.0, 4500.0, 25,
+        "Fashion", "Buybox", 7999.0, 9999.0, 4500.0, 25,
         "Black", "9", "Breathable Mesh", "890987654322", "standard",
         0.75, "30x20x12", "High-performance running shoe with Air cushioning.",
         "https://images.unsplash.com/photo-1542291026-7eec264c27ff", "running,shoes,nike,sport"
       ],
       [
         "Nike Air Max Precision Runner", parentSku, `${parentSku}-WHT-8`,
-        "Fashion", "Nike", 7999.0, 9999.0, 4500.0, 20,
+        "Fashion", "Buybox", 7999.0, 9999.0, 4500.0, 20,
         "White", "8", "Breathable Mesh", "890987654323", "standard",
         0.75, "30x20x12", "High-performance running shoe with Air cushioning.",
         "https://images.unsplash.com/photo-1542291026-7eec264c27ff", "running,shoes,nike,sport"

@@ -89,6 +89,38 @@ class AnalyticsController {
       next(error);
     }
   }
+
+  async getVendorProductPerformance(req, res, next) {
+    try {
+      const data = await analyticsService.getVendorProductPerformance({
+        userId: req.user.id,
+        query: req.query,
+      });
+      return sendSuccess(res, {
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async exportVendorAnalytics(req, res, next) {
+    try {
+      const result = await analyticsService.exportVendorAnalytics({
+        userId: req.user.id,
+        query: req.query,
+      });
+
+      res.setHeader("Content-Type", result.contentType);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${result.filename}"`
+      );
+      return res.send(result.buffer);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 const controller = new AnalyticsController();
@@ -100,4 +132,6 @@ module.exports = {
   getVendorOverview: controller.getVendorOverview.bind(controller),
   getVendorTopProducts: controller.getVendorTopProducts.bind(controller),
   getVendorSalesTrend: controller.getVendorSalesTrend.bind(controller),
+  getVendorProductPerformance: controller.getVendorProductPerformance.bind(controller),
+  exportVendorAnalytics: controller.exportVendorAnalytics.bind(controller),
 };

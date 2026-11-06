@@ -139,6 +139,65 @@ const deleteSection = async (req, res, next) => {
   }
 };
 
+const reorderSections = async (req, res, next) => {
+  try {
+    const sections =
+      await storefrontSectionService.reorderSections(
+        req.body.sections,
+        req.user.id
+      );
+
+    return sendSuccess(res, {
+      message:
+        "Storefront sections reordered successfully",
+      data: sections,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const initializeDefaults = async (req, res, next) => {
+  try {
+    const sections =
+      await storefrontSectionService.initializeDefaultSections(
+        req.user?.id
+      );
+
+    return sendSuccess(res, {
+      message:
+        "Default storefront sections initialized successfully",
+      data: sections,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getSectionProducts = async (req, res, next) => {
+  try {
+    const keyOrId = req.params.key || req.params.sectionId;
+    const result = await storefrontSectionService.getSectionProductsPaginated({
+      keyOrId,
+      query: req.query,
+      actor: req.user || null,
+    });
+
+    return sendSuccess(res, {
+      message: "Section products fetched successfully",
+      data: result.products,
+      meta: {
+        section: result.section,
+        group: result.group,
+        pagination: result.pagination,
+        availableFilters: result.availableFilters,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getSectionById,
   getSectionByKey,
@@ -148,4 +207,7 @@ module.exports = {
   createSection,
   updateSection,
   deleteSection,
+  reorderSections,
+  initializeDefaults,
+  getSectionProducts,
 };

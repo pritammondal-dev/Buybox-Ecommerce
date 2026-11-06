@@ -7,6 +7,8 @@ const {
   FINANCIAL_ENTRY_DIRECTIONS,
   FINANCIAL_ACCOUNT_TYPES,
   FINANCIAL_ENTRY_SOURCES,
+  LEDGER_ACCOUNTS,
+  JOURNAL_STATUSES,
 } = require("../constants/finance.constants");
 
 const financialLedgerEntrySchema = new Schema(
@@ -41,6 +43,45 @@ const financialLedgerEntrySchema = new Schema(
       type: String,
       trim: true,
       maxlength: 200,
+      default: null,
+    },
+
+    accountCode: {
+      type: String,
+      enum: Object.values(LEDGER_ACCOUNTS),
+      default: null,
+      index: true,
+    },
+
+    journalStatus: {
+      type: String,
+      enum: Object.values(JOURNAL_STATUSES),
+      default: JOURNAL_STATUSES.POSTED,
+      index: true,
+    },
+
+    reversalOfJournalId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    reversalReason: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    sourceEvent: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
+
+    sourceEventId: {
+      type: String,
+      trim: true,
       default: null,
     },
 
@@ -144,6 +185,26 @@ financialLedgerEntrySchema.index({
   vendorId: 1,
   createdAt: -1,
 });
+
+financialLedgerEntrySchema.index({
+  vendorId: 1,
+  accountCode: 1,
+  createdAt: -1,
+});
+
+financialLedgerEntrySchema.index({
+  journalId: 1,
+  direction: 1,
+});
+
+financialLedgerEntrySchema.index(
+  {
+    reversalOfJournalId: 1,
+  },
+  {
+    sparse: true,
+  }
+);
 
 financialLedgerEntrySchema.index({
   orderId: 1,

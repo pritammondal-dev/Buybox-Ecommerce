@@ -4,6 +4,7 @@ const COOKIE_NAMES = Object.freeze({
   CUSTOMER: "bb_customer_session",
   VENDOR: "bb_vendor_session",
   ADMINISTRATOR: "bb_administrator_session",
+  GUEST: "bb_guest_session",
   LEGACY_REFRESH: "refreshToken",
 });
 
@@ -29,6 +30,11 @@ const administratorCookieOptions = {
   path: "/api/v1/administrator/auth",
 };
 
+const guestCookieOptions = {
+  ...baseCookieOptions,
+  path: "/api/v1",
+};
+
 // Legacy refresh cookie options for backward compatibility
 const refreshCookieOptions = customerCookieOptions;
 
@@ -37,5 +43,6 @@ module.exports = {
   customerCookieOptions,
   vendorCookieOptions,
   administratorCookieOptions,
+  guestCookieOptions,
   refreshCookieOptions,
 };

@@ -28,7 +28,8 @@ const listVendorsQuerySchema = z
       .enum(["pending", "under_review", "approved", "rejected", "changes_requested", "suspended", "inactive", "all"])
       .optional(),
     search: z.string().trim().optional(),
-    sortBy: z.enum(["createdAt", "storeName", "onboardingStatus", "approvedAt"]).default("createdAt"),
+    activity: z.enum(["all", "has_products", "has_orders"]).optional(),
+    sortBy: z.enum(["createdAt", "storeName", "businessName", "onboardingStatus", "approvedAt"]).default("createdAt"),
     sortOrder: z.enum(["asc", "desc"]).default("desc"),
   });
 

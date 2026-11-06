@@ -254,6 +254,15 @@ export function ProductTabs({
   const authenticWarranty = extractProductWarranty(product);
   const returnsAndWarranty = STOREFRONT_BUSINESS_POLICIES.returnsAndWarranty;
 
+  const displayBrandName =
+    brand?.name ||
+    product?.brand?.name ||
+    (typeof product?.brandId === "object" ? product.brandId?.name : null);
+  const displayCategoryName =
+    category?.name ||
+    (typeof product?.categoryId === "object" ? product.categoryId?.name : null) ||
+    (typeof product?.category === "object" ? product.category?.name : null);
+
   const descriptionText = product?.description || "";
   const isLongDescription = descriptionText.length > 400;
 
@@ -410,22 +419,16 @@ export function ProductTabs({
         <div className="py-6 max-w-3xl">
           <table className="w-full text-xs text-left border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
             <tbody>
-              {product?.sku && (
-                <tr className="border-b border-slate-100 bg-slate-50/50">
-                  <td className="p-3.5 font-semibold text-slate-500 w-1/3">SKU Identifier</td>
-                  <td className="p-3.5 text-slate-900 font-mono font-medium">{product.sku}</td>
-                </tr>
-              )}
-              {brand?.name && (
+              {displayBrandName && (
                 <tr className="border-b border-slate-100">
                   <td className="p-3.5 font-semibold text-slate-500">Brand Name</td>
-                  <td className="p-3.5 text-slate-900 font-medium">{brand.name}</td>
+                  <td className="p-3.5 text-slate-900 font-medium">{displayBrandName}</td>
                 </tr>
               )}
-              {category?.name && (
+              {displayCategoryName && (
                 <tr className="border-b border-slate-100 bg-slate-50/50">
                   <td className="p-3.5 font-semibold text-slate-500">Product Category</td>
-                  <td className="p-3.5 text-slate-900 font-medium">{category.name}</td>
+                  <td className="p-3.5 text-slate-900 font-medium">{displayCategoryName}</td>
                 </tr>
               )}
               {product?.taxCategory && (

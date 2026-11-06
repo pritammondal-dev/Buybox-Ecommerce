@@ -127,7 +127,6 @@ export function WishlistPageView() {
           name: product.name,
           price: product.price,
           image: product.images?.[0]?.url || product.image || null,
-          sku: product.sku,
         },
       });
 

@@ -18,6 +18,7 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import { cn } from "../../../utils/cn.js";
+import { getCategoryHref, getCategorySlug } from "../../../utils/category.util.js";
 
 function getCategoryIcon(slug = "", name = "") {
   const lower = `${slug} ${name}`.toLowerCase();
@@ -155,10 +156,9 @@ export function CategoryDrawer({ isOpen, onClose, categories = [] }) {
           {rootCategories.length > 0 ? (
             rootCategories.map((cat) => {
               const id = cat.id || cat._id;
-              const slug = cat.slug || id;
-              const href = `/category/${slug}`;
+              const href = getCategoryHref(cat);
               const isActive = pathname === href;
-              const Icon = getCategoryIcon(cat.slug, cat.name);
+              const Icon = getCategoryIcon(getCategorySlug(cat) || "", cat.name);
               const children = subCategoryMap.get(String(id)) || [];
 
               return (
@@ -200,8 +200,7 @@ export function CategoryDrawer({ isOpen, onClose, categories = [] }) {
                     <div className="ml-10 mt-1 mb-2 space-y-0.5 border-l-2 border-slate-100 pl-3">
                       {children.map((sub) => {
                         const subId = sub.id || sub._id;
-                        const subSlug = sub.slug || subId;
-                        const subHref = `/category/${subSlug}`;
+                        const subHref = getCategoryHref(sub);
                         const isSubActive = pathname === subHref;
 
                         return (

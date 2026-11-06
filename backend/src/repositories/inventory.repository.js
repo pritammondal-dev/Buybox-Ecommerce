@@ -82,7 +82,14 @@ const adjustStock = async (
               {
                 $add: ["$onHand", quantity],
               },
-              "$reserved",
+              {
+                $add: [
+                  "$reserved",
+                  { $ifNull: ["$damaged", 0] },
+                  { $ifNull: ["$defective", 0] },
+                  { $ifNull: ["$expired", 0] },
+                ],
+              },
             ],
           },
         };
@@ -119,7 +126,14 @@ const reserveAvailableStock = async (
           {
             $subtract: [
               "$onHand",
-              "$reserved",
+              {
+                $add: [
+                  "$reserved",
+                  { $ifNull: ["$damaged", 0] },
+                  { $ifNull: ["$defective", 0] },
+                  { $ifNull: ["$expired", 0] },
+                ],
+              },
             ],
           },
           quantity,
@@ -141,6 +155,64 @@ const reserveAvailableStock = async (
       session: options.session,
     }
   );
+};
+
+const adjustStockCondition = async (
+  inventoryId,
+  { condition, quantity, disposition = "mark_condition" },
+  options = {}
+) => {
+  const validConditions = ["damaged", "defective", "expired"];
+  if (!validConditions.includes(condition)) {
+    throw new Error(`Invalid stock condition: ${condition}`);
+  }
+
+  let filter = { _id: inventoryId };
+  let update = {};
+
+  if (disposition === "mark_condition") {
+    filter.$expr = {
+      $gte: [
+        {
+          $subtract: [
+            "$onHand",
+            {
+              $add: [
+                "$reserved",
+                { $ifNull: ["$damaged", 0] },
+                { $ifNull: ["$defective", 0] },
+                { $ifNull: ["$expired", 0] },
+              ],
+            },
+          ],
+        },
+        quantity,
+      ],
+    };
+    update = {
+      $inc: { [condition]: quantity, version: 1 },
+      $set: { lastStockUpdateAt: new Date() },
+    };
+  } else if (disposition === "restore_to_sellable") {
+    filter[condition] = { $gte: quantity };
+    update = {
+      $inc: { [condition]: -quantity, version: 1 },
+      $set: { lastStockUpdateAt: new Date() },
+    };
+  } else if (disposition === "write_off") {
+    filter[condition] = { $gte: quantity };
+    filter.onHand = { $gte: quantity };
+    update = {
+      $inc: { [condition]: -quantity, onHand: -quantity, version: 1 },
+      $set: { lastStockUpdateAt: new Date() },
+    };
+  }
+
+  return Inventory.findOneAndUpdate(filter, update, {
+    new: true,
+    runValidators: true,
+    session: options.session,
+  });
 };
 
 const releaseReservedStock = async (
@@ -213,6 +285,7 @@ module.exports = {
   findByWarehouse,
   updateById,
   adjustStock,
+  adjustStockCondition,
   reserveAvailableStock,
   releaseReservedStock,
   deductReservedStock,

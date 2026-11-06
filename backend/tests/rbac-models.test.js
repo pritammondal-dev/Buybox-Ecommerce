@@ -70,7 +70,7 @@ describe("Phase 1B.1 — Dynamic RBAC/PBAC Foundation", () => {
       EmployeePermissionRestriction.deleteMany({}),
       WorkAssignment.deleteMany({}),
       mongoose.connection.collection("auditlogs").deleteMany({}).catch(() => {}),
-      User.deleteMany({ email: /@test-rbac\.com$/ }),
+      User.deleteMany({}),
     ]);
   });
 

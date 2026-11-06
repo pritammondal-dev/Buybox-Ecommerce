@@ -19,7 +19,10 @@ const {
   COOKIE_NAMES,
   administratorCookieOptions,
 } = require("../config/cookie");
-const { ROLES } = require("../constants/auth.constants");
+const {
+  ROLES,
+  ADMIN_INACTIVITY_TIMEOUT_MS,
+} = require("../constants/auth.constants");
 
 const ALLOWED_STAFF_ROLES = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.EDITOR];
 
@@ -51,7 +54,7 @@ const login = asyncHandler(async (req, res) => {
   }
 
   // Check user active status
-  if (!user.isActive) {
+  if (!user.isActive || user.deletedAt) {
     throw new AppError("User account is inactive", 403, "ACCOUNT_INACTIVE");
   }
 
@@ -130,6 +133,7 @@ const login = asyncHandler(async (req, res) => {
   });
 
   user.lastLoginAt = new Date();
+  user.adminLastActiveAt = new Date();
   await user.save();
 
   // Set administrator-specific session cookie
@@ -284,9 +288,37 @@ const getMe = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * Administrator Inactivity Heartbeat / Session Continuation
+ * Confirms the session is currently active and resets the inactivity deadline.
+ * Rejects expired or revoked sessions without extending.
+ */
+const heartbeat = asyncHandler(async (req, res) => {
+  const userId = req.user.id || req.user._id;
+  const user = await User.findById(userId);
+
+  if (!user || !user.isActive) {
+    throw new AppError("Staff account not found or inactive", 401, "UNAUTHORIZED");
+  }
+
+  const now = new Date();
+  user.adminLastActiveAt = now;
+  await user.save();
+
+  return sendSuccess(res, {
+    statusCode: 200,
+    message: "Administrator session activity confirmed",
+    data: {
+      lastActiveAt: now.toISOString(),
+      timeoutMs: ADMIN_INACTIVITY_TIMEOUT_MS,
+    },
+  });
+});
+
 module.exports = {
   login,
   refresh,
   logout,
   getMe,
+  heartbeat,
 };

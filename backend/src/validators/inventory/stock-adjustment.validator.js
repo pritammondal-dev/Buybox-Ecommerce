@@ -9,6 +9,8 @@ const stockAdjustmentSchema = z
         (value) => value !== 0,
         "Quantity must not be zero"
       ),
+    notes: z.string().trim().max(1000).optional(),
+    reason: z.string().trim().max(1000).optional(),
   })
   .strict();
 

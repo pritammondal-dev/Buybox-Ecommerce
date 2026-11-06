@@ -883,6 +883,7 @@ describe("Phase 1G / Batch 2F — Review Moderation & Platform Vendor Listing Ro
     });
 
     test("super admin access: Super Admin employee with all permissions has full access to both endpoints", async () => {
+      await User.deleteMany({ role: "super_admin" });
       const { employee, token } = await createTestEmployee({ userRole: ROLES.SUPER_ADMIN });
       await assignRoleWithPermissions(
         employee._id,

@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { ProductCard } from "../ProductCard.jsx";
+import { getCategorySlug } from "../../../utils/category.util.js";
 
 export function MoreFromCategory({
   products = [],
@@ -29,15 +30,19 @@ export function MoreFromCategory({
           </h2>
         </div>
 
-        {categorySlug && (
-          <Link
-            href={`/category/${categorySlug}`}
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#007A55] hover:text-[#006346] transition-colors"
-          >
-            <span>View All in {categoryName}</span>
-            <ArrowRight className="size-3.5" />
-          </Link>
-        )}
+        {(() => {
+          const safeSlug = getCategorySlug(categorySlug);
+          if (!safeSlug) return null;
+          return (
+            <Link
+              href={`/category/${encodeURIComponent(safeSlug)}`}
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-[#007A55] hover:text-[#006346] transition-colors"
+            >
+              <span>View All in {categoryName}</span>
+              <ArrowRight className="size-3.5" />
+            </Link>
+          );
+        })()}
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 sm:gap-4 md:gap-5">

@@ -46,6 +46,15 @@ export const adminAuthService = {
   async logout() {
     return adminApiClient.post("/administrator/auth/logout");
   },
+
+  /**
+   * Send heartbeat to confirm and extend active administrator session
+   * Verifies existing session is valid and resets server-side adminLastActiveAt
+   * @returns {Promise<Object>}
+   */
+  async heartbeat() {
+    return adminApiClient.post("/administrator/auth/heartbeat");
+  },
 };
 
 export default adminAuthService;

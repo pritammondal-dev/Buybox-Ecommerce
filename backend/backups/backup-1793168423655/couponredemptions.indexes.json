@@ -1,0 +1,40 @@
+[
+  {
+    "v": 2,
+    "key": {
+      "_id": 1
+    },
+    "name": "_id_"
+  },
+  {
+    "v": 2,
+    "key": {
+      "couponId": 1
+    },
+    "name": "couponId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "customerId": 1
+    },
+    "name": "customerId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "orderId": 1
+    },
+    "name": "orderId_1",
+    "unique": true
+  },
+  {
+    "v": 2,
+    "key": {
+      "couponId": 1,
+      "customerId": 1
+    },
+    "name": "couponId_1_customerId_1",
+    "unique": true
+  }
+]

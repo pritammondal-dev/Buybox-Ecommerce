@@ -78,9 +78,11 @@ export function AdminPaymentTransactionsView() {
         });
 
         if (!isCancelled) {
-          setTransactions(res.data || []);
-          if (res.meta) {
-            setMeta(res.meta);
+          const items = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+          const metaObj = res?.meta || res?.data?.meta || null;
+          setTransactions(items);
+          if (metaObj) {
+            setMeta(metaObj);
           }
           setError(null);
         }

@@ -389,7 +389,7 @@ describe("Part 1 — Admin Foundation, RBAC & Dynamic Job Role Authority Test Su
         });
     });
 
-    test("Editor (Tier 2) with employee.create and Admin in managementScope CAN create an Admin (Tier 3)", async () => {
+    test("Non-superadmin (Editor) CANNOT create staff even with permissions (Superadmin-only invariant: 403 Forbidden)", async () => {
       const unique = Date.now() + 50;
       const res = await request(app)
         .post("/api/v1/admin/staff")
@@ -405,9 +405,7 @@ describe("Part 1 — Admin Foundation, RBAC & Dynamic Job Role Authority Test Su
           jobTitle: "Junior Admin",
         });
 
-      expect(res.status).toBe(201);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data.staff.role).toBe("admin");
+      expect(res.status).toBe(403);
     });
 
     test("Editor (Tier 2) CANNOT create another Editor (Same-tier: 403 Forbidden)", async () => {

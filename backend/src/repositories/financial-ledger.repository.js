@@ -84,6 +84,66 @@ const findBySettlementId = async (
     .sort({ createdAt: 1 });
 };
 
+const findByReversalOfJournalId = async (
+  journalId,
+  options = {}
+) => {
+  return FinancialLedgerEntry.find({
+    reversalOfJournalId: journalId,
+  })
+    .session(options.session || null)
+    .sort({ createdAt: 1 });
+};
+
+const findVendorEntries = async (
+  vendorId,
+  { accountCode, entryType, startDate, endDate, skip = 0, limit = 20, session = null } = {}
+) => {
+  const query = { vendorId };
+  if (accountCode) query.accountCode = accountCode;
+  if (entryType) query.entryType = entryType;
+  if (startDate || endDate) {
+    query.createdAt = {};
+    if (startDate) query.createdAt.$gte = new Date(startDate);
+    if (endDate) query.createdAt.$lte = new Date(endDate);
+  }
+
+  return FinancialLedgerEntry.find(query)
+    .session(session || null)
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
+};
+
+const countVendorEntries = async (
+  vendorId,
+  { accountCode, entryType, startDate, endDate, session = null } = {}
+) => {
+  const query = { vendorId };
+  if (accountCode) query.accountCode = accountCode;
+  if (entryType) query.entryType = entryType;
+  if (startDate || endDate) {
+    query.createdAt = {};
+    if (startDate) query.createdAt.$gte = new Date(startDate);
+    if (endDate) query.createdAt.$lte = new Date(endDate);
+  }
+
+  return FinancialLedgerEntry.countDocuments(query).session(session || null);
+};
+
+const findVendorAllEntries = async (
+  vendorId,
+  currency = "INR",
+  options = {}
+) => {
+  return FinancialLedgerEntry.find({
+    vendorId,
+    currency: String(currency).toUpperCase(),
+  })
+    .session(options.session || null)
+    .sort({ createdAt: 1 });
+};
+
 module.exports = {
   create,
   createMany,
@@ -94,4 +154,8 @@ module.exports = {
   findByVendorId,
   findByPaymentId,
   findBySettlementId,
+  findByReversalOfJournalId,
+  findVendorEntries,
+  countVendorEntries,
+  findVendorAllEntries,
 };

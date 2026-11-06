@@ -33,6 +33,11 @@ const auditLogSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: null,
     },
+    reason: {
+      type: String,
+      default: null,
+      trim: true,
+    },
     ipAddress: {
       type: String,
       default: null,

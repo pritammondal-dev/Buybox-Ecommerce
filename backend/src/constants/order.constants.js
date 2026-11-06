@@ -22,13 +22,14 @@ const FULFILLMENT_STATUSES = Object.freeze({
   PARTIALLY_FULFILLED: "partially_fulfilled",
   FULFILLED: "fulfilled",
   CANCELLED: "cancelled",
+  RETURNED: "returned",
 });
 
 const ORDER_STATUS_TRANSITIONS = Object.freeze({
   pending: ["confirmed", "cancelled"],
   confirmed: ["processing", "cancelled"],
   processing: ["shipped", "cancelled"],
-  shipped: ["delivered"],
+  shipped: ["delivered", "cancelled"],
   delivered: ["completed"],
   completed: [],
   cancelled: [],

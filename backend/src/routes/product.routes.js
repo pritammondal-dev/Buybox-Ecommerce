@@ -1,13 +1,15 @@
 const express = require("express");
 
 const productController = require("../controllers/product.controller");
-const authenticate = require("../middlewares/authentication.middleware");
+const { authenticate, authenticateOptional, authenticateVendor } = require("../middlewares/authentication.middleware");
 const validate = require("../middlewares/validate.middleware");
 const {
   requirePermissions,
+  requireRoles,
 } = require("../middlewares/authorization.middleware");
 
 const { PERMISSIONS } = require("../constants/permissions.constants");
+const { ROLES } = require("../constants/auth.constants");
 const { adminSensitiveOpLimiter } = require("../middlewares/rate-limiter.middleware");
 const {
   createProductSchema,
@@ -34,12 +36,23 @@ const upload = multer({
   },
 });
 
+const bulkImportUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB (supports spreadsheet + optional ZIP archive)
+    files: 2,
+  },
+});
+
 const router = express.Router();
+
+// Dedicated Vendor Authenticator for merchant console routes
+router.use("/vendor", authenticateVendor);
 
 // Vendor self-service (must precede /:id)
 router.get(
   "/vendor/my",
-  authenticate,
+  authenticateVendor,
   requireVendorSession,
   requirePermissions(PERMISSIONS.PRODUCTS_READ),
   productController.listMyProducts
@@ -47,64 +60,67 @@ router.get(
 
 router.get(
   "/vendor/import/template",
-  authenticate,
+  authenticateVendor,
   requireApprovedVendor,
   productController.downloadImportTemplate
 );
 
 router.post(
   "/vendor/import/validate",
-  authenticate,
+  authenticateVendor,
   requireApprovedVendor,
-  upload.single("file"),
+  bulkImportUpload.fields([
+    { name: "file", maxCount: 1 },
+    { name: "images", maxCount: 1 },
+  ]),
   productController.validateBulkImport
 );
 
 router.post(
   "/vendor/import/commit",
-  authenticate,
+  authenticateVendor,
   requireApprovedVendor,
   productController.commitBulkImport
 );
 
 router.get(
   "/vendor/export",
-  authenticate,
+  authenticateVendor,
   requireApprovedVendor,
   productController.exportMyProducts
 );
 
 router.post(
   "/vendor/import/errors/download",
-  authenticate,
+  authenticateVendor,
   requireApprovedVendor,
   productController.downloadErrorReport
 );
 
 router.get(
   "/vendor/inventory/export",
-  authenticate,
+  authenticateVendor,
   requireApprovedVendor,
   productController.exportInventory
 );
 
 router.patch(
   "/vendor/bulk-update",
-  authenticate,
+  authenticateVendor,
   requireApprovedVendor,
   productController.bulkUpdatePricesAndStock
 );
 
 router.get(
   "/vendor/import/jobs",
-  authenticate,
+  authenticateVendor,
   requireApprovedVendor,
   productController.listJobs
 );
 
 router.get(
   "/vendor/import/jobs/:jobId",
-  authenticate,
+  authenticateVendor,
   requireApprovedVendor,
   productController.getJob
 );
@@ -113,6 +129,7 @@ router.get(
 router.get(
   "/admin/import/template",
   authenticate,
+  requireRoles(ROLES.ADMIN, ROLES.SUPER_ADMIN),
   requirePermissions(PERMISSIONS.PRODUCTS_CREATE),
   productController.downloadImportTemplate
 );
@@ -121,8 +138,12 @@ router.post(
   "/admin/import/validate",
   authenticate,
   adminSensitiveOpLimiter,
+  requireRoles(ROLES.ADMIN, ROLES.SUPER_ADMIN),
   requirePermissions(PERMISSIONS.PRODUCTS_CREATE),
-  upload.single("file"),
+  bulkImportUpload.fields([
+    { name: "file", maxCount: 1 },
+    { name: "images", maxCount: 1 },
+  ]),
   productController.validateBulkImport
 );
 
@@ -130,6 +151,7 @@ router.post(
   "/admin/import/commit",
   authenticate,
   adminSensitiveOpLimiter,
+  requireRoles(ROLES.ADMIN, ROLES.SUPER_ADMIN),
   requirePermissions(PERMISSIONS.PRODUCTS_CREATE),
   productController.commitBulkImport
 );
@@ -138,6 +160,7 @@ router.get(
   "/admin/export",
   authenticate,
   adminSensitiveOpLimiter,
+  requireRoles(ROLES.ADMIN, ROLES.SUPER_ADMIN),
   requirePermissions(PERMISSIONS.PRODUCTS_EXPORT),
   productController.exportMyProducts
 );
@@ -145,6 +168,7 @@ router.get(
 router.post(
   "/admin/import/errors/download",
   authenticate,
+  requireRoles(ROLES.ADMIN, ROLES.SUPER_ADMIN),
   requirePermissions(PERMISSIONS.PRODUCTS_CREATE),
   productController.downloadErrorReport
 );
@@ -152,6 +176,7 @@ router.post(
 router.get(
   "/admin/inventory/export",
   authenticate,
+  requireRoles(ROLES.ADMIN, ROLES.SUPER_ADMIN),
   requirePermissions(PERMISSIONS.PRODUCTS_EXPORT),
   productController.exportInventory
 );
@@ -159,6 +184,7 @@ router.get(
 router.patch(
   "/admin/bulk-update",
   authenticate,
+  requireRoles(ROLES.ADMIN, ROLES.SUPER_ADMIN),
   requirePermissions(PERMISSIONS.PRODUCTS_UPDATE),
   productController.bulkUpdatePricesAndStock
 );
@@ -166,6 +192,7 @@ router.patch(
 router.get(
   "/admin/import/jobs",
   authenticate,
+  requireRoles(ROLES.ADMIN, ROLES.SUPER_ADMIN),
   requirePermissions(PERMISSIONS.PRODUCTS_READ),
   productController.listJobs
 );
@@ -173,16 +200,64 @@ router.get(
 router.get(
   "/admin/import/jobs/:jobId",
   authenticate,
+  requireRoles(ROLES.ADMIN, ROLES.SUPER_ADMIN),
   requirePermissions(PERMISSIONS.PRODUCTS_READ),
   productController.getJob
 );
 
-// Public
-router.get("/", productController.listProducts);
+// Product Image & Gallery Upload
+router.post(
+  "/images/upload",
+  authenticate,
+  requirePermissions(PERMISSIONS.PRODUCTS_CREATE),
+  upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "file", maxCount: 1 },
+  ]),
+  productController.uploadProductImage
+);
+
+// Digital Asset Private Storage Upload
+const digitalUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit for digital product assets
+    files: 1,
+  },
+});
+
+router.post(
+  "/digital-assets/upload",
+  authenticate,
+  requirePermissions(PERMISSIONS.PRODUCTS_CREATE),
+  digitalUpload.single("file"),
+  productController.uploadDigitalAsset
+);
+
+// Dedicated Administrator Catalog Endpoints (DEF-003, DEF-006)
+router.get(
+  "/admin/catalog",
+  authenticate,
+  requireRoles(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER, ROLES.EDITOR),
+  requirePermissions(PERMISSIONS.PRODUCTS_READ),
+  productController.adminListProducts
+);
+
+router.get(
+  "/admin/:id",
+  authenticate,
+  requireRoles(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER, ROLES.EDITOR),
+  requirePermissions(PERMISSIONS.PRODUCTS_READ),
+  productController.adminGetProduct
+);
+
+// Public (Guarded against unauthorized status leakage)
+router.get("/", authenticateOptional, productController.listProducts);
 router.get("/recommendations", productController.getRecommendations);
 router.get("/:id/related", productController.getRelatedProducts);
 router.get("/slug/:slug", productController.getProductBySlug);
-router.get("/:id", productController.getProduct);
+router.get("/variants/:variantId/availability", productController.getVariantAvailability);
+router.get("/:id", authenticateOptional, productController.getProduct);
 
 // Duplicate product
 router.post(
@@ -223,11 +298,25 @@ router.patch(
   productController.rejectProduct
 );
 
+router.post(
+  "/admin/bulk-operations",
+  authenticate,
+  requirePermissions(PERMISSIONS.PRODUCTS_UPDATE),
+  productController.adminBulkOperations
+);
+
 router.delete(
   "/:id",
   authenticate,
   requirePermissions(PERMISSIONS.PRODUCTS_DELETE),
   productController.deleteProduct
+);
+
+router.post(
+  "/:id/restore",
+  authenticate,
+  requirePermissions(PERMISSIONS.PRODUCTS_UPDATE),
+  productController.restoreProduct
 );
 
 router.patch(

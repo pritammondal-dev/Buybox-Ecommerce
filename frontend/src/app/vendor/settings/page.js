@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { useAuthStore } from "@/stores/auth.store";
 import { authService } from "@/services/auth.service";
 import { vendorService } from "@/services/vendor.service";
+import { ConfirmDialog } from "@/components/admin/ConfirmDialog.jsx";
 
 export default function VendorSettingsPage() {
   const router = useRouter();
@@ -42,6 +43,8 @@ export default function VendorSettingsPage() {
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState("");
+  const [showLogoutAllConfirm, setShowLogoutAllConfirm] = useState(false);
+  const [isLoggingOutAll, setIsLoggingOutAll] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -107,9 +110,12 @@ export default function VendorSettingsPage() {
     }
   };
 
-  const handleLogoutAll = async () => {
-    if (!confirm("Are you sure you want to log out from all active sessions and devices?")) return;
+  const handleLogoutAll = () => {
+    setShowLogoutAllConfirm(true);
+  };
 
+  const handleConfirmLogoutAll = async () => {
+    setIsLoggingOutAll(true);
     try {
       await authService.logoutAll();
       toast.success("Logged out from all sessions");
@@ -119,6 +125,9 @@ export default function VendorSettingsPage() {
       toast.error("Failed to revoke all sessions", {
         description: err.response?.data?.message || err.message,
       });
+    } finally {
+      setIsLoggingOutAll(false);
+      setShowLogoutAllConfirm(false);
     }
   };
 
@@ -403,6 +412,18 @@ export default function VendorSettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Confirm Logout All Dialog */}
+      <ConfirmDialog
+        isOpen={showLogoutAllConfirm}
+        onClose={() => setShowLogoutAllConfirm(false)}
+        onConfirm={handleConfirmLogoutAll}
+        title="Sign Out All Devices"
+        description="Are you sure you want to log out from all active sessions and devices? You will need to log in again on all devices."
+        confirmLabel="Sign Out All Devices"
+        variant="destructive"
+        isLoading={isLoggingOutAll}
+      />
     </div>
   );
 }

@@ -1,13 +1,13 @@
 "use client";
 
-import React, { Suspense, useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { useStorefrontSettings } from "../../../hooks/useStorefrontSettings.js";
 import {
   Flame,
   Sparkles,
   Trophy,
-  ShieldCheck,
   Compass,
   Home,
   MoreHorizontal,
@@ -19,9 +19,70 @@ import {
 } from "lucide-react";
 import { cn } from "../../../utils/cn.js";
 
-function MainShoppingNavBase({ pathname = "/", currentSort = null, className }) {
+const NAV_ITEMS = [
+  {
+    label: "Home",
+    href: "/",
+    icon: Home,
+  },
+  {
+    label: "Today's Deals",
+    href: "/deals",
+    icon: Flame,
+    iconColor: "text-amber-300 fill-amber-300",
+    badge: "HOT",
+    badgeColor: "bg-[#E02424] text-white",
+  },
+  {
+    label: "Campaigns",
+    href: "/campaigns",
+    icon: Sparkles,
+    iconColor: "text-amber-300",
+    badge: "LIVE",
+    badgeColor: "bg-amber-400 text-slate-950",
+  },
+  {
+    label: "Flash Sale",
+    href: "/flash-sale",
+    icon: Sparkles,
+    iconColor: "text-amber-300",
+    badge: "LIVE",
+    badgeColor: "bg-amber-400 text-slate-950",
+  },
+  {
+    label: "Coupons",
+    href: "/coupons",
+    icon: Sparkles,
+    iconColor: "text-emerald-300",
+  },
+  {
+    label: "Compare Gear",
+    href: "/compare",
+    icon: Trophy,
+    iconColor: "text-amber-300",
+  },
+  {
+    label: "Explore Catalog",
+    href: "/shop",
+    icon: Compass,
+    iconColor: "text-emerald-300",
+  },
+];
+
+export function MainShoppingNav({ className }) {
+  const pathname = usePathname() || "/";
+  const { isFeatureEnabled } = useStorefrontSettings();
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef(null);
+
+  const filteredNavItems = useMemo(() => {
+    return NAV_ITEMS.filter((item) => {
+      if (item.href === "/flash-sale" && !isFeatureEnabled("flashSale")) return false;
+      if (item.href === "/coupons" && !isFeatureEnabled("coupons")) return false;
+      if (item.href === "/compare" && !isFeatureEnabled("compare")) return false;
+      return true;
+    });
+  }, [isFeatureEnabled]);
 
   // Close More menu on outside click
   useEffect(() => {
@@ -45,54 +106,6 @@ function MainShoppingNavBase({ pathname = "/", currentSort = null, className }) 
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  const NAV_ITEMS = [
-    {
-      label: "Home",
-      href: "/",
-      icon: Home,
-      isActive: pathname === "/" && !currentSort,
-    },
-    {
-      label: "Today's Deals",
-      href: "/deals",
-      icon: Flame,
-      iconColor: "text-amber-300 fill-amber-300",
-      badge: "HOT",
-      badgeColor: "bg-[#E02424] text-white",
-      isActive: pathname === "/deals",
-    },
-    {
-      label: "Flash Sale",
-      href: "/flash-sale",
-      icon: Sparkles,
-      iconColor: "text-amber-300",
-      badge: "LIVE",
-      badgeColor: "bg-amber-400 text-slate-950",
-      isActive: pathname === "/flash-sale",
-    },
-    {
-      label: "Coupons",
-      href: "/coupons",
-      icon: Sparkles,
-      iconColor: "text-emerald-300",
-      isActive: pathname === "/coupons",
-    },
-    {
-      label: "Compare Gear",
-      href: "/compare",
-      icon: Trophy,
-      iconColor: "text-amber-300",
-      isActive: pathname === "/compare",
-    },
-    {
-      label: "Explore Catalog",
-      href: "/shop",
-      icon: Compass,
-      iconColor: "text-emerald-300",
-      isActive: pathname === "/shop" && !currentSort,
-    },
-  ];
-
   return (
     <nav
       aria-label="Main shopping navigation"
@@ -102,23 +115,23 @@ function MainShoppingNavBase({ pathname = "/", currentSort = null, className }) 
       )}
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div
-          className="flex items-center justify-between gap-1 sm:gap-2 py-2"
-        >
+        <div className="flex items-center justify-between gap-1 sm:gap-2 py-2">
           {/* Scrollable primary navigation items */}
-          <div
-            className="flex items-center gap-1 sm:gap-2 overflow-x-auto scrollbar-none flex-1 min-w-0"
-            style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-          >
-            {NAV_ITEMS.map((item) => {
+          <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto scrollbar-none flex-1 min-w-0">
+            {filteredNavItems.map((item) => {
               const Icon = item.icon;
+              const isActive =
+                item.href === "/"
+                  ? pathname === "/"
+                  : pathname === item.href || pathname.startsWith(item.href + "/");
+
               return (
                 <Link
                   key={item.label}
                   href={item.href}
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-all whitespace-nowrap shrink-0 text-xs",
-                    item.isActive
+                    isActive
                       ? "bg-[#007A55] text-white font-bold shadow-2xs ring-1 ring-emerald-400/30"
                       : "text-emerald-100/90 hover:text-white hover:bg-emerald-800/50"
                   )}
@@ -135,7 +148,7 @@ function MainShoppingNavBase({ pathname = "/", currentSort = null, className }) 
                   {item.badge && (
                     <span
                       className={cn(
-                        "rounded-xs px-1.5 py-0.2 text-[9px] font-extrabold uppercase tracking-wide shadow-2xs ml-0.5",
+                        "rounded-xs px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide shadow-2xs ml-0.5",
                         item.badgeColor
                       )}
                     >
@@ -200,7 +213,7 @@ function MainShoppingNavBase({ pathname = "/", currentSort = null, className }) 
                         Become a Vendor / Seller
                       </div>
                       <div className="text-[10px] text-slate-500 truncate">
-                        Open your shop & reach millions
+                        Open your shop &amp; reach millions
                       </div>
                     </div>
                   </div>
@@ -223,7 +236,7 @@ function MainShoppingNavBase({ pathname = "/", currentSort = null, className }) 
                         24 × 7 Support
                       </div>
                       <div className="text-[10px] text-slate-500 truncate">
-                        Dedicated ticketing & helpdesk
+                        Dedicated ticketing &amp; helpdesk
                       </div>
                     </div>
                   </div>
@@ -246,7 +259,7 @@ function MainShoppingNavBase({ pathname = "/", currentSort = null, className }) 
                         Help Center
                       </div>
                       <div className="text-[10px] text-slate-500 truncate">
-                        FAQs, order policies & guides
+                        FAQs, order policies &amp; guides
                       </div>
                     </div>
                   </div>
@@ -258,36 +271,6 @@ function MainShoppingNavBase({ pathname = "/", currentSort = null, className }) 
         </div>
       </div>
     </nav>
-  );
-}
-
-function MainShoppingNavFallback() {
-  return (
-    <nav className="w-full bg-[#004D38] border-b border-emerald-900/60 text-xs font-semibold py-2">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-7" />
-    </nav>
-  );
-}
-
-function MainShoppingNavInner(props) {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const currentSort = searchParams.get("sort");
-
-  return (
-    <MainShoppingNavBase
-      pathname={pathname}
-      currentSort={currentSort}
-      {...props}
-    />
-  );
-}
-
-export function MainShoppingNav(props) {
-  return (
-    <Suspense fallback={<MainShoppingNavFallback />}>
-      <MainShoppingNavInner {...props} />
-    </Suspense>
   );
 }
 

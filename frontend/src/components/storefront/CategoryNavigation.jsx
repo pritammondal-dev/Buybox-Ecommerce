@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { LayoutGrid, ChevronDown, PhoneCall, Flame, Sparkles, ArrowRight } from "lucide-react";
 import { categoryService } from "../../services/category.service.js";
 import { cn } from "../../utils/cn.js";
+import { getCategoryHref } from "../../utils/category.util.js";
 
 export function CategoryNavigation({ categories: propCategories, className }) {
   const pathname = usePathname();
@@ -75,9 +76,8 @@ export function CategoryNavigation({ categories: propCategories, className }) {
               <div className="max-h-80 overflow-y-auto space-y-0.5">
                 {categories.length > 0 ? (
                   categories.map((cat) => {
-                    const id = cat.id || cat._id;
-                    const slug = cat.slug || id;
-                    const href = `/category/${slug}`;
+                    const id = cat.id || cat._id || cat.slug;
+                    const href = getCategoryHref(cat);
                     const isActive = pathname === href;
 
                     return (
@@ -142,9 +142,8 @@ export function CategoryNavigation({ categories: propCategories, className }) {
 
           {/* Dynamic Top Categories from Backend */}
           {topCategories.map((cat) => {
-            const id = cat.id || cat._id;
-            const slug = cat.slug || id;
-            const href = `/category/${slug}`;
+            const id = cat.id || cat._id || cat.slug;
+            const href = getCategoryHref(cat);
             const isActive = pathname === href;
 
             return (

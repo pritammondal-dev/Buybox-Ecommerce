@@ -38,9 +38,48 @@ const campaignSchema = new mongoose.Schema(
         "paused",
         "completed",
         "cancelled",
+        "archived",
       ],
       default: "draft",
       index: true,
+    },
+
+    type: {
+      type: String,
+      enum: [
+        "seasonal",
+        "flash_sale",
+        "holiday",
+        "clearance",
+        "brand_special",
+        "general",
+      ],
+      default: "general",
+      index: true,
+    },
+
+    timezone: {
+      type: String,
+      default: "Asia/Kolkata",
+      trim: true,
+    },
+
+    bannerUrl: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    mobileBannerUrl: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    destinationUrl: {
+      type: String,
+      trim: true,
+      default: null,
     },
 
     startsAt: {
@@ -90,6 +129,13 @@ const campaignSchema = new mongoose.Schema(
       },
     ],
 
+    discountIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "ProductDiscount",
+      },
+    ],
+
     metadata: {
       type: Map,
       of: String,
@@ -123,6 +169,12 @@ campaignSchema.index({
 campaignSchema.pre("validate", function () {
   if (this.endsAt <= this.startsAt) {
     throw new Error("Campaign end date must be after start date");
+  }
+
+  if (this.status === "active" && this.isActive === false && this.isNew) {
+    this.isActive = true;
+  } else if (this.status === "active" && this.isActive === undefined) {
+    this.isActive = true;
   }
 
   if (

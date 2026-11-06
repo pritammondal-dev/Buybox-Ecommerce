@@ -17,7 +17,8 @@ import {
   Send,
 } from "lucide-react";
 import { taskService, staffService } from "@/services/admin/admin.service.js";
-import { useAuth } from "@/hooks/useAuth.js";
+import { useAdminAuth } from "@/hooks/useAdminAuth.js";
+import { ConfirmDialog } from "@/components/admin/ConfirmDialog.jsx";
 
 const STATUS_COLUMNS = [
   { key: "TODO", label: "To Do", bg: "bg-slate-100", text: "text-slate-700" },
@@ -35,7 +36,7 @@ const PRIORITY_BADGES = {
 };
 
 export default function TaskManagementPage() {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser } = useAdminAuth();
 
   const [tasks, setTasks] = useState([]);
   const [staffList, setStaffList] = useState([]);
@@ -53,6 +54,8 @@ export default function TaskManagementPage() {
   const [activeTask, setActiveTask] = useState(null);
   const [newNote, setNewNote] = useState("");
   const [submittingNote, setSubmittingNote] = useState(false);
+  const [taskToDelete, setTaskToDelete] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   // Create Form
   const [createForm, setCreateForm] = useState({
@@ -160,14 +163,22 @@ export default function TaskManagementPage() {
     }
   };
 
-  const handleDeleteTask = async (taskId) => {
-    if (!confirm("Are you sure you want to delete this task?")) return;
+  const handleDeleteTask = (taskId) => {
+    setTaskToDelete(taskId);
+  };
+
+  const handleConfirmDeleteTask = async () => {
+    if (!taskToDelete) return;
+    setDeleteLoading(true);
     try {
-      await taskService.delete(taskId);
-      if (activeTask?._id === taskId) setActiveTask(null);
+      await taskService.delete(taskToDelete);
+      if (activeTask?._id === taskToDelete) setActiveTask(null);
       fetchTasks();
+      setTaskToDelete(null);
     } catch (err) {
       setError("Failed to delete task");
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -625,6 +636,18 @@ export default function TaskManagementPage() {
           </div>
         </div>
       )}
+
+      {/* Confirm Delete Task Dialog */}
+      <ConfirmDialog
+        isOpen={Boolean(taskToDelete)}
+        onClose={() => setTaskToDelete(null)}
+        onConfirm={handleConfirmDeleteTask}
+        title="Delete Task"
+        description="Are you sure you want to delete this task? This action cannot be undone."
+        confirmLabel="Delete Task"
+        variant="destructive"
+        isLoading={deleteLoading}
+      />
     </div>
   );
 }

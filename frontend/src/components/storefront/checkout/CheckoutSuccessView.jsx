@@ -125,9 +125,6 @@ export function CheckoutSuccessView() {
                     <div key={idx} className="flex items-center justify-between pt-2 text-xs">
                       <div className="min-w-0 flex-1 pr-4">
                         <p className="font-bold text-slate-800 truncate">{name}</p>
-                        {item.sku && (
-                          <p className="font-mono text-[10px] text-slate-400">SKU: {item.sku}</p>
-                        )}
                       </div>
                       <div className="text-right shrink-0">
                         <span className="text-slate-500 mr-2">×{item.quantity}</span>

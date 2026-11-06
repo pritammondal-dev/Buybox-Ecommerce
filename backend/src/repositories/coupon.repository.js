@@ -6,12 +6,16 @@ const create = async (data, options = {}) => {
 };
 
 const findById = async (couponId, options = {}) => {
-  return Coupon.findById(couponId).session(options.session || null);
+  return Coupon.findOne({
+    _id: couponId,
+    deletedAt: null,
+  }).session(options.session || null);
 };
 
 const findByCode = async (code, options = {}) => {
   return Coupon.findOne({
     code: code.trim().toUpperCase(),
+    deletedAt: null,
   }).session(options.session || null);
 };
 
@@ -20,11 +24,13 @@ const findActiveByCode = async (code, options = {}) => {
     code: code.trim().toUpperCase(),
     status: "active",
     isActive: true,
+    deletedAt: null,
   }).session(options.session || null);
 };
 
 const findMany = async (filter = {}, options = {}) => {
-  return Coupon.find(filter)
+  const effectiveFilter = { deletedAt: null, ...filter };
+  return Coupon.find(effectiveFilter)
     .sort({ createdAt: -1 })
     .session(options.session || null);
 };
@@ -41,10 +47,26 @@ const updateById = async (couponId, update, options = {}) => {
   );
 };
 
+const archiveById = async (couponId, options = {}) => {
+  return Coupon.findByIdAndUpdate(
+    couponId,
+    {
+      status: "archived",
+      isActive: false,
+      deletedAt: new Date(),
+    },
+    {
+      new: true,
+      session: options.session,
+    }
+  );
+};
+
 const incrementUsage = async (couponId, options = {}) => {
   return Coupon.findOneAndUpdate(
     {
       _id: couponId,
+      deletedAt: null,
       $or: [
         { usageLimit: null },
         { usageLimit: { $exists: false } },
@@ -88,6 +110,7 @@ module.exports = {
   findActiveByCode,
   findMany,
   updateById,
+  archiveById,
   incrementUsage,
   decrementUsage,
 };

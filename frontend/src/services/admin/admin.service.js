@@ -1,14 +1,19 @@
 import apiClient from "../../lib/api/admin-axios.js";
+import { normalizeTaxRules, normalizeTaxRule } from "../../utils/tax.util.js";
 
 export const dashboardService = {
-  getStats: async () => {
-    const res = await apiClient.get("/admin/dashboard/stats");
+  getStats: async (params = {}) => {
+    const res = await apiClient.get("/admin/dashboard/stats", { params });
     return res?.data?.data || res?.data || res;
   },
 };
 
 export const staffService = {
   list: async (params = {}) => {
+    const res = await apiClient.get("/admin/staff", { params });
+    return res?.data?.data || res?.data || res;
+  },
+  listStaff: async (params = {}) => {
     const res = await apiClient.get("/admin/staff", { params });
     return res?.data?.data || res?.data || res;
   },
@@ -62,6 +67,10 @@ export const taskService = {
     const res = await apiClient.get(`/admin/tasks/${id}`);
     return res?.data?.data?.task || res?.data?.data || res;
   },
+  getTaskById: async (id) => {
+    const res = await apiClient.get(`/admin/tasks/${id}`);
+    return res?.data?.data?.task || res?.data?.data || res;
+  },
   create: async (data) => {
     const res = await apiClient.post("/admin/tasks", data);
     return res?.data?.data?.task || res?.data?.data || res;
@@ -70,8 +79,13 @@ export const taskService = {
     const res = await apiClient.patch(`/admin/tasks/${id}`, data);
     return res?.data?.data?.task || res?.data?.data || res;
   },
+  updateTask: async (id, data) => {
+    const res = await apiClient.patch(`/admin/tasks/${id}`, data);
+    return res?.data?.data?.task || res?.data?.data || res;
+  },
   addNote: async (id, note) => {
-    const res = await apiClient.post(`/admin/tasks/${id}/notes`, { note });
+    const noteText = typeof note === "string" ? note : (note?.note || note?.content || "");
+    const res = await apiClient.post(`/admin/tasks/${id}/notes`, { note: noteText });
     return res?.data?.data?.task || res?.data?.data || res;
   },
   delete: async (id) => {
@@ -113,41 +127,120 @@ export const adminCustomerService = {
   },
   get: async (id) => {
     const res = await apiClient.get(`/admin/customers/${id}`);
-    return res?.data?.data?.customer || res?.data?.data || res;
+    return res?.data?.customer || res?.customer || res?.data || res;
   },
-  updateStatus: async (id, isActive) => {
+  updateStatus: async (id, isActive, reason) => {
     const res = await apiClient.patch(`/admin/customers/${id}/status`, {
       isActive,
-    });
-    return res?.data || res;
-  },
-};
-
-export const adminVendorService = {
-  list: async (params = {}) => {
-    const res = await apiClient.get("/vendors", { params });
-    return res?.data?.data || res?.data || res;
-  },
-  approve: async (id) => {
-    const res = await apiClient.post(`/vendors/${id}/approve`);
-    return res?.data || res;
-  },
-  reject: async (id, reason) => {
-    const res = await apiClient.post(`/vendors/${id}/reject`, { reason });
-    return res?.data || res;
-  },
-  requestChanges: async (id, reason) => {
-    const res = await apiClient.post(`/vendors/${id}/request-changes`, {
       reason,
     });
     return res?.data || res;
   },
   suspend: async (id, reason) => {
-    const res = await apiClient.patch(`/vendors/${id}/status`, {
-      status: "suspended",
+    const res = await apiClient.post(`/admin/customers/${id}/suspend`, { reason });
+    return res?.data || res;
+  },
+  reactivate: async (id, reason) => {
+    const res = await apiClient.post(`/admin/customers/${id}/reactivate`, { reason });
+    return res?.data || res;
+  },
+  resetPassword: async (id, newPassword, reason) => {
+    const res = await apiClient.post(`/admin/customers/${id}/reset-password`, {
+      newPassword,
+      reason,
+    });
+    return res?.data?.data || res?.data || res;
+  },
+  delete: async (id, reason) => {
+    const res = await apiClient.delete(`/admin/customers/${id}`, {
+      data: { reason },
+    });
+    return res?.data?.data || res?.data || res;
+  },
+  deactivate: async (id, reason) => {
+    const res = await apiClient.delete(`/admin/customers/${id}`, {
+      data: { reason },
+    });
+    return res?.data?.data || res?.data || res;
+  },
+  issueGiftCard: async (id, payload) => {
+    const res = await apiClient.post(`/admin/customers/${id}/gift-card`, payload);
+    return res?.data?.data || res?.data || res;
+  },
+  update: async (id, payload) => {
+    const res = await apiClient.patch(`/admin/customers/${id}`, payload);
+    return res?.data?.data || res?.data || res;
+  },
+};
+
+export const adminVendorService = {
+  list: async (params = {}) => {
+    const res = await apiClient.get("/admin/vendors", { params });
+    return res?.data?.data || res?.data || res;
+  },
+  get: async (id) => {
+    const res = await apiClient.get(`/admin/vendors/${id}`);
+    return res?.data?.data || res?.data?.vendor || res?.vendor || res;
+  },
+  approve: async (id) => {
+    const res = await apiClient.post(`/admin/vendors/${id}/approve`);
+    return res?.data || res;
+  },
+  reject: async (id, reason) => {
+    const res = await apiClient.post(`/admin/vendors/${id}/reject`, { reason });
+    return res?.data || res;
+  },
+  requestChanges: async (id, reason) => {
+    const res = await apiClient.post(`/admin/vendors/${id}/request-changes`, {
       reason,
     });
     return res?.data || res;
+  },
+  suspend: async (id, reason) => {
+    const res = await apiClient.post(`/admin/vendors/${id}/suspend`, { reason });
+    return res?.data || res;
+  },
+  suspendVendor: async (id, reason) => {
+    const res = await apiClient.post(`/admin/vendors/${id}/suspend`, { reason });
+    return res?.data || res;
+  },
+  reactivate: async (id, reason) => {
+    const res = await apiClient.post(`/admin/vendors/${id}/reactivate`, { reason });
+    return res?.data || res;
+  },
+  reactivateVendor: async (id, reason) => {
+    const res = await apiClient.post(`/admin/vendors/${id}/reactivate`, { reason });
+    return res?.data || res;
+  },
+  resetPassword: async (id, newPassword, reason) => {
+    const res = await apiClient.post(`/admin/vendors/${id}/reset-password`, {
+      newPassword,
+      reason,
+    });
+    return res?.data || res;
+  },
+  resetVendorPassword: async (id, newPassword, reason) => {
+    const res = await apiClient.post(`/admin/vendors/${id}/reset-password`, {
+      newPassword,
+      reason,
+    });
+    return res?.data || res;
+  },
+  delete: async (id, reason) => {
+    const res = await apiClient.delete(`/admin/vendors/${id}`, {
+      data: { reason },
+    });
+    return res?.data || res;
+  },
+  deleteVendor: async (id, reason) => {
+    const res = await apiClient.delete(`/admin/vendors/${id}`, {
+      data: { reason },
+    });
+    return res?.data || res;
+  },
+  updateVendor: async (id, payload) => {
+    const res = await apiClient.patch(`/admin/vendors/${id}`, payload);
+    return res?.data?.data || res?.data?.vendor || res?.vendor || res;
   },
 };
 
@@ -256,12 +349,46 @@ export const adminCatalogService = {
 
   // Products
   listProducts: async (params = {}) => {
-    const res = await apiClient.get("/products", { params });
-    return res?.data?.data || res?.data || res;
+    try {
+      const res = await apiClient.get("/products/admin/catalog", { params });
+      return res?.data?.data || res?.data || res;
+    } catch (err) {
+      if (err?.response?.status === 404) {
+        const fallbackRes = await apiClient.get("/products", { params });
+        return fallbackRes?.data?.data || fallbackRes?.data || fallbackRes;
+      }
+      throw err;
+    }
   },
   getProduct: async (id) => {
-    const res = await apiClient.get(`/products/${id}`);
-    return res?.data?.data?.product || res?.data?.data || res;
+    try {
+      const res = await apiClient.get(`/products/admin/${id}`);
+      return (
+        res?.data?.product ||
+        res?.data?.data?.product ||
+        res?.product ||
+        res?.data?.data ||
+        res?.data ||
+        res
+      );
+    } catch (err) {
+      if (err?.response?.status === 404) {
+        const fallbackRes = await apiClient.get(`/products/${id}`);
+        return (
+          fallbackRes?.data?.product ||
+          fallbackRes?.data?.data?.product ||
+          fallbackRes?.product ||
+          fallbackRes?.data?.data ||
+          fallbackRes?.data ||
+          fallbackRes
+        );
+      }
+      throw err;
+    }
+  },
+  submitProduct: async (id) => {
+    const res = await apiClient.post(`/products/${id}/submit`);
+    return res?.data?.data || res?.data || res;
   },
   approveProduct: async (id) => {
     const res = await apiClient.patch(`/products/${id}/approve`);
@@ -283,13 +410,56 @@ export const adminCatalogService = {
     const res = await apiClient.delete(`/products/${id}`);
     return res?.data || res;
   },
+  restoreProduct: async (id) => {
+    const res = await apiClient.post(`/products/${id}/restore`);
+    return res?.data?.data || res?.data || res;
+  },
+  bulkOperations: async (payload) => {
+    const res = await apiClient.post("/products/admin/bulk-operations", payload);
+    return res?.data?.data || res?.data || res;
+  },
+  getVariantsForProduct: async (productId, params = {}) => {
+    const res = await apiClient.get(`/product-variants/product/${productId}`, { params });
+    return res?.data?.data || res?.data || res;
+  },
   duplicateProduct: async (id) => {
     const res = await apiClient.post(`/products/${id}/duplicate`);
-    return res?.data?.data?.product || res?.data?.data || res;
+    return (
+      res?.data?.product ||
+      res?.data?.data?.product ||
+      res?.product ||
+      res?.data?.data ||
+      res?.data ||
+      res
+    );
   },
   createBulkVariants: async (productId, variants) => {
     const res = await apiClient.post(`/product-variants/product/${productId}/bulk`, { variants });
     return res?.data?.data || res?.data || res;
+  },
+  downloadImportTemplate: async (format = "xlsx") => {
+    const res = await apiClient.get("/products/admin/import/template", {
+      params: { format },
+      responseType: "blob",
+    });
+    return res?.data || res;
+  },
+  validateBulkImport: async (formData) => {
+    const res = await apiClient.post("/products/admin/import/validate", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return res?.data?.data || res?.data || res;
+  },
+  commitBulkImport: async (rows) => {
+    const res = await apiClient.post("/products/admin/import/commit", { rows });
+    return res?.data?.data || res?.data || res;
+  },
+  exportProducts: async (params = {}) => {
+    const res = await apiClient.get("/products/admin/export", {
+      params,
+      responseType: "blob",
+    });
+    return res?.data || res;
   },
 
   // Platform Attributes & Sets
@@ -352,10 +522,11 @@ export const adminCatalogService = {
     const res = await apiClient.get("/reviews", { params });
     return res?.data?.data || res?.data || res;
   },
-  moderateReview: async (reviewId, status, rejectionReason) => {
+  moderateReview: async (reviewId, status, reason) => {
     const res = await apiClient.patch(`/reviews/${reviewId}/moderate`, {
       status,
-      rejectionReason,
+      moderationReason: reason,
+      rejectionReason: reason,
     });
     return res?.data?.data || res?.data || res;
   },
@@ -371,10 +542,9 @@ export const adminInventoryService = {
     return res?.data?.data || res?.data || res;
   },
   adjustStock: async (inventoryId, quantity, notes = "") => {
-    const res = await apiClient.patch(`/inventory/${inventoryId}/adjust`, {
-      quantity: Number(quantity),
-      notes,
-    });
+    const payload = { quantity: Number(quantity) };
+    if (notes) payload.notes = String(notes).trim();
+    const res = await apiClient.patch(`/inventory/${inventoryId}/adjust`, payload);
     return res?.data?.data || res?.data || res;
   },
   transferStock: async (data) => {
@@ -383,11 +553,11 @@ export const adminInventoryService = {
   },
   listWarehouses: async (params = {}) => {
     const res = await apiClient.get("/warehouses", { params });
-    return res?.data?.data || res?.data || res;
+    return res?.data?.warehouses || res?.data?.data || res?.data || res;
   },
   getWarehouse: async (id) => {
     const res = await apiClient.get(`/warehouses/${id}`);
-    return res?.data?.data || res?.data || res;
+    return res?.data?.warehouse || res?.data?.data || res?.data || res;
   },
   createWarehouse: async (data) => {
     const res = await apiClient.post("/warehouses", data);
@@ -395,6 +565,154 @@ export const adminInventoryService = {
   },
   updateWarehouse: async (id, data) => {
     const res = await apiClient.patch(`/warehouses/${id}`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  deleteWarehouse: async (id) => {
+    const res = await apiClient.delete(`/warehouses/${id}`);
+    return res?.data?.data || res?.data || res;
+  },
+  // Stock Receiving
+  listReceivings: async (params = {}) => {
+    const res = await apiClient.get("/warehouse-operations/receiving", { params });
+    return res?.data?.data || res?.data || res;
+  },
+  getReceiving: async (id) => {
+    const res = await apiClient.get(`/warehouse-operations/receiving/${id}`);
+    return res?.data?.data || res?.data || res;
+  },
+  createReceiving: async (data) => {
+    const res = await apiClient.post("/warehouse-operations/receiving", data);
+    return res?.data?.data || res?.data || res;
+  },
+  updateConfirmReceiving: async (id, data = {}) => {
+    const res = await apiClient.post(`/warehouse-operations/receiving/${id}/confirm`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  cancelReceiving: async (id, data = {}) => {
+    const res = await apiClient.post(`/warehouse-operations/receiving/${id}/cancel`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  // Stock Transfers
+  listTransfers: async (params = {}) => {
+    const res = await apiClient.get("/warehouse-operations/transfers", { params });
+    return res?.data?.data || res?.data || res;
+  },
+  getTransfer: async (id) => {
+    const res = await apiClient.get(`/warehouse-operations/transfers/${id}`);
+    return res?.data?.data || res?.data || res;
+  },
+  createTransfer: async (data) => {
+    const res = await apiClient.post("/warehouse-operations/transfers", data);
+    return res?.data?.data || res?.data || res;
+  },
+  approveTransfer: async (id) => {
+    const res = await apiClient.post(`/warehouse-operations/transfers/${id}/approve`);
+    return res?.data?.data || res?.data || res;
+  },
+  dispatchTransfer: async (id, data = {}) => {
+    const res = await apiClient.post(`/warehouse-operations/transfers/${id}/dispatch`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  receiveTransfer: async (id, data = {}) => {
+    const res = await apiClient.post(`/warehouse-operations/transfers/${id}/receive`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  cancelTransfer: async (id, data = {}) => {
+    const res = await apiClient.post(`/warehouse-operations/transfers/${id}/cancel`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  // Bin / Shelf Locations
+  listLocations: async (params = {}) => {
+    const res = await apiClient.get("/warehouse-operations/locations", { params });
+    return res?.data?.data || res?.data || res;
+  },
+  createLocation: async (data) => {
+    const res = await apiClient.post("/warehouse-operations/locations", data);
+    return res?.data?.data || res?.data || res;
+  },
+  updateLocation: async (id, data) => {
+    const res = await apiClient.patch(`/warehouse-operations/locations/${id}`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  assignLocationItem: async (locationId, data) => {
+    const res = await apiClient.post(`/warehouse-operations/locations/${locationId}/assign`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  moveLocationItem: async (data) => {
+    const res = await apiClient.post("/warehouse-operations/locations/move", data);
+    return res?.data?.data || res?.data || res;
+  },
+  // Stock Counts / Cycle Counting
+  listStockCounts: async (params = {}) => {
+    const res = await apiClient.get("/warehouse-operations/counts", { params });
+    return res?.data?.data || res?.data || res;
+  },
+  getStockCount: async (id) => {
+    const res = await apiClient.get(`/warehouse-operations/counts/${id}`);
+    return res?.data?.data || res?.data || res;
+  },
+  createStockCount: async (data) => {
+    const res = await apiClient.post("/warehouse-operations/counts", data);
+    return res?.data?.data || res?.data || res;
+  },
+  recordStockCount: async (id, data) => {
+    const res = await apiClient.post(`/warehouse-operations/counts/${id}/record`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  reconcileStockCount: async (id, data = {}) => {
+    const res = await apiClient.post(`/warehouse-operations/counts/${id}/reconcile`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  cancelStockCount: async (id, data = {}) => {
+    const res = await apiClient.post(`/warehouse-operations/counts/${id}/cancel`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  // Order Allocation
+  getEligibleWarehousesForItem: async (productVariantId, params = {}) => {
+    const res = await apiClient.get(`/warehouse-operations/allocations/eligible/${productVariantId}`, { params });
+    return res?.data?.data || res?.data || res;
+  },
+  reallocateOrderItem: async (orderId, data) => {
+    const res = await apiClient.post(`/warehouse-operations/allocations/orders/${orderId}/reallocate`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  // Dashboard & Reporting
+  getWarehouseDashboardOverview: async (params = {}) => {
+    const res = await apiClient.get("/warehouse-operations/reports/overview", { params });
+    return res?.data?.data || res?.data || res;
+  },
+  getWarehouseInventoryReport: async (params = {}) => {
+    const res = await apiClient.get("/warehouse-operations/reports/inventory", { params });
+    return res?.data?.data || res?.data || res;
+  },
+  getWarehouseMovementHistory: async (params = {}) => {
+    const res = await apiClient.get("/warehouse-operations/reports/movement-history", { params });
+    return res?.data?.data || res?.data || res;
+  },
+  // Aliases for comprehensive operations coverage
+  listReceivingRecords(params) { return this.listReceivings(params); },
+  getReceivingRecord(id) { return this.getReceiving(id); },
+  createReceivingRecord(data) { return this.createReceiving(data); },
+  confirmReceivingRecord(id, data) { return this.updateConfirmReceiving(id, data); },
+  cancelReceivingRecord(id, data) { return this.cancelReceiving(id, data); },
+  getTransferRecord(id) { return this.getTransfer(id); },
+  assignItemToLocation(locId, data) { return this.assignLocationItem(locId, data); },
+  moveItemBetweenLocations(data) { return this.moveLocationItem(data); },
+  recordPhysicalCounts(id, data) { return this.recordStockCount(id, data); },
+  reconcileAndFinalizeCount(id, data) { return this.reconcileStockCount(id, data); },
+  getWarehouseOperationsOverview(params) { return this.getWarehouseDashboardOverview(params); },
+  getPickLists: async (params = {}) => {
+    const res = await apiClient.get("/warehouse-operations/pick-lists", { params });
+    return res?.data?.data || res?.data || res;
+  },
+  exportPickLists: async (params = {}, format = "csv") => {
+    return apiClient.get("/warehouse-operations/pick-lists/export", {
+      params: { ...params, format },
+      responseType: "blob",
+    });
+  },
+  getPackingSlip: async (orderId, params = {}) => {
+    const res = await apiClient.get(`/orders/${orderId}/packing-slip`, { params });
     return res?.data?.data || res?.data || res;
   },
 };
@@ -413,23 +731,30 @@ export const adminImportExportService = {
     });
     return res?.data?.data || res?.data || res;
   },
-  commitImport: async (rows) => {
-    const res = await apiClient.post("/products/admin/import/commit", { rows });
+  commitImport: async (rows, stagingId = null) => {
+    const payload = Array.isArray(rows)
+      ? stagingId
+        ? { rows, stagingId }
+        : { rows }
+      : rows;
+    const res = await apiClient.post("/products/admin/import/commit", payload);
     return res?.data?.data || res?.data || res;
   },
-  exportProducts: async (format = "csv") => {
+  exportProducts: async (paramsOrFormat = "csv") => {
+    const format = typeof paramsOrFormat === "object" && paramsOrFormat !== null ? (paramsOrFormat.format || "csv") : (paramsOrFormat || "csv");
     const res = await apiClient.get("/products/admin/export", {
       params: { format },
       responseType: "blob",
     });
-    return res;
+    return res?.data || res;
   },
-  exportInventory: async (format = "csv") => {
+  exportInventory: async (paramsOrFormat = "csv") => {
+    const format = typeof paramsOrFormat === "object" && paramsOrFormat !== null ? (paramsOrFormat.format || "csv") : (paramsOrFormat || "csv");
     const res = await apiClient.get("/products/admin/inventory/export", {
       params: { format },
       responseType: "blob",
     });
-    return res;
+    return res?.data || res;
   },
 };
 
@@ -449,6 +774,22 @@ export const adminOperationsService = {
   },
   rejectReturn: async (id, reason = "") => {
     const res = await apiClient.post(`/returns/admin/${id}/reject`, { reason });
+    return res?.data?.data || res?.data || res;
+  },
+  scheduleReturnPickup: async (id, data = {}) => {
+    const res = await apiClient.post(`/returns/admin/${id}/schedule-pickup`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  confirmReturnPickup: async (id, data = {}) => {
+    const res = await apiClient.post(`/returns/admin/${id}/confirm-pickup`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  inspectReturn: async (id, data = {}) => {
+    const res = await apiClient.post(`/returns/admin/${id}/inspect`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  fulfillExchange: async (id, data = {}) => {
+    const res = await apiClient.post(`/returns/admin/${id}/exchange`, data);
     return res?.data?.data || res?.data || res;
   },
   receiveReturn: async (id, warehouseId, notes = "") => {
@@ -488,6 +829,34 @@ export const adminOperationsService = {
   getShipment: async (id) => {
     const res = await apiClient.get(`/shipments/${id}`);
     return res?.data?.data || res?.data || res;
+  },
+  getShipmentPackingSlip: async (id) => {
+    const res = await apiClient.get(`/shipments/${id}/packing-slip`);
+    return res?.data?.data || res?.data || res;
+  },
+  updateShipmentStatus: async (id, data = {}) => {
+    const res = await apiClient.patch(`/shipments/${encodeURIComponent(id)}/status`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  exportShipments: async (params = {}, format = "csv") => {
+    return apiClient.get("/shipments/export", {
+      params: { ...params, format },
+      responseType: "blob",
+    });
+  },
+  getOrderPackingSlip: async (orderId, params = {}) => {
+    const res = await apiClient.get(`/orders/${orderId}/packing-slip`, { params });
+    return res?.data?.data || res?.data || res;
+  },
+  getPickLists: async (params = {}) => {
+    const res = await apiClient.get("/warehouse-operations/pick-lists", { params });
+    return res?.data?.data || res?.data || res;
+  },
+  exportPickLists: async (params = {}, format = "csv") => {
+    return apiClient.get("/warehouse-operations/pick-lists/export", {
+      params: { ...params, format },
+      responseType: "blob",
+    });
   },
 };
 
@@ -541,7 +910,7 @@ export const adminAnalyticsService = {
   },
   getSalesTrend: async (params = {}) => {
     const res = await apiClient.get("/analytics/admin/sales-trend", { params });
-    return res?.data?.data || res?.data || res;
+    return res?.data?.intervals || res?.data?.trend || res?.data?.data || res?.data || res;
   },
 };
 
@@ -577,4 +946,290 @@ export const adminMediaService = {
     return res?.data?.data || res?.data || res;
   },
 };
+
+export const campaignService = {
+  list: async (params = {}) => {
+    const res = await apiClient.get("/campaigns", { params });
+    return res?.data?.data || res?.data || [];
+  },
+  get: async (id) => {
+    const res = await apiClient.get(`/campaigns/${id}`);
+    return res?.data?.data || res?.data || null;
+  },
+  create: async (data) => {
+    const res = await apiClient.post("/campaigns", data);
+    return res?.data?.data || res?.data;
+  },
+  update: async (id, data) => {
+    const res = await apiClient.patch(`/campaigns/${id}`, data);
+    return res?.data?.data || res?.data;
+  },
+  activate: async (id) => {
+    const res = await apiClient.patch(`/campaigns/${id}/activate`);
+    return res?.data?.data || res?.data;
+  },
+  deactivate: async (id) => {
+    const res = await apiClient.patch(`/campaigns/${id}/deactivate`);
+    return res?.data?.data || res?.data;
+  },
+  transitionStatus: async (id, status) => {
+    const res = await apiClient.patch(`/campaigns/${id}/status`, { status });
+    return res?.data?.data || res?.data;
+  },
+  schedule: async (id) => {
+    const res = await apiClient.patch(`/campaigns/${id}/schedule`);
+    return res?.data?.data || res?.data;
+  },
+  duplicate: async (id) => {
+    const res = await apiClient.post("/campaigns", { duplicateFrom: id });
+    return res?.data?.data || res?.data;
+  },
+  archive: async (id) => {
+    const res = await apiClient.patch(`/campaigns/${id}/status`, { status: "archived" });
+    return res?.data?.data || res?.data;
+  },
+};
+
+export const couponService = {
+  list: async (params = {}) => {
+    const res = await apiClient.get("/coupons", { params });
+    return res?.data?.data || res?.data || [];
+  },
+  get: async (id) => {
+    const res = await apiClient.get(`/coupons/${id}`);
+    return res?.data?.data || res?.data || null;
+  },
+  create: async (data) => {
+    const res = await apiClient.post("/coupons", data);
+    return res?.data?.data || res?.data;
+  },
+  update: async (id, data) => {
+    const res = await apiClient.patch(`/coupons/${id}`, data);
+    return res?.data?.data || res?.data;
+  },
+  activate: async (id) => {
+    const res = await apiClient.patch(`/coupons/${id}/activate`);
+    return res?.data?.data || res?.data;
+  },
+  deactivate: async (id) => {
+    const res = await apiClient.patch(`/coupons/${id}/deactivate`);
+    return res?.data?.data || res?.data;
+  },
+  delete: async (id) => {
+    const res = await apiClient.delete(`/admin/coupons/${id}`);
+    return res?.data?.data || res?.data;
+  },
+  getRedemptions: async (couponId) => {
+    const res = await apiClient.get(`/coupon-redemptions/coupon/${couponId}`);
+    return res?.data?.data || res?.data || [];
+  },
+};
+
+export const discountService = {
+  list: async (params = {}) => {
+    const res = await apiClient.get("/admin/discounts", { params });
+    return res?.data?.data || res?.data || [];
+  },
+  get: async (id) => {
+    const res = await apiClient.get(`/admin/discounts/${id}`);
+    return res?.data?.data || res?.data || null;
+  },
+  create: async (data) => {
+    const res = await apiClient.post("/admin/discounts", data);
+    return res?.data?.data || res?.data;
+  },
+  update: async (id, data) => {
+    const res = await apiClient.patch(`/admin/discounts/${id}`, data);
+    return res?.data?.data || res?.data;
+  },
+  activate: async (id, reason = null) => {
+    const res = await apiClient.post(`/admin/discounts/${id}/activate`, { reason });
+    return res?.data?.data || res?.data;
+  },
+  pause: async (id, reason = null) => {
+    const res = await apiClient.post(`/admin/discounts/${id}/pause`, { reason });
+    return res?.data?.data || res?.data;
+  },
+  resume: async (id, reason = null) => {
+    const res = await apiClient.post(`/admin/discounts/${id}/resume`, { reason });
+    return res?.data?.data || res?.data;
+  },
+  cancel: async (id, reason = null) => {
+    const res = await apiClient.post(`/admin/discounts/${id}/cancel`, { reason });
+    return res?.data?.data || res?.data;
+  },
+  delete: async (id) => {
+    const res = await apiClient.delete(`/admin/discounts/${id}`);
+    return res?.data?.data || res?.data;
+  },
+  preview: async (payload) => {
+    const res = await apiClient.post("/admin/discounts/preview", payload);
+    return res?.data?.data || res?.data;
+  },
+  assignProducts: async (id, payload) => {
+    const res = await apiClient.post(`/admin/discounts/${id}/assign-products`, payload);
+    return res?.data?.data || res?.data;
+  },
+  reconcile: async (payload = {}) => {
+    const res = await apiClient.post("/admin/discounts/reconcile", payload);
+    return res?.data?.data || res?.data;
+  },
+};
+
+export const adminSettingsService = {
+  get: async () => {
+    const res = await apiClient.get("/storefront/settings");
+    return res?.data?.data || res?.data || null;
+  },
+  update: async (data) => {
+    const res = await apiClient.put("/admin/settings/general", data);
+    return res?.data?.data || res?.data;
+  },
+  updateFeatureFlags: async (featureFlags) => {
+    const res = await apiClient.patch("/admin/settings/general/feature-flags", featureFlags);
+    return res?.data?.data || res?.data;
+  },
+};
+
+export const adminTaxService = {
+  getRules: async (params = {}) => {
+    const res = await apiClient.get("/tax/rules", { params });
+    const raw = res?.data?.data || res?.data || [];
+    return normalizeTaxRules(raw);
+  },
+  getRule: async (id) => {
+    const res = await apiClient.get(`/tax/rules/${id}`);
+    const raw = res?.data?.data || res?.data || null;
+    return raw ? normalizeTaxRule(raw) : null;
+  },
+  createRule: async (data) => {
+    const res = await apiClient.post("/tax/rules", data);
+    const raw = res?.data?.data || res?.data;
+    return raw ? normalizeTaxRule(raw) : raw;
+  },
+  updateRule: async (id, data) => {
+    const res = await apiClient.put(`/tax/rules/${id}`, data);
+    const raw = res?.data?.data || res?.data;
+    return raw ? normalizeTaxRule(raw) : raw;
+  },
+  deleteRule: async (id) => {
+    const res = await apiClient.delete(`/tax/rules/${id}`);
+    return res?.data?.data || res?.data;
+  },
+};
+
+export const cmsPageService = {
+  list: async (params = {}) => {
+    const res = await apiClient.get("/cms/pages", { params });
+    return res?.data?.data || res?.data || [];
+  },
+  get: async (id) => {
+    const res = await apiClient.get(`/cms/pages/${id}`);
+    return res?.data?.data || res?.data || null;
+  },
+  create: async (data) => {
+    const res = await apiClient.post("/cms/pages", data);
+    return res?.data?.data || res?.data;
+  },
+  update: async (id, data) => {
+    const res = await apiClient.patch(`/cms/pages/${id}`, data);
+    return res?.data?.data || res?.data;
+  },
+  publish: async (id) => {
+    const res = await apiClient.patch(`/cms/pages/${id}/publish`);
+    return res?.data?.data || res?.data;
+  },
+  unpublish: async (id) => {
+    const res = await apiClient.patch(`/cms/pages/${id}/unpublish`);
+    return res?.data?.data || res?.data;
+  },
+  archive: async (id) => {
+    const res = await apiClient.patch(`/cms/pages/${id}/archive`);
+    return res?.data?.data || res?.data;
+  },
+  delete: async (id) => {
+    const res = await apiClient.delete(`/cms/pages/${id}`);
+    return res?.data?.data || res?.data;
+  },
+};
+
+export const adminEventPageService = {
+  list: async (params = {}) => {
+    const res = await apiClient.get("/cms/events", { params });
+    return res?.data?.data || res?.data || [];
+  },
+  get: async (id) => {
+    const res = await apiClient.get(`/cms/events/${id}`);
+    return res?.data?.data || res?.data || null;
+  },
+  create: async (data) => {
+    const res = await apiClient.post("/cms/events", data);
+    return res?.data?.data || res?.data;
+  },
+  update: async (id, data) => {
+    const res = await apiClient.patch(`/cms/events/${id}`, data);
+    return res?.data?.data || res?.data;
+  },
+  duplicate: async (id) => {
+    const res = await apiClient.post(`/cms/events/${id}/duplicate`);
+    return res?.data?.data || res?.data;
+  },
+  publish: async (id) => {
+    const res = await apiClient.patch(`/cms/events/${id}/publish`);
+    return res?.data?.data || res?.data;
+  },
+  unpublish: async (id) => {
+    const res = await apiClient.patch(`/cms/events/${id}/unpublish`);
+    return res?.data?.data || res?.data;
+  },
+  archive: async (id) => {
+    const res = await apiClient.patch(`/cms/events/${id}/archive`);
+    return res?.data?.data || res?.data;
+  },
+  delete: async (id) => {
+    const res = await apiClient.delete(`/cms/events/${id}`);
+    return res?.data?.data || res?.data;
+  },
+};
+
+export const adminReportService = adminAnalyticsService;
+
+export const adminSystemService = {
+  getHealth: async () => {
+    const res = await apiClient.get("/health");
+    return res?.data || res;
+  },
+  getStatus: async () => {
+    const res = await apiClient.get("/health");
+    return res?.data || res;
+  },
+};
+
+export const adminNotificationService = {
+  list: async (params = {}) => {
+    const res = await apiClient.get("/notifications", { params });
+    return res?.data?.data || res?.data || [];
+  },
+  markAsRead: async (id) => {
+    const res = await apiClient.patch(`/notifications/${id}/read`);
+    return res?.data || res;
+  },
+  markAllAsRead: async () => {
+    const res = await apiClient.post("/notifications/mark-all-read");
+    return res?.data || res;
+  },
+};
+
+export const adminIntegrationService = {
+  list: async () => {
+    return [
+      { id: "stripe", name: "Stripe Payments", status: "configured", category: "Payments" },
+      { id: "razorpay", name: "Razorpay", status: "configured", category: "Payments" },
+      { id: "shiprocket", name: "Shiprocket Logistics", status: "active", category: "Shipping" },
+      { id: "sendgrid", name: "SendGrid Email API", status: "active", category: "Communications" },
+    ];
+  },
+};
+
+
 

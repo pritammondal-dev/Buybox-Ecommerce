@@ -37,9 +37,15 @@ const listActiveBanners = async (req, res, next) => {
     const banners =
       await storefrontBannerService.listActiveBanners(req.query);
 
+    const inactiveSlots =
+      await storefrontBannerService.getInactiveSlotKeys();
+
     return sendSuccess(res, {
       message: "Active storefront banners fetched successfully",
       data: banners,
+      meta: {
+        inactiveSlots,
+      },
     });
   } catch (error) {
     next(error);
@@ -67,7 +73,8 @@ const updateBanner = async (req, res, next) => {
     const banner =
       await storefrontBannerService.updateBanner(
         req.params.bannerId,
-        req.body
+        req.body,
+        req.user?.id
       );
 
     return sendSuccess(res, {
@@ -83,7 +90,8 @@ const deleteBanner = async (req, res, next) => {
   try {
     const result =
       await storefrontBannerService.deleteBanner(
-        req.params.bannerId
+        req.params.bannerId,
+        req.user?.id
       );
 
     return sendSuccess(res, {

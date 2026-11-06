@@ -7,6 +7,7 @@ const Customer = require("../src/models/Customer");
 const Category = require("../src/models/Category");
 const Product = require("../src/models/Product");
 const ProductVariant = require("../src/models/ProductVariant");
+const Warehouse = require("../src/models/Warehouse");
 const Permission = require("../src/models/Permission");
 const { PERMISSIONS } = require("../src/constants/permissions.constants");
 const { ROLES } = require("../src/constants/auth.constants");
@@ -26,6 +27,7 @@ jest.setTimeout(60000);
 describe("Buybox Phase 2A — ProductVariant Vendor Ownership Integrity & Isolation", () => {
   let createdPermissions = new Map();
   let testCategory;
+  let testWarehouse;
 
   // Helper to ensure permissions exist in DB
   async function getOrCreatePermission(slug) {
@@ -176,6 +178,20 @@ describe("Buybox Phase 2A — ProductVariant Vendor Ownership Integrity & Isolat
     await getOrCreatePermission(PERMISSIONS.PRODUCTS_UPDATE);
     await getOrCreatePermission(PERMISSIONS.PRODUCTS_DELETE);
 
+    // Create shared warehouse for testing
+    testWarehouse = await Warehouse.create({
+      name: "Ownership Test Hub",
+      code: `PVO-WH-${Date.now()}`,
+      address: {
+        addressLine1: "1 Warehouse St",
+        city: "Delhi",
+        state: "Delhi",
+        postalCode: "110001",
+        country: "IN",
+      },
+      isActive: true,
+    });
+
     // Create shared category for testing
     testCategory = await Category.create({
       name: `Electronics ${Date.now()}`,
@@ -190,6 +206,7 @@ describe("Buybox Phase 2A — ProductVariant Vendor Ownership Integrity & Isolat
       await Vendor.deleteMany({ businessSlug: /^vendor-corp-/ });
       await Customer.deleteMany({});
       await Category.deleteMany({ slug: /^electronics-/ });
+      await Warehouse.deleteMany({ code: /^PVO-WH-/ });
       await Product.deleteMany({ sku: /^PROD-/ });
       await ProductVariant.deleteMany({ sku: /^VAR-/ });
     } catch (e) {

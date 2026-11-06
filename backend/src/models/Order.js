@@ -23,13 +23,24 @@ const orderItemSchema = new mongoose.Schema(
     warehouseId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Warehouse",
-      required: true,
+      required: false,
+      default: null,
     },
 
     vendorId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Vendor",
       required: true,
+    },
+
+    isVirtual: {
+      type: Boolean,
+      default: false,
+    },
+
+    isDownloadable: {
+      type: Boolean,
+      default: false,
     },
 
     sku: {
@@ -151,7 +162,7 @@ const orderItemSchema = new mongoose.Schema(
 
     inventoryStatus: {
       type: String,
-      enum: ["reserved", "released", "deducted"],
+      enum: ["reserved", "released", "deducted", "not_required"],
       default: "reserved",
       required: true,
       index: true,
@@ -171,6 +182,7 @@ const orderItemSchema = new mongoose.Schema(
         "shipped",
         "delivered",
         "cancelled",
+        "returned",
       ],
       default: "unfulfilled",
       required: true,
@@ -186,6 +198,286 @@ const orderItemSchema = new mongoose.Schema(
     settlementId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "VendorSettlement",
+      default: null,
+    },
+
+    /*
+     * Phase D5: Immutable promotional snapshot fields
+     */
+    regularPrice: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: null,
+    },
+
+    compareAtPrice: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: null,
+    },
+
+    effectivePrice: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: null,
+    },
+
+    isPromotional: {
+      type: Boolean,
+      default: false,
+    },
+
+    promotionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ProductDiscount",
+      default: null,
+    },
+
+    promotionName: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 200,
+    },
+
+    promotionDiscountAmount: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: 0,
+    },
+
+    promotionDiscountPercentage: {
+      type: Number,
+      default: 0,
+    },
+
+    fundingSource: {
+      type: String,
+      enum: ["platform", "vendor"],
+      default: null,
+    },
+
+    allowCoupons: {
+      type: Boolean,
+      default: true,
+    },
+
+    couponDiscountAmount: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: 0,
+    },
+
+    /*
+     * Phase VW-02: Centralized & Immutable Commission Snapshot
+     */
+    commissionRate: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: null,
+    },
+
+    commissionAmount: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: null,
+    },
+
+    commissionSnapshot: {
+      policyId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "CommissionPolicy",
+        default: null,
+      },
+      policyVersion: {
+        type: Number,
+        default: 1,
+      },
+      policyName: {
+        type: String,
+        default: null,
+        trim: true,
+      },
+      source: {
+        type: String,
+        enum: [
+          "product",
+          "vendor",
+          "vendor_profile",
+          "category",
+          "global",
+          "legacy_fallback",
+        ],
+        default: null,
+      },
+      commissionRate: {
+        type: mongoose.Schema.Types.Decimal128,
+        default: null,
+      },
+      commissionPercentage: {
+        type: Number,
+        default: null,
+      },
+      calculationBase: {
+        type: mongoose.Schema.Types.Decimal128,
+        default: null,
+      },
+      commissionAmount: {
+        type: mongoose.Schema.Types.Decimal128,
+        default: null,
+      },
+      vendorNetEntitlement: {
+        type: mongoose.Schema.Types.Decimal128,
+        default: null,
+      },
+      currency: {
+        type: String,
+        default: "INR",
+        uppercase: true,
+        trim: true,
+      },
+      calculatedAt: {
+        type: Date,
+        default: null,
+      },
+      calculationVersion: {
+        type: Number,
+        default: 1,
+      },
+      discountDeducted: {
+        type: mongoose.Schema.Types.Decimal128,
+        default: 0,
+      },
+      subsidyAdded: {
+        type: mongoose.Schema.Types.Decimal128,
+        default: 0,
+      },
+      isLocked: {
+        type: Boolean,
+        default: false,
+        index: true,
+      },
+    },
+
+    /*
+     * Phase VD-05: Authoritative Vendor Fulfillment State & Acceptance Scope
+     */
+    vendorAcceptance: {
+      status: {
+        type: String,
+        enum: ["pending", "accepted", "rejected"],
+        default: "pending",
+        index: true,
+      },
+      acceptedAt: {
+        type: Date,
+        default: null,
+      },
+      rejectedAt: {
+        type: Date,
+        default: null,
+      },
+      rejectionReason: {
+        type: String,
+        default: null,
+        trim: true,
+        maxlength: 1000,
+      },
+      rejectedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: null,
+      },
+      notes: {
+        type: String,
+        default: null,
+        trim: true,
+        maxlength: 1000,
+      },
+    },
+
+    assignedShipmentPartner: {
+      partnerId: {
+        type: String,
+        default: null,
+        trim: true,
+      },
+      partnerName: {
+        type: String,
+        default: null,
+        trim: true,
+      },
+      serviceCode: {
+        type: String,
+        default: null,
+        trim: true,
+      },
+      assignedAt: {
+        type: Date,
+        default: null,
+      },
+      assignedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: null,
+      },
+    },
+
+    expectedDeliveryDate: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
+    isFulfillmentConfirmed: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    fulfillmentConfirmedAt: {
+      type: Date,
+      default: null,
+    },
+        shipmentId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Shipment",
+          default: null,
+        },
+        awbNumber: {
+          type: String,
+          default: null,
+          trim: true,
+        },
+        carrier: {
+          type: String,
+          default: null,
+          trim: true,
+        },
+        trackingUrl: {
+          type: String,
+          default: null,
+          trim: true,
+        },
+
+    fulfillmentConfirmedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+
+    returnWindowDaysSnapshot: {
+      type: Number,
+      default: null,
+      min: 1,
+      max: 90,
+    },
+
+    returnedQuantity: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    returnStatus: {
+      type: String,
+      enum: ["none", "requested", "approved", "returned", "exchanged"],
+      default: "none",
+    },
+
+    returnRequestId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ReturnRequest",
       default: null,
     },
   },
@@ -209,7 +501,35 @@ const orderSchema = new mongoose.Schema(
     customerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",
-      required: true,
+      required: false,
+      default: null,
+      index: true,
+    },
+
+    isGuestOrder: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    guestId: {
+      type: String,
+      default: null,
+      trim: true,
+      index: true,
+    },
+
+    guestEmail: {
+      type: String,
+      default: null,
+      lowercase: true,
+      trim: true,
+      index: true,
+    },
+
+    guestOrderAccessToken: {
+      type: String,
+      default: null,
       index: true,
     },
 
@@ -237,6 +557,31 @@ const orderSchema = new mongoose.Schema(
       type: String,
       trim: true,
       uppercase: true,
+      default: null,
+    },
+
+    returnWindowDaysSnapshot: {
+      type: Number,
+      default: null,
+      min: 1,
+      max: 90,
+    },
+
+    returnedQuantity: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    returnStatus: {
+      type: String,
+      enum: ["none", "requested", "approved", "returned", "exchanged"],
+      default: "none",
+    },
+
+    returnRequestId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ReturnRequest",
       default: null,
     },
 
@@ -283,6 +628,13 @@ const orderSchema = new mongoose.Schema(
       default: null,
     },
 
+    cancellationClaim: {
+      claimedAt: { type: Date, default: null },
+      claimedBy: { type: mongoose.Schema.Types.ObjectId, default: null },
+      operationId: { type: String, default: null, trim: true },
+      itemIds: [{ type: String }],
+    },
+
     paymentStatus: {
       type: String,
       enum: [
@@ -305,6 +657,7 @@ const orderSchema = new mongoose.Schema(
         "partially_fulfilled",
         "fulfilled",
         "cancelled",
+        "returned",
       ],
       default: "unfulfilled",
       required: true,
@@ -358,6 +711,16 @@ const orderSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Decimal128,
       required: true,
       min: 0,
+      default: 0,
+    },
+
+    productDiscountTotal: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: 0,
+    },
+
+    couponDiscountTotal: {
+      type: mongoose.Schema.Types.Decimal128,
       default: 0,
     },
 
@@ -582,7 +945,7 @@ const orderSchema = new mongoose.Schema(
         actor: {
           actorType: {
             type: String,
-            enum: ["customer", "system", "admin", "vendor"],
+            enum: ["customer", "guest", "system", "admin", "vendor"],
             default: "customer",
           },
           actorId: {
@@ -655,6 +1018,124 @@ const orderSchema = new mongoose.Schema(
         },
       },
     ],
+
+    /*
+     * Phase VD-05: Multi-Vendor Fulfillment Packages & Concurrency Controls
+     */
+    vendorFulfillments: [
+      {
+        vendorId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Vendor",
+          required: true,
+          index: true,
+        },
+        acceptanceStatus: {
+          type: String,
+          enum: ["pending", "accepted", "rejected", "partially_accepted"],
+          default: "pending",
+          index: true,
+        },
+        rejectionReason: {
+          type: String,
+          default: null,
+          trim: true,
+          maxlength: 1000,
+        },
+        rejectedAt: {
+          type: Date,
+          default: null,
+        },
+        assignedShipmentPartner: {
+          partnerId: {
+            type: String,
+            default: null,
+            trim: true,
+          },
+          partnerName: {
+            type: String,
+            default: null,
+            trim: true,
+          },
+          serviceCode: {
+            type: String,
+            default: null,
+            trim: true,
+          },
+          assignedAt: {
+            type: Date,
+            default: null,
+          },
+        },
+        expectedDeliveryDate: {
+          type: Date,
+          default: null,
+        },
+        isFulfillmentConfirmed: {
+          type: Boolean,
+          default: false,
+        },
+        fulfillmentConfirmedAt: {
+          type: Date,
+          default: null,
+        },
+        shipmentId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Shipment",
+          default: null,
+        },
+        awbNumber: {
+          type: String,
+          default: null,
+          trim: true,
+        },
+        carrier: {
+          type: String,
+          default: null,
+          trim: true,
+        },
+        trackingUrl: {
+          type: String,
+          default: null,
+          trim: true,
+        },
+        fulfillmentStatus: {
+          type: String,
+          enum: [
+            "unfulfilled",
+            "processing",
+            "ready_to_ship",
+            "shipped",
+            "delivered",
+            "cancelled",
+            "returned",
+          ],
+          default: "unfulfilled",
+        },
+        notes: {
+          type: String,
+          default: null,
+          trim: true,
+        },
+        version: {
+          type: Number,
+          default: 1,
+        },
+      },
+    ],
+
+    fulfillmentVersion: {
+      type: Number,
+      default: 1,
+      index: true,
+    },
+
+    version: {
+      type: Number,
+      default: 1,
+      index: true,
+    },
+
   },
   {
     timestamps: true,
@@ -694,6 +1175,12 @@ orderSchema.index({
   createdAt: 1,
 });
 
+orderSchema.pre("validate", function () {
+  if (!this.customerId && !this.guestId && !this.isGuestOrder) {
+    throw new Error("Order must be bound to either a customerId or a guest identity");
+  }
+});
+
 orderSchema.index(
   {
     customerId: 1,
@@ -703,6 +1190,24 @@ orderSchema.index(
     unique: true,
     partialFilterExpression: {
       idempotencyKey: {
+        $type: "string",
+      },
+    },
+  }
+);
+
+orderSchema.index(
+  {
+    guestId: 1,
+    idempotencyKey: 1,
+  },
+  {
+    unique: true,
+    partialFilterExpression: {
+      idempotencyKey: {
+        $type: "string",
+      },
+      guestId: {
         $type: "string",
       },
     },

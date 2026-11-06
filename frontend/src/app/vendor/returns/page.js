@@ -15,15 +15,24 @@ import {
 import { toast } from "sonner";
 import { vendorService } from "@/services/vendor.service";
 import { getVendorReturnUrl } from "@/utils/secure-id.util";
+import VendorTablePagination from "@/components/vendor/VendorTablePagination";
+import {
+  VendorPageHeader,
+  VendorStatusBadge,
+  VendorEmptyState,
+} from "@/components/vendor";
 
 export default function VendorReturnsPage() {
   const [returns, setReturns] = useState([]);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [meta, setMeta] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
   const [status, setStatus] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
-    const params = {};
+    const params = { page, limit };
     if (status !== "all") params.status = status;
 
     vendorService
@@ -32,12 +41,20 @@ export default function VendorReturnsPage() {
         if (!isMounted) return;
         const data = res?.data?.data || res?.data?.returnRequests || res?.data || [];
         const items = Array.isArray(data) ? data : data.items || [];
+        const paginationMeta = res?.data?.meta || {
+          page,
+          limit,
+          total: items.length,
+          totalPages: Math.ceil(items.length / limit) || 1,
+        };
         setReturns(items);
+        setMeta(paginationMeta);
       })
       .catch((err) => {
         if (!isMounted) return;
         if (err.status === 403 || err.status === 404 || err.response?.status === 403 || err.response?.status === 404) {
           setReturns([]);
+          setMeta({ page: 1, limit: 20, total: 0, totalPages: 1 });
           return;
         }
         toast.error("Failed to load return requests", {
@@ -51,21 +68,29 @@ export default function VendorReturnsPage() {
     return () => {
       isMounted = false;
     };
-  }, [status]);
+  }, [status, page, limit]);
 
   const handleRefresh = async () => {
     setIsLoading(true);
     try {
-      const params = {};
+      const params = { page, limit };
       if (status !== "all") params.status = status;
 
       const res = await vendorService.getMyReturns(params);
       const data = res?.data?.data || res?.data?.returnRequests || res?.data || [];
       const items = Array.isArray(data) ? data : data.items || [];
+      const paginationMeta = res?.data?.meta || {
+        page,
+        limit,
+        total: items.length,
+        totalPages: Math.ceil(items.length / limit) || 1,
+      };
       setReturns(items);
+      setMeta(paginationMeta);
     } catch (err) {
       if (err.status === 403 || err.status === 404 || err.response?.status === 403 || err.response?.status === 404) {
         setReturns([]);
+        setMeta({ page: 1, limit: 20, total: 0, totalPages: 1 });
         return;
       }
       toast.error("Failed to load return requests", {
@@ -79,24 +104,20 @@ export default function VendorReturnsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-            Customer Returns & RMA
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Inspect returned merchandise, verify customer return reasons, and issue return approvals.
-          </p>
-        </div>
-
-        <button
-          onClick={handleRefresh}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-xs transition-colors"
-        >
-          <RefreshCw className="size-3.5" />
-          <span>Refresh Returns</span>
-        </button>
-      </div>
+      <VendorPageHeader
+        title="Customer Returns & RMA"
+        subtitle="Inspect returned merchandise, verify customer return reasons, and issue return approvals."
+        breadcrumbs={[{ label: "Returns" }]}
+        actions={
+          <button
+            onClick={handleRefresh}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-xs transition-colors"
+          >
+            <RefreshCw className="size-3.5" />
+            <span>Refresh Returns</span>
+          </button>
+        }
+      />
 
       {/* Controls */}
       <div className="flex items-center gap-1.5 overflow-x-auto bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs">
@@ -109,7 +130,10 @@ export default function VendorReturnsPage() {
         ].map((s) => (
           <button
             key={s.id}
-            onClick={() => setStatus(s.id)}
+            onClick={() => {
+              setStatus(s.id);
+              setPage(1);
+            }}
             className={`px-3 py-1 text-xs font-semibold rounded-lg whitespace-nowrap transition-all ${
               status === s.id
                 ? "bg-[#004D38] text-white shadow-xs"
@@ -130,13 +154,26 @@ export default function VendorReturnsPage() {
             ))}
           </div>
         ) : returns.length === 0 ? (
-          <div className="p-16 text-center">
-            <RotateCcw className="size-12 text-slate-300 mx-auto mb-3" />
-            <h4 className="text-sm font-bold text-slate-800">No Return Requests</h4>
-            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              You have zero pending customer returns for your products.
-            </p>
-          </div>
+          <VendorEmptyState
+            icon={RotateCcw}
+            title={status !== "all" ? "No Return Requests Found" : "No Return Requests"}
+            description={
+              status !== "all"
+                ? "No customer return requests match the selected status filter."
+                : "You have zero pending customer returns for your products."
+            }
+            action={
+              status !== "all"
+                ? {
+                    label: "Clear Filters",
+                    onClick: () => {
+                      setStatus("all");
+                      setPage(1);
+                    },
+                  }
+                : undefined
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -164,17 +201,7 @@ export default function VendorReturnsPage() {
                         {ret.type || "refund"}
                       </td>
                       <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            ret.status === "completed"
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : ret.status === "requested"
-                              ? "bg-amber-50 text-amber-700 border border-amber-200"
-                              : "bg-slate-100 text-slate-700 border border-slate-200"
-                          }`}
-                        >
-                          {ret.status}
-                        </span>
+                        <VendorStatusBadge status={ret.status} entityType="return" />
                       </td>
                       <td className="px-6 py-4 text-slate-600 max-w-xs truncate">
                         {ret.reason || "Customer Return Request"}
@@ -196,6 +223,21 @@ export default function VendorReturnsPage() {
                 })}
               </tbody>
             </table>
+
+            {/* Pagination */}
+            <VendorTablePagination
+              page={page}
+              limit={limit}
+              total={meta?.total ?? returns.length}
+              totalPages={meta?.totalPages}
+              onPageChange={(newPage) => setPage(newPage)}
+              onLimitChange={(newLimit) => {
+                setLimit(newLimit);
+                setPage(1);
+              }}
+              isLoading={isLoading}
+              itemLabel="returns"
+            />
           </div>
         )}
       </div>

@@ -3,6 +3,7 @@ const {
   ALLOWED_TAX_CATEGORIES,
   DEFAULT_TAX_CATEGORY,
 } = require("../constants/tax.constants");
+const { serializeDecimals } = require("../utils/decimal.util");
 
 const taxRuleSchema = new mongoose.Schema(
   {
@@ -91,6 +92,14 @@ const taxRuleSchema = new mongoose.Schema(
     versionKey: false,
   }
 );
+
+taxRuleSchema.set("toJSON", {
+  transform: (doc, ret) => serializeDecimals(ret),
+});
+
+taxRuleSchema.set("toObject", {
+  transform: (doc, ret) => serializeDecimals(ret),
+});
 
 // Tier 1 resolution: State-specific match
 taxRuleSchema.index({

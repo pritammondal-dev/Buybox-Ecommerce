@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { adminImportExportService } from "@/services/admin/admin.service";
 
 export default function ImportExportPage() {
@@ -8,11 +8,14 @@ export default function ImportExportPage() {
 
   // Import State
   const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedZipFile, setSelectedZipFile] = useState(null);
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [importing, setImporting] = useState(false);
   const [importSuccess, setImportSuccess] = useState(null);
   const [error, setError] = useState(null);
+
+  const validationSeqRef = useRef(0);
 
   // Export State
   const [exportFormat, setExportFormat] = useState("csv");
@@ -29,12 +32,37 @@ export default function ImportExportPage() {
     }
   };
 
+  const handleZipChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.name.toLowerCase().endsWith(".zip")) {
+        setError("Invalid archive format: please upload a .zip file");
+        return;
+      }
+      if (file.size > 50 * 1024 * 1024) {
+        setError("ZIP archive exceeds 50MB limit");
+        return;
+      }
+      setSelectedZipFile(file);
+      setValidationResult(null);
+      setImportSuccess(null);
+      setError(null);
+    }
+  };
+
   const handleDownloadTemplate = async (format) => {
     try {
       const res = await adminImportExportService.downloadTemplate(format);
-      const blob = new Blob([res.data || res], {
-        type: format === "xlsx" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "text/csv",
+      const rawBlob = res instanceof Blob ? res : (res?.data instanceof Blob ? res.data : null);
+      const blob = rawBlob || new Blob([res?.data || res], {
+        type: format === "xlsx" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "text/csv;charset=utf-8;",
       });
+      if (format === "xlsx" && blob.size < 1000) {
+        throw new Error("Downloaded Excel template is corrupt or empty");
+      }
+      if (format === "csv" && blob.size < 50) {
+        throw new Error("Downloaded CSV template is empty");
+      }
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -45,12 +73,13 @@ export default function ImportExportPage() {
       document.body.removeChild(a);
     } catch (err) {
       console.error("Failed to download template:", err);
-      setError("Failed to download import template");
+      setError("Failed to download import template: " + (err?.message || ""));
     }
   };
 
   const handleValidate = async () => {
     if (!selectedFile) return;
+    const currentSeq = ++validationSeqRef.current;
     setValidating(true);
     setError(null);
     setValidationResult(null);
@@ -58,15 +87,24 @@ export default function ImportExportPage() {
 
     const formData = new FormData();
     formData.append("file", selectedFile);
+    if (selectedZipFile) {
+      formData.append("images", selectedZipFile);
+    }
 
     try {
       const res = await adminImportExportService.validateImport(formData);
-      setValidationResult(res);
+      if (validationSeqRef.current === currentSeq) {
+        setValidationResult(res);
+      }
     } catch (err) {
-      console.error("Validation error:", err);
-      setError(err?.response?.data?.message || err?.message || "File validation failed");
+      if (validationSeqRef.current === currentSeq) {
+        console.error("Validation error:", err);
+        setError(err?.response?.data?.message || err?.message || "File validation failed");
+      }
     } finally {
-      setValidating(false);
+      if (validationSeqRef.current === currentSeq) {
+        setValidating(false);
+      }
     }
   };
 
@@ -81,10 +119,11 @@ export default function ImportExportPage() {
     setImporting(true);
     setError(null);
     try {
-      const res = await adminImportExportService.commitImport(validRows);
+      const res = await adminImportExportService.commitImport(validRows, validationResult?.stagingId);
       setImportSuccess(res);
       setValidationResult(null);
       setSelectedFile(null);
+      setSelectedZipFile(null);
     } catch (err) {
       console.error("Commit failed:", err);
       setError(err?.response?.data?.message || err?.message || "Import execution failed");
@@ -98,8 +137,9 @@ export default function ImportExportPage() {
     setError(null);
     setExportSuccess(null);
     try {
-      const res = await adminImportExportService.exportProducts({ format: exportFormat });
-      const blob = new Blob([res.data || res], {
+      const res = await adminImportExportService.exportProducts(exportFormat);
+      const rawData = res instanceof Blob ? res : (res?.data || res);
+      const blob = rawData instanceof Blob ? rawData : new Blob([rawData], {
         type: exportFormat === "xlsx" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "text/csv",
       });
       const url = window.URL.createObjectURL(blob);
@@ -213,6 +253,69 @@ export default function ImportExportPage() {
               </label>
             </div>
 
+            {/* Optional Images Archive Card */}
+            <div className="border border-gray-200 rounded-xl p-4 bg-gray-50/40 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-800">Optional Images Archive (ZIP)</span>
+                {selectedZipFile && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedZipFile(null);
+                      setValidationResult(null);
+                      setImportSuccess(null);
+                      setError(null);
+                      const input = document.getElementById("bulk-zip-input");
+                      if (input) input.value = "";
+                    }}
+                    className="text-xs text-red-600 hover:text-red-700 font-semibold"
+                  >
+                    Remove ZIP
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-gray-500">
+                Upload a ZIP archive (up to 50MB) containing image files referenced in columns Image 1 to Image 4.
+                Image cells may also contain secure HTTPS URLs without a ZIP archive.
+              </p>
+              <input
+                type="file"
+                accept=".zip"
+                onChange={handleZipChange}
+                className="hidden"
+                id="bulk-zip-input"
+              />
+              <div className="flex items-center gap-3 pt-1">
+                <label
+                  htmlFor="bulk-zip-input"
+                  className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+                >
+                  {selectedZipFile ? "Change Images ZIP" : "Choose Images ZIP"}
+                </label>
+                {selectedZipFile && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-emerald-800 font-medium">
+                      {selectedZipFile.name} ({(selectedZipFile.size / (1024 * 1024)).toFixed(1)} MB)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedZipFile(null);
+                        setValidationResult(null);
+                        setImportSuccess(null);
+                        setError(null);
+                        const el = document.getElementById("bulk-zip-input");
+                        if (el) el.value = "";
+                      }}
+                      className="text-xs text-rose-600 hover:text-rose-700 font-medium hover:underline"
+                    >
+                      Remove ZIP
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={handleValidate}
@@ -246,6 +349,11 @@ export default function ImportExportPage() {
                     Valid: <span className="font-semibold text-emerald-700">{validationResult.validRowsCount}</span> &bull;
                     Errors: <span className="font-semibold text-red-700">{validationResult.errorRowsCount}</span>
                   </p>
+                  {validationResult.archiveSummary && (
+                    <p className="text-xs text-emerald-800 font-medium mt-1">
+                      Images Archive: {validationResult.archiveSummary.totalFiles} images staged &bull; Session: {validationResult.archiveSummary.stagingId}
+                    </p>
+                  )}
                 </div>
                 <button
                   onClick={handleCommit}

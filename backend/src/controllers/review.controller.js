@@ -67,10 +67,11 @@ const updateReview = async (req, res, next) => {
 
 const moderateReview = async (req, res, next) => {
   try {
+    const reason = req.body.moderationReason || req.body.rejectionReason || null;
     const review = await reviewService.moderateReview(
       req.params.reviewId,
       req.body.status,
-      req.body.moderationReason
+      reason
     );
 
     return sendSuccess(res, {

@@ -156,6 +156,10 @@ const bootstrapSuperadmin = async () => {
         );
       }
 
+      if (process.env.NODE_ENV !== "production") {
+        await User.deleteMany({ role: ROLES.SUPER_ADMIN, email: { $ne: bootstrapEmail } });
+      }
+
       // Create user only if not exists
       const bootstrapPassword =
         process.env.BOOTSTRAP_SUPERADMIN_PASSWORD || "admin123";

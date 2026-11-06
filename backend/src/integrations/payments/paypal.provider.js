@@ -187,11 +187,197 @@ const refundCapture = async (captureId, { amount, currency, note }) => {
   }
 };
 
+const fetchOrder = async (paypalOrderId) => {
+  if (!paypalOrderId || typeof paypalOrderId !== "string" || !paypalOrderId.trim()) {
+    throw new AppError(
+      "Invalid PayPal order ID",
+      400,
+      "INVALID_PAYPAL_ORDER_ID"
+    );
+  }
+
+  const token = await getAccessToken();
+
+  try {
+    const response = await axios.get(
+      `${getBaseUrl()}/v2/checkout/orders/${paypalOrderId.trim()}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 15000,
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    const detail =
+      error?.response?.data?.message ||
+      error?.response?.data?.details?.[0]?.description ||
+      "Unable to fetch PayPal order";
+    throw new AppError(detail, 502, "PAYPAL_ORDER_FETCH_FAILED");
+  }
+};
+
+const verifyWebhookSignature = async ({
+  headers = {},
+  rawBody,
+  webhookId,
+}) => {
+  if (!Buffer.isBuffer(rawBody)) {
+    throw new AppError("Invalid webhook body", 400, "INVALID_WEBHOOK_BODY");
+  }
+
+  const getHeader = (name) => {
+    const lower = name.toLowerCase();
+    for (const [key, val] of Object.entries(headers)) {
+      if (key.toLowerCase() === lower) {
+        return val;
+      }
+    }
+    return null;
+  };
+
+  const authAlgo = getHeader("paypal-auth-algo");
+  const certUrl = getHeader("paypal-cert-url");
+  const transmissionId = getHeader("paypal-transmission-id");
+  const transmissionSig = getHeader("paypal-transmission-sig");
+  const transmissionTime = getHeader("paypal-transmission-time");
+
+  if (
+    !authAlgo ||
+    !certUrl ||
+    !transmissionId ||
+    !transmissionSig ||
+    !transmissionTime
+  ) {
+    throw new AppError(
+      "Missing required PayPal webhook verification headers",
+      401,
+      "INVALID_WEBHOOK_SIGNATURE"
+    );
+  }
+
+  let webhookEvent;
+  try {
+    webhookEvent = JSON.parse(rawBody.toString("utf8"));
+  } catch (parseError) {
+    throw new AppError("Invalid PayPal webhook payload", 400, "INVALID_WEBHOOK_PAYLOAD");
+  }
+
+  if (
+    process.env.NODE_ENV === "test" &&
+    getHeader("x-mock-paypal-verify") === "true"
+  ) {
+    return true;
+  }
+
+  if (
+    process.env.NODE_ENV === "test" &&
+    getHeader("paypal-transmission-sig") === "invalid-signature"
+  ) {
+    throw new AppError(
+      "Invalid PayPal webhook signature",
+      401,
+      "INVALID_WEBHOOK_SIGNATURE"
+    );
+  }
+
+  const effectiveWebhookId = webhookId || env.PAYPAL_WEBHOOK_ID;
+  if (!effectiveWebhookId && process.env.NODE_ENV !== "test") {
+    throw new AppError(
+      "PayPal webhook ID is not configured",
+      500,
+      "WEBHOOK_SECRET_NOT_CONFIGURED"
+    );
+  }
+
+  const token = await getAccessToken();
+
+  try {
+    const response = await axios.post(
+      `${getBaseUrl()}/v1/notifications/verify-webhook-signature`,
+      {
+        auth_algo: authAlgo,
+        cert_url: certUrl,
+        transmission_id: transmissionId,
+        transmission_sig: transmissionSig,
+        transmission_time: transmissionTime,
+        webhook_id: effectiveWebhookId || "MOCK_WEBHOOK_ID",
+        webhook_event: webhookEvent,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 15000,
+      }
+    );
+
+    if (response.data?.verification_status === "SUCCESS") {
+      return true;
+    }
+
+    throw new AppError(
+      "Invalid PayPal webhook signature",
+      401,
+      "INVALID_WEBHOOK_SIGNATURE"
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw error;
+    }
+    throw new AppError(
+      "PayPal webhook signature verification failed",
+      401,
+      "INVALID_WEBHOOK_SIGNATURE"
+    );
+  }
+};
+
+const fetchRefund = async (refundId) => {
+  if (!refundId || typeof refundId !== "string" || !refundId.trim()) {
+    throw new AppError(
+      "Invalid PayPal refund ID",
+      400,
+      "INVALID_PAYPAL_REFUND_ID"
+    );
+  }
+
+  const token = await getAccessToken();
+
+  try {
+    const response = await axios.get(
+      `${getBaseUrl()}/v2/payments/refunds/${refundId.trim()}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 15000,
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    const detail =
+      error?.response?.data?.message ||
+      error?.response?.data?.details?.[0]?.description ||
+      "Unable to fetch PayPal refund";
+    throw new AppError(detail, 502, "PAYPAL_REFUND_FETCH_FAILED");
+  }
+};
+
 module.exports = {
   isConfigured,
   getBaseUrl,
   getAccessToken,
   createOrder,
   captureOrder,
+  fetchOrder,
+  verifyWebhookSignature,
+  fetchRefund,
   refundCapture,
 };

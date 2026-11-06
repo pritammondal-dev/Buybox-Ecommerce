@@ -13,10 +13,9 @@ const router = express.Router();
 // Strictly require authentication and administrative authority
 router.use(authenticate);
 router.use(requireRoles(ROLES.SUPER_ADMIN, ROLES.ADMIN));
-router.use(requirePermissions(PERMISSIONS.SETTINGS_MANAGE));
 
-router.get("/", credentialController.listCredentials);
-router.put("/:provider", credentialController.updateCredentials);
-router.post("/:provider/test", credentialController.testCredential);
+router.get("/", requirePermissions(PERMISSIONS.SETTINGS_READ), credentialController.listCredentials);
+router.put("/:provider", requirePermissions(PERMISSIONS.SETTINGS_MANAGE), credentialController.updateCredentials);
+router.post("/:provider/test", requirePermissions(PERMISSIONS.SETTINGS_MANAGE), credentialController.testCredential);
 
 module.exports = router;

@@ -1,0 +1,84 @@
+[
+  {
+    "v": 2,
+    "key": {
+      "_id": 1
+    },
+    "name": "_id_"
+  },
+  {
+    "v": 2,
+    "key": {
+      "role": 1
+    },
+    "name": "role_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "isActive": 1
+    },
+    "name": "isActive_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "role": 1
+    },
+    "name": "unique_active_superadmin_idx",
+    "unique": true,
+    "partialFilterExpression": {
+      "role": "super_admin",
+      "isActive": true
+    }
+  },
+  {
+    "v": 2,
+    "key": {
+      "email": 1
+    },
+    "name": "email_1",
+    "unique": true,
+    "sparse": true
+  },
+  {
+    "v": 2,
+    "key": {
+      "phone": 1
+    },
+    "name": "phone_1",
+    "unique": true,
+    "partialFilterExpression": {
+      "phone": {
+        "": "string"
+      }
+    }
+  },
+  {
+    "v": 2,
+    "key": {
+      "authProviders.google.id": 1
+    },
+    "name": "google_id_1",
+    "unique": true,
+    "partialFilterExpression": {
+      "authProviders.google.id": {
+        "": "string"
+      }
+    }
+  },
+  {
+    "v": 2,
+    "key": {
+      "roles": 1
+    },
+    "name": "roles_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "adminLastActiveAt": 1
+    },
+    "name": "adminLastActiveAt_1"
+  }
+]

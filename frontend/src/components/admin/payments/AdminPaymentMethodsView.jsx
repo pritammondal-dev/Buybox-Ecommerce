@@ -89,6 +89,7 @@ export function AdminPaymentMethodsView() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [methodToDelete, setMethodToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [togglingId, setTogglingId] = useState(null);
 
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
@@ -103,7 +104,8 @@ export function AdminPaymentMethodsView() {
           status: selectedStatus !== "all" ? selectedStatus : undefined,
         });
         if (!isCancelled) {
-          setMethods(res.data || []);
+          const items = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+          setMethods(items);
           setError(null);
         }
       } catch (err) {
@@ -131,22 +133,51 @@ export function AdminPaymentMethodsView() {
   };
 
   const handleToggle = async (method) => {
+    if (!method?._id || togglingId) return;
+    setTogglingId(method._id);
+    const previousEnabled = Boolean(method.enabled);
+    const newOptimisticEnabled = !previousEnabled;
+
+    // Optimistic state update
+    setMethods((prev) =>
+      prev.map((m) =>
+        m._id === method._id ? { ...m, enabled: newOptimisticEnabled } : m
+      )
+    );
+
     try {
       setError(null);
       const res = await paymentMethodService.togglePaymentMethod(method._id);
+      const updatedData = res?.data || res;
+      const serverEnabled =
+        updatedData?.enabled ??
+        (typeof updatedData === "boolean" ? updatedData : newOptimisticEnabled);
+
       setMethods((prev) =>
-        prev.map((m) => (m._id === method._id ? { ...m, enabled: res.data.enabled } : m))
+        prev.map((m) =>
+          m._id === method._id ? { ...m, enabled: serverEnabled } : m
+        )
       );
       setSuccessMessage(
-        `Method '${method.name}' ${res.data.enabled ? "activated" : "deactivated"} successfully`
+        res?.message ||
+          `Method '${method.name}' ${serverEnabled ? "activated" : "deactivated"} successfully`
       );
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err) {
+      // Revert on failure
+      setMethods((prev) =>
+        prev.map((m) =>
+          m._id === method._id ? { ...m, enabled: previousEnabled } : m
+        )
+      );
       setError(
         err.response?.data?.message ||
+          err.message ||
           `Cannot toggle ${method.name}: Check if server credentials are configured.`
       );
       setTimeout(() => setError(null), 6000);
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -563,8 +594,10 @@ export function AdminPaymentMethodsView() {
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex flex-col items-center gap-1">
                           <Switch
+                            id={`payment-method-toggle-${method._id}`}
                             checked={Boolean(method.enabled)}
-                            onCheckedChange={() => handleToggle(method)}
+                            onChange={() => handleToggle(method)}
+                            disabled={togglingId === method._id}
                             aria-label={`Toggle ${method.name}`}
                           />
                           <span
@@ -850,11 +883,11 @@ export function AdminPaymentMethodsView() {
               {/* Enabled Checkbox */}
               <div className="flex items-center gap-2 pt-2">
                 <Switch
-                  checked={modalFormData.enabled}
-                  onCheckedChange={(val) =>
-                    setModalFormData((prev) => ({ ...prev, enabled: val }))
-                  }
                   id="enabled-toggle"
+                  checked={Boolean(modalFormData.enabled)}
+                  onChange={(e) =>
+                    setModalFormData((prev) => ({ ...prev, enabled: e.target.checked }))
+                  }
                 />
                 <label htmlFor="enabled-toggle" className="font-semibold text-foreground cursor-pointer">
                   Activate this payment method immediately on storefront checkout

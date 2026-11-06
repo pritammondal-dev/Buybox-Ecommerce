@@ -32,7 +32,7 @@ router.get("/:id/attributes", validateObjectId("id"), attributeController.getCat
 router.post(
   "/",
   authenticate,
-  requirePermissions(PERMISSIONS.PRODUCTS_CREATE),
+  requirePermissions(PERMISSIONS.CATEGORIES_CREATE),
   validate(createCategorySchema),
   requireScope({
     scopeType: SCOPE_TYPES.CATEGORY,
@@ -46,7 +46,7 @@ router.patch(
   "/:id",
   authenticate,
   validateObjectId("id"),
-  requirePermissions(PERMISSIONS.PRODUCTS_UPDATE),
+  requirePermissions(PERMISSIONS.CATEGORIES_EDIT),
   validate(updateCategorySchema),
   requireScope({
     scopeType: SCOPE_TYPES.CATEGORY,
@@ -60,7 +60,7 @@ router.put(
   "/:id",
   authenticate,
   validateObjectId("id"),
-  requirePermissions(PERMISSIONS.PRODUCTS_UPDATE),
+  requirePermissions(PERMISSIONS.CATEGORIES_EDIT),
   validate(updateCategorySchema),
   requireScope({
     scopeType: SCOPE_TYPES.CATEGORY,
@@ -74,7 +74,7 @@ router.delete(
   "/:id",
   authenticate,
   validateObjectId("id"),
-  requirePermissions(PERMISSIONS.PRODUCTS_DELETE),
+  requirePermissions(PERMISSIONS.CATEGORIES_DELETE),
   requireScope({
     scopeType: SCOPE_TYPES.CATEGORY,
     resolveScopeId: "params.id",

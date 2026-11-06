@@ -8,13 +8,17 @@ const productVariantSchema = new mongoose.Schema(
       required: true,
     },
 
+    isDefault: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
     sku: {
       type: String,
       required: true,
-      unique: true,
       uppercase: true,
       trim: true,
-      index: true,
     },
 
     name: {
@@ -57,6 +61,19 @@ const productVariantSchema = new mongoose.Schema(
       maxlength: 3,
     },
 
+    barcode: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 100,
+    },
+
+    /**
+     * @deprecated Deprecated in Phase 2B. The warehouse Inventory collection is the sole
+     * authoritative source of physical stock. Do not trust this field for cart, checkout,
+     * or reservation decisions. Retained temporarily as an aggregate read mirror for
+     * backward compatibility with external catalog consumers.
+     */
     stockQuantity: {
       type: Number,
       default: 0,
@@ -106,6 +123,110 @@ const productVariantSchema = new mongoose.Schema(
       },
     },
 
+    dimensions: {
+      length: {
+        type: Number,
+        default: null,
+        min: 0,
+      },
+      width: {
+        type: Number,
+        default: null,
+        min: 0,
+      },
+      height: {
+        type: Number,
+        default: null,
+        min: 0,
+      },
+      unit: {
+        type: String,
+        enum: ["cm", "in", "m", "mm"],
+        default: "cm",
+      },
+    },
+
+    shippingClass: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 100,
+    },
+
+    isVirtual: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    isDownloadable: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    downloadableFiles: [
+      {
+        id: {
+          type: String,
+          required: true,
+          default: () => new mongoose.Types.ObjectId().toString(),
+        },
+        name: {
+          type: String,
+          required: true,
+          trim: true,
+          maxlength: 200,
+        },
+        fileKey: {
+          type: String,
+          default: null,
+          trim: true,
+        },
+        storageKey: {
+          type: String,
+          default: null,
+          trim: true,
+        },
+        fileUrl: {
+          type: String,
+          default: null,
+          trim: true,
+        },
+        fileSize: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+        mimeType: {
+          type: String,
+          default: "application/octet-stream",
+          trim: true,
+        },
+        version: {
+          type: String,
+          default: "1.0",
+          trim: true,
+        },
+        uploadedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+
+    downloadLimit: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+
+    downloadExpiryDays: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+
     isActive: {
       type: Boolean,
       default: true,
@@ -124,6 +245,11 @@ const productVariantSchema = new mongoose.Schema(
   }
 );
 
+productVariantSchema.index(
+  { sku: 1 },
+  { unique: true, partialFilterExpression: { deletedAt: null } }
+);
+
 productVariantSchema.index({
   productId: 1,
   isActive: 1,
@@ -134,6 +260,11 @@ productVariantSchema.index({
   productId: 1,
   stockStatus: 1,
 });
+
+productVariantSchema.index(
+  { barcode: 1 },
+  { unique: true, partialFilterExpression: { barcode: { $type: "string" }, deletedAt: null } }
+);
 
 module.exports = mongoose.model(
   "ProductVariant",

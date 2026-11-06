@@ -26,7 +26,7 @@ router.get("/:id", brandController.getBrand);
 router.post(
   "/",
   authenticate,
-  requirePermissions(PERMISSIONS.PRODUCTS_CREATE),
+  requirePermissions(PERMISSIONS.BRANDS_CREATE),
   validate(createBrandSchema),
   brandController.createBrand
 );
@@ -34,7 +34,7 @@ router.post(
 router.patch(
   "/:id",
   authenticate,
-  requirePermissions(PERMISSIONS.PRODUCTS_UPDATE),
+  requirePermissions(PERMISSIONS.BRANDS_EDIT),
   validate(updateBrandSchema),
   brandController.updateBrand
 );
@@ -42,7 +42,7 @@ router.patch(
 router.delete(
   "/:id",
   authenticate,
-  requirePermissions(PERMISSIONS.PRODUCTS_DELETE),
+  requirePermissions(PERMISSIONS.BRANDS_DELETE),
   brandController.deleteBrand
 );
 

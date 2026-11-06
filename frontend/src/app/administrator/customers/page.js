@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Users,
   Search,
@@ -11,18 +12,28 @@ import {
   ShoppingBag,
   Clock,
   Shield,
+  Eye,
+  MapPin,
 } from "lucide-react";
-import { adminCustomerService } from "@/services/admin/admin.service.js";
+import { adminCustomerService } from "@/services/admin/customer.service.js";
+import { ReasonConfirmModal } from "@/components/admin/ReasonConfirmModal.jsx";
+import { useAdminAuthStore } from "@/stores/admin-auth.store.js";
 
 export default function AdminCustomersPage() {
+  const hasPermission = useAdminAuthStore((state) => state.hasPermission);
+  const canSuspend = hasPermission("customers.suspend");
+
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [modalError, setModalError] = useState(null);
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState("");
   const [verifiedFilter, setVerifiedFilter] = useState("");
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 1 });
   const [actionSuccess, setActionSuccess] = useState(null);
+  const [confirmTarget, setConfirmTarget] = useState(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
   const fetchCustomers = async (page = 1) => {
     setLoading(true);
@@ -60,18 +71,35 @@ export default function AdminCustomersPage() {
     fetchCustomers(1);
   };
 
-  const handleToggleStatus = async (customer) => {
-    const newStatus = !customer.isActive;
-    const action = newStatus ? "reactivate" : "suspend";
-    if (!confirm(`Are you sure you want to ${action} ${customer.firstName} ${customer.lastName}?`)) return;
+  // Status Confirmation Dialog State
+  const handleToggleStatus = (customer) => {
+    setModalError(null);
+    setConfirmTarget(customer);
+  };
 
+  const handleConfirmStatusChange = async ({ reason }) => {
+    if (!confirmTarget) return;
+    const isSuspending = confirmTarget.isActive;
+    const action = isSuspending ? "suspend" : "reactivate";
+
+    setConfirmLoading(true);
+    setModalError(null);
     try {
-      await adminCustomerService.updateStatus(customer.id, newStatus);
-      setActionSuccess(`Customer ${action}d successfully`);
+      if (isSuspending) {
+        await adminCustomerService.suspend(confirmTarget.id, reason);
+      } else {
+        await adminCustomerService.reactivate(confirmTarget.id, reason);
+      }
+      setActionSuccess(`Customer ${action}ed successfully and active sessions synchronized`);
       setTimeout(() => setActionSuccess(null), 4000);
+      setConfirmTarget(null);
       fetchCustomers(pagination.page);
     } catch (err) {
-      setError(err?.response?.data?.message || err?.message || `Failed to ${action} customer`);
+      const msg = err?.response?.data?.message || err?.message || `Failed to ${action} customer`;
+      setModalError(msg);
+      setError(msg);
+    } finally {
+      setConfirmLoading(false);
     }
   };
 
@@ -180,30 +208,46 @@ export default function AdminCustomersPage() {
                 customers.map((c) => (
                   <tr key={c.id} className="hover:bg-slate-50/60 transition-colors">
                     <td className="px-6 py-4">
-                      <div className="font-semibold text-slate-900">
+                      <Link
+                        href={`/administrator/customers/${c.id}`}
+                        className="font-semibold text-slate-900 hover:text-[#004D38] transition-colors flex items-center gap-1.5"
+                      >
                         {c.firstName} {c.lastName}
-                      </div>
+                      </Link>
                       <div className="text-slate-400 text-[11px]">{c.email}</div>
                       {c.phone && (
                         <div className="text-slate-500 text-[10px]">{c.phone}</div>
                       )}
+                      {c.addressSnippet && (
+                        <div className="text-slate-400 text-[10px] truncate max-w-xs flex items-center gap-1 mt-0.5" title={c.addressSnippet}>
+                          <MapPin className="size-2.5 shrink-0 text-slate-400" />
+                          <span className="truncate">{c.addressSnippet}</span>
+                        </div>
+                      )}
                     </td>
 
                     <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-medium text-[11px] ${
-                          c.isActive
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-rose-50 text-rose-700"
-                        }`}
-                      >
+                      {c.deletedAt ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-medium text-[11px] bg-slate-100 text-slate-700 border border-slate-200">
+                          <span className="size-1.5 rounded-full bg-slate-500" />
+                          Deactivated
+                        </span>
+                      ) : (
                         <span
-                          className={`size-1.5 rounded-full ${
-                            c.isActive ? "bg-emerald-600" : "bg-rose-600"
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-medium text-[11px] ${
+                            c.isActive
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-rose-50 text-rose-700"
                           }`}
-                        />
-                        {c.isActive ? "Active" : "Suspended"}
-                      </span>
+                        >
+                          <span
+                            className={`size-1.5 rounded-full ${
+                              c.isActive ? "bg-emerald-600" : "bg-rose-600"
+                            }`}
+                          />
+                          {c.isActive ? "Active" : "Suspended"}
+                        </span>
+                      )}
                     </td>
 
                     <td className="px-6 py-4">
@@ -233,16 +277,27 @@ export default function AdminCustomersPage() {
                     </td>
 
                     <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => handleToggleStatus(c)}
-                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
-                          c.isActive
-                            ? "text-rose-600 hover:bg-rose-50"
-                            : "text-emerald-700 hover:bg-emerald-50"
-                        }`}
-                      >
-                        {c.isActive ? "Suspend" : "Reactivate"}
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <Link
+                          href={`/administrator/customers/${c.id}`}
+                          className="px-2.5 py-1 rounded-lg text-xs font-semibold text-[#004D38] bg-emerald-50 hover:bg-emerald-100 transition-colors inline-flex items-center gap-1"
+                        >
+                          <Eye className="size-3" />
+                          <span>Inspect</span>
+                        </Link>
+                        {!c.deletedAt && canSuspend && (
+                          <button
+                            onClick={() => handleToggleStatus(c)}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                              c.isActive
+                                ? "text-rose-600 hover:bg-rose-50"
+                                : "text-emerald-700 hover:bg-emerald-50"
+                            }`}
+                          >
+                            {c.isActive ? "Suspend" : "Reactivate"}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -282,6 +337,31 @@ export default function AdminCustomersPage() {
           </div>
         )}
       </div>
+
+      {/* Customer Status Reason Confirmation Modal */}
+      <ReasonConfirmModal
+        isOpen={Boolean(confirmTarget)}
+        onClose={() => {
+          setConfirmTarget(null);
+          setModalError(null);
+        }}
+        onConfirm={handleConfirmStatusChange}
+        isLoading={confirmLoading}
+        errorMessage={modalError}
+        targetIdentity={
+          confirmTarget
+            ? `${confirmTarget.firstName || ""} ${confirmTarget.lastName || ""} (${confirmTarget.email || confirmTarget.id})`.trim()
+            : ""
+        }
+        actionType={confirmTarget?.isActive ? "suspend" : "reactivate"}
+        title={`${confirmTarget?.isActive ? "Suspend" : "Reactivate"} Customer Account`}
+        description={
+          confirmTarget?.isActive
+            ? "Suspension revokes active customer login tokens and refresh sessions immediately, and disables storefront purchasing until reactivated."
+            : "Reactivation restores customer login privileges, active cart sessions, and store ordering capabilities."
+        }
+        confirmLabel={confirmTarget?.isActive ? "Confirm Suspension" : "Confirm Reactivation"}
+      />
     </div>
   );
 }

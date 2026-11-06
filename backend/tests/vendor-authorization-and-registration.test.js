@@ -298,17 +298,86 @@ describe("Vendor Registration, Boundary & Warehouse Authorization Suite", () => 
       await Vendor.deleteOne({ _id: res.body.data.vendor.id });
     });
 
-    it("rejects registration if email already exists", async () => {
+    it("allows existing customer to apply as vendor using identical email, maintaining 1 User record", async () => {
+      const userCountBefore = await User.countDocuments({ email: customerUser.email });
+      expect(userCountBefore).toBe(1);
+
       const res = await request(app)
         .post("/api/v1/vendors/register")
         .send({
           ...regPayload,
-          email: customerUser.email, // existing email
+          email: customerUser.email,
+          businessSlug: `shared-vendor-${Date.now()}`,
         });
 
-      expect(res.status).toBe(409);
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.isExistingUser).toBe(true);
+      expect(res.body.data.user.id.toString()).toBe(customerUser._id.toString());
+      expect(res.body.data.vendor.onboardingStatus).toBe("pending");
+      expect(res.body.data.vendor.isActive).toBe(false);
+
+      // Verify still exactly ONE User document exists
+      const userCountAfter = await User.countDocuments({ email: customerUser.email });
+      expect(userCountAfter).toBe(1);
+
+      // Verify User record roles contains both customer and vendor
+      const updatedUser = await User.findById(customerUser._id);
+      expect(updatedUser.roles).toContain("customer");
+      expect(updatedUser.roles).toContain("vendor");
+
+      // Verify Vendor record links to the exact same canonical User ID
+      const linkedVendor = await Vendor.findById(res.body.data.vendor.id);
+      expect(linkedVendor).toBeTruthy();
+      expect(linkedVendor.userId.toString()).toBe(customerUser._id.toString());
+
+      // Idempotency: re-submitting application should return 200 without creating duplicates
+      const idempotentRes = await request(app)
+        .post("/api/v1/vendors/register")
+        .send({
+          ...regPayload,
+          email: customerUser.email,
+          businessSlug: `shared-vendor-${Date.now()}-dup`,
+        });
+
+      expect(idempotentRes.status).toBe(200);
+      expect(idempotentRes.body.success).toBe(true);
+      expect(idempotentRes.body.data.vendor.id.toString()).toBe(linkedVendor._id.toString());
+
+      const vendorCount = await Vendor.countDocuments({ userId: customerUser._id });
+      expect(vendorCount).toBe(1);
+
+      // Cleanup created vendor
+      await Vendor.deleteOne({ _id: linkedVendor._id });
+    });
+
+    it("blocks internal staff members from applying as vendor", async () => {
+      // Create temporary staff user
+      const staffUser = await User.create({
+        firstName: "Staff",
+        lastName: "Admin",
+        name: "Staff Admin",
+        email: `staff-${Date.now()}@buybox.test`,
+        password: "StaffPassword123!",
+        role: "admin",
+        roles: ["admin"],
+        isEmailVerified: true,
+        status: "active",
+      });
+
+      const res = await request(app)
+        .post("/api/v1/vendors/register")
+        .send({
+          ...regPayload,
+          email: staffUser.email,
+          businessSlug: `staff-vendor-${Date.now()}`,
+        });
+
+      expect(res.status).toBe(403);
       expect(res.body.success).toBe(false);
-      expect(res.body.code).toBe("EMAIL_ALREADY_EXISTS");
+      expect(res.body.code).toBe("STAFF_CANNOT_BE_VENDOR");
+
+      await User.deleteOne({ _id: staffUser._id });
     });
   });
 

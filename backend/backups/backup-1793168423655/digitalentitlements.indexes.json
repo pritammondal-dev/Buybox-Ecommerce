@@ -1,0 +1,99 @@
+[
+  {
+    "v": 2,
+    "key": {
+      "_id": 1
+    },
+    "name": "_id_"
+  },
+  {
+    "v": 2,
+    "key": {
+      "customerId": 1
+    },
+    "name": "customerId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "userId": 1
+    },
+    "name": "userId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "orderId": 1
+    },
+    "name": "orderId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "orderNumber": 1
+    },
+    "name": "orderNumber_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "productId": 1
+    },
+    "name": "productId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "productVariantId": 1
+    },
+    "name": "productVariantId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "expiresAt": 1
+    },
+    "name": "expiresAt_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "status": 1
+    },
+    "name": "status_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "orderId": 1,
+      "productId": 1,
+      "productVariantId": 1,
+      "asset.id": 1
+    },
+    "name": "orderId_1_productId_1_productVariantId_1_asset.id_1",
+    "unique": true
+  },
+  {
+    "v": 2,
+    "key": {
+      "customerId": 1,
+      "status": 1
+    },
+    "name": "customerId_1_status_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "userId": 1,
+      "status": 1
+    },
+    "name": "userId_1_status_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "asset.fileKey": 1
+    },
+    "name": "asset.fileKey_1"
+  }
+]

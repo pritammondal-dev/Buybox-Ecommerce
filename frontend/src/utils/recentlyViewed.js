@@ -98,3 +98,42 @@ export function clearRecentlyViewed() {
     // Ignore localStorage errors
   }
 }
+
+/**
+ * Extract canonical unique product identifier
+ * @param {Object|string} prod
+ * @returns {string|null}
+ */
+export function getCanonicalProductId(prod) {
+  if (!prod) return null;
+  if (typeof prod === "string") {
+    const trimmed = prod.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (prod._id) return String(prod._id);
+  if (prod.id) return String(prod.id);
+  if (prod.slug) return String(prod.slug);
+  return null;
+}
+
+/**
+ * Deduplicate product list preserving chronological order (most recent first)
+ * @param {Array} list
+ * @returns {Array}
+ */
+export function deduplicateProducts(list) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  const deduplicated = [];
+
+  for (const item of list) {
+    const key = getCanonicalProductId(item);
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      deduplicated.push(item);
+    }
+  }
+
+  return deduplicated;
+}
+

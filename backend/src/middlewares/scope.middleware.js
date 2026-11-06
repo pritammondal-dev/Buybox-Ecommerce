@@ -70,6 +70,22 @@ const requireScope = (options = {}) => {
         );
       }
 
+      // Superadmin has platform-level authority and operates globally across all operational scopes
+      const isSuperAdminUser = (role) => {
+        if (!role) return false;
+        const normalized = String(role).toLowerCase().replace(/[-_]/g, "");
+        return normalized === "superadmin";
+      };
+
+      if (isSuperAdminUser(req.user.role)) {
+        req.scope = {
+          scopeType,
+          scopeId: "*",
+          isGlobal: true,
+        };
+        return next();
+      }
+
       // 2. Reject non-employee callers (customers, vendors cannot access employee scopes)
       if (["customer", "vendor"].includes(req.user.role)) {
         return next(

@@ -1,6 +1,14 @@
 import apiClient from "../lib/api/axios.js";
 
 export const returnService = {
+  async checkEligibility(orderId) {
+    return apiClient.get(`/returns/eligibility/${orderId}`);
+  },
+
+  async uploadEvidence(formData) {
+    return apiClient.post("/returns/upload-evidence", formData);
+  },
+
   async createReturnRequest(data) {
     return apiClient.post("/returns", data);
   },
@@ -11,6 +19,18 @@ export const returnService = {
 
   async getReturnsByOrderId(orderId) {
     return apiClient.get(`/returns/order/${orderId}`);
+  },
+
+  async getReturnById(returnId) {
+    return apiClient.get(`/returns/${returnId}`);
+  },
+
+  async cancelReturnRequest(returnId, data = {}) {
+    return apiClient.post(`/returns/${returnId}/cancel`, data);
+  },
+
+  async cancelReturn(returnId, data = {}) {
+    return this.cancelReturnRequest(returnId, data);
   },
 };
 

@@ -3,32 +3,27 @@ const express = require("express");
 const router = express.Router();
 
 const storefrontSettingsController = require("../controllers/storefront-settings.controller");
-
 const authenticate = require("../middlewares/authentication.middleware");
-
 const {
   requirePermissions,
 } = require("../middlewares/authorization.middleware");
-
 const {
   PERMISSIONS,
 } = require("../constants/permissions.constants");
-
 const validate = require("../middlewares/validate.middleware");
-
 const {
   createStorefrontSettingsSchema,
   updateStorefrontSettingsSchema,
+  updateFeatureFlagsSchema,
   storefrontSettingsIdParamsSchema,
 } = require("../validators/cms/storefront-settings.validator");
 
-// Public
+// Public Authoritative Storefront Settings & Feature Flags
 router.get(
   "/",
   storefrontSettingsController.getActiveSettings
 );
 
-// Admin
 router.get(
   "/:settingsId",
   authenticate,
@@ -55,4 +50,3 @@ router.patch(
 );
 
 module.exports = router;
-

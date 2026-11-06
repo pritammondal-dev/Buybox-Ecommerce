@@ -31,9 +31,21 @@ const isValidDateString = (val) => {
   return !isNaN(fullDate.getTime());
 };
 
+const ALLOWED_PERIODS = [
+  "today",
+  "yesterday",
+  "last_7_days",
+  "7d",
+  "last_30_days",
+  "30d",
+  "this_month",
+  "previous_month",
+  "custom",
+];
+
 const baseDateFields = {
   period: z
-    .enum(["today", "last_7_days", "last_30_days", "custom"])
+    .enum(ALLOWED_PERIODS)
     .default("today"),
 
   startDate: z
@@ -50,6 +62,15 @@ const baseDateFields = {
     .refine((val) => !val || isValidDateString(val), {
       message: "endDate must be a valid ISO date",
     })
+    .optional(),
+
+  compare: z
+    .preprocess((val) => {
+      if (typeof val === "string") {
+        return val.toLowerCase() === "true" || val === "1";
+      }
+      return Boolean(val);
+    }, z.boolean())
     .optional(),
 };
 
@@ -119,7 +140,7 @@ const sortByField = z
  * ==========================================
  */
 
-// 1. ADMIN OVERVIEW: period, startDate, endDate, vendorId
+// 1. ADMIN OVERVIEW: period, startDate, endDate, vendorId, compare
 const adminOverviewQuerySchema = z
   .object({
     ...baseDateFields,
@@ -148,7 +169,7 @@ const adminSalesTrendQuerySchema = z
   .strict()
   .superRefine(refineCustomDateRange);
 
-// 4. VENDOR OVERVIEW: period, startDate, endDate
+// 4. VENDOR OVERVIEW: period, startDate, endDate, compare
 const vendorOverviewQuerySchema = z
   .object({
     ...baseDateFields,
@@ -174,15 +195,44 @@ const vendorSalesTrendQuerySchema = z
   .strict()
   .superRefine(refineCustomDateRange);
 
+// 7. VENDOR PRODUCT PERFORMANCE (Paginated table)
+const vendorProductPerformanceQuerySchema = z
+  .object({
+    ...baseDateFields,
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    search: z.string().trim().optional(),
+    sortBy: z.enum(["unitsSold", "grossSales", "netSales", "productName"]).default("unitsSold"),
+    sortOrder: z.enum(["asc", "desc"]).default("desc"),
+  })
+  .strict()
+  .superRefine(refineCustomDateRange);
+
+// 8. VENDOR EXPORT
+const vendorExportQuerySchema = z
+  .object({
+    ...baseDateFields,
+    type: z.enum(["overview", "products", "trend"]).default("products"),
+    format: z.enum(["csv", "xlsx"]).default("csv"),
+    search: z.string().trim().optional(),
+    sortBy: z.enum(["unitsSold", "grossSales", "netSales", "productName"]).default("unitsSold"),
+    sortOrder: z.enum(["asc", "desc"]).default("desc"),
+  })
+  .strict()
+  .superRefine(refineCustomDateRange);
+
 // Backward-compatibility alias
 const analyticsQuerySchema = adminOverviewQuerySchema;
 
 module.exports = {
+  ALLOWED_PERIODS,
   adminOverviewQuerySchema,
   adminTopProductsQuerySchema,
   adminSalesTrendQuerySchema,
   vendorOverviewQuerySchema,
   vendorTopProductsQuerySchema,
   vendorSalesTrendQuerySchema,
+  vendorProductPerformanceQuerySchema,
+  vendorExportQuerySchema,
   analyticsQuerySchema,
 };

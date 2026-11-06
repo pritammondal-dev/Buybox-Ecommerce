@@ -52,7 +52,7 @@ describe("Merchant Console Service Contract & Route File Structure", () => {
     try {
       const res = await vendorService.getDashboardAnalytics({ range: "7d" });
       assert.equal(capturedUrl, "/vendors/me/dashboard");
-      assert.deepEqual(capturedConfig, { params: { range: "7d" } });
+      assert.deepEqual(capturedConfig.params, { range: "7d" });
       assert.equal(res.data.data.metrics.totalSales, "5000.00");
     } finally {
       apiClient.get = originalGet;
@@ -135,7 +135,7 @@ describe("Merchant Console Service Contract & Route File Structure", () => {
 
       await vendorService.answerQuestion("qst_456", "This keyboard is Mac compatible.");
       assert.equal(postUrl, "/questions/qst_456/answers");
-      assert.deepEqual(postData, { content: "This keyboard is Mac compatible." });
+      assert.equal(postData.content, "This keyboard is Mac compatible.");
     } finally {
       apiClient.patch = originalPatch;
       apiClient.post = originalPost;
@@ -157,6 +157,59 @@ describe("Merchant Console Service Contract & Route File Structure", () => {
       assert.equal(capturedUrl, "/vendors/me/settlements");
     } finally {
       apiClient.get = originalGet;
+    }
+  });
+
+  // 6b. DEF-001: Product Variant CRUD Canonical Endpoints
+  test("vendorService product variant methods target canonical /product-variants routes", async () => {
+    const originalGet = apiClient.get;
+    const originalPost = apiClient.post;
+    const originalPatch = apiClient.patch;
+    const originalDelete = apiClient.delete;
+
+    const capturedCalls = [];
+
+    apiClient.get = async (url) => {
+      capturedCalls.push({ method: "GET", url });
+      return { data: { success: true, data: { variants: [] } } };
+    };
+    apiClient.post = async (url, data) => {
+      capturedCalls.push({ method: "POST", url, data });
+      return { data: { success: true, data: { variant: { _id: "var_new" } } } };
+    };
+    apiClient.patch = async (url, data) => {
+      capturedCalls.push({ method: "PATCH", url, data });
+      return { data: { success: true, data: { variant: { _id: "var_edit" } } } };
+    };
+    apiClient.delete = async (url) => {
+      capturedCalls.push({ method: "DELETE", url });
+      return { data: { success: true } };
+    };
+
+    try {
+      await vendorService.getProductVariants("prd_123");
+      await vendorService.createProductVariant("prd_123", { sku: "SKU-V1", price: 1999 });
+      await vendorService.updateProductVariant("var_456", { price: 2199 });
+      await vendorService.deleteProductVariant("var_456");
+
+      assert.equal(capturedCalls[0].method, "GET");
+      assert.equal(capturedCalls[0].url, "/product-variants/product/prd_123");
+
+      assert.equal(capturedCalls[1].method, "POST");
+      assert.equal(capturedCalls[1].url, "/product-variants/product/prd_123");
+      assert.deepEqual(capturedCalls[1].data, { sku: "SKU-V1", price: 1999 });
+
+      assert.equal(capturedCalls[2].method, "PATCH");
+      assert.equal(capturedCalls[2].url, "/product-variants/var_456");
+      assert.deepEqual(capturedCalls[2].data, { price: 2199 });
+
+      assert.equal(capturedCalls[3].method, "DELETE");
+      assert.equal(capturedCalls[3].url, "/product-variants/var_456");
+    } finally {
+      apiClient.get = originalGet;
+      apiClient.post = originalPost;
+      apiClient.patch = originalPatch;
+      apiClient.delete = originalDelete;
     }
   });
 

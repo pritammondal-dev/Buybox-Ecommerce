@@ -12,20 +12,60 @@ import {
   AlertCircle,
   Truck,
   RefreshCw,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { vendorService } from "@/services/vendor.service";
 import { getVendorOrderUrl } from "@/utils/secure-id.util";
+import { triggerBlobDownload } from "@/utils/fileDownload";
+import VendorTablePagination from "@/components/vendor/VendorTablePagination";
+import {
+  VendorPageHeader,
+  VendorStatusBadge,
+  VendorEmptyState,
+} from "@/components/vendor";
 
 export default function VendorOrdersPage() {
   const [orders, setOrders] = useState([]);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [meta, setMeta] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
+
+  const handleExport = async (type = "orders", format = "csv") => {
+    try {
+      setIsExporting(true);
+      setShowExportDropdown(false);
+      const params = { format };
+      if (status !== "all") params.status = status;
+      if (search.trim()) params.search = search.trim();
+
+      const res = type === "items"
+        ? await vendorService.exportMyOrderItems(params)
+        : await vendorService.exportMyOrders(params);
+
+      const ext = format === "xlsx" ? "xlsx" : "csv";
+      triggerBlobDownload(res, `vendor-${type}-${new Date().toISOString().slice(0, 10)}.${ext}`);
+      toast.success(`Exported vendor ${type} (${format.toUpperCase()}) successfully`);
+    } catch (err) {
+      toast.error("Export failed", {
+        description: err.response?.data?.message || err.message,
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
-    const params = {};
+    const params = { page, limit };
     if (status !== "all") params.status = status;
     if (search.trim()) params.search = search.trim();
 
@@ -35,12 +75,20 @@ export default function VendorOrdersPage() {
         if (!isMounted) return;
         const data = res?.data?.data || res?.data?.orders || res?.data || [];
         const items = Array.isArray(data) ? data : data.items || [];
+        const paginationMeta = res?.data?.meta || {
+          page,
+          limit,
+          total: items.length,
+          totalPages: Math.ceil(items.length / limit) || 1,
+        };
         setOrders(items);
+        setMeta(paginationMeta);
       })
       .catch((err) => {
         if (!isMounted) return;
         if (err.status === 403 || err.status === 404 || err.response?.status === 403 || err.response?.status === 404) {
           setOrders([]);
+          setMeta({ page: 1, limit: 20, total: 0, totalPages: 1 });
           return;
         }
         toast.error("Failed to fetch customer orders", {
@@ -54,22 +102,30 @@ export default function VendorOrdersPage() {
     return () => {
       isMounted = false;
     };
-  }, [status, search]);
+  }, [status, search, page, limit]);
 
   const handleRefresh = async () => {
     setIsLoading(true);
     try {
-      const params = {};
+      const params = { page, limit };
       if (status !== "all") params.status = status;
       if (search.trim()) params.search = search.trim();
 
       const res = await vendorService.getMyOrders(params);
       const data = res?.data?.data || res?.data?.orders || res?.data || [];
       const items = Array.isArray(data) ? data : data.items || [];
+      const paginationMeta = res?.data?.meta || {
+        page,
+        limit,
+        total: items.length,
+        totalPages: Math.ceil(items.length / limit) || 1,
+      };
       setOrders(items);
+      setMeta(paginationMeta);
     } catch (err) {
       if (err.status === 403 || err.status === 404 || err.response?.status === 403 || err.response?.status === 404) {
         setOrders([]);
+        setMeta({ page: 1, limit: 20, total: 0, totalPages: 1 });
         return;
       }
       toast.error("Failed to fetch customer orders", {
@@ -83,24 +139,81 @@ export default function VendorOrdersPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-            Customer Orders
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Marketplace orders containing your products, strictly scoped to your tenant line items and payouts.
-          </p>
-        </div>
+      <VendorPageHeader
+        title="Customer Orders"
+        subtitle="Marketplace orders containing your products, strictly scoped to your tenant line items and payouts."
+        breadcrumbs={[{ label: "Orders" }]}
+        actions={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRefresh}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-xs transition-colors"
+            >
+              <RefreshCw className="size-3.5" />
+              <span>Refresh Orders</span>
+            </button>
 
-        <button
-          onClick={handleRefresh}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-xs transition-colors"
-        >
-          <RefreshCw className="size-3.5" />
-          <span>Refresh Orders</span>
-        </button>
-      </div>
+            <div className="relative">
+              <button
+                onClick={() => setShowExportDropdown((prev) => !prev)}
+                disabled={isExporting}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-emerald-700 bg-[#004D38] text-white hover:bg-[#003d2c] text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
+              >
+                <Download className="size-3.5" />
+                <span>{isExporting ? "Exporting..." : "Export"}</span>
+                <ChevronDown className="size-3.5 opacity-70" />
+              </button>
+
+              {showExportDropdown && (
+                <>
+                  <div
+                    className="fixed inset-0 z-20"
+                    onClick={() => setShowExportDropdown(false)}
+                  />
+                  <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white shadow-xl border border-slate-200 py-1.5 z-30 animate-in fade-in zoom-in-95">
+                    <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      Scoped Orders
+                    </div>
+                    <button
+                      onClick={() => handleExport("orders", "csv")}
+                      className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    >
+                      <FileText className="size-3.5 text-emerald-600" />
+                      <span>Orders Summary (CSV)</span>
+                    </button>
+                    <button
+                      onClick={() => handleExport("orders", "xlsx")}
+                      className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    >
+                      <FileSpreadsheet className="size-3.5 text-blue-600" />
+                      <span>Orders Summary (XLSX)</span>
+                    </button>
+
+                    <div className="border-t border-slate-100 my-1" />
+                    <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      Scoped Line Items
+                    </div>
+                    <button
+                      onClick={() => handleExport("items", "csv")}
+                      className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    >
+                      <FileText className="size-3.5 text-emerald-600" />
+                      <span>Order Items (CSV)</span>
+                    </button>
+                    <button
+                      onClick={() => handleExport("items", "xlsx")}
+                      className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    >
+                      <FileSpreadsheet className="size-3.5 text-blue-600" />
+                      <span>Order Items (XLSX)</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        }
+      />
 
       {/* Controls */}
       <div className="flex flex-col md:flex-row gap-3 items-center justify-between bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs">
@@ -110,7 +223,10 @@ export default function VendorOrdersPage() {
             type="text"
             placeholder="Search by order number..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50/50 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-600"
           />
         </div>
@@ -125,7 +241,10 @@ export default function VendorOrdersPage() {
           ].map((s) => (
             <button
               key={s.id}
-              onClick={() => setStatus(s.id)}
+              onClick={() => {
+                setStatus(s.id);
+                setPage(1);
+              }}
               className={`px-3 py-1 text-xs font-semibold rounded-lg whitespace-nowrap transition-all ${
                 status === s.id
                   ? "bg-[#004D38] text-white shadow-xs"
@@ -147,15 +266,27 @@ export default function VendorOrdersPage() {
             ))}
           </div>
         ) : orders.length === 0 ? (
-          <div className="p-16 text-center">
-            <ShoppingBag className="size-12 text-slate-300 mx-auto mb-3" />
-            <h4 className="text-sm font-bold text-slate-800">No Orders Found</h4>
-            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              {search || status !== "all"
+          <VendorEmptyState
+            icon={ShoppingBag}
+            title={search || status !== "all" ? "No Orders Found" : "No Orders Yet"}
+            description={
+              search || status !== "all"
                 ? "No customer orders match your selected filters."
-                : "When customers order products from your catalog, they will be listed here."}
-            </p>
-          </div>
+                : "When customers order products from your catalog, they will be listed here."
+            }
+            action={
+              search || status !== "all"
+                ? {
+                    label: "Clear Filters",
+                    onClick: () => {
+                      setSearch("");
+                      setStatus("all");
+                      setPage(1);
+                    },
+                  }
+                : undefined
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -198,17 +329,24 @@ export default function VendorOrdersPage() {
                         <span className="font-semibold">{itemCount}</span> line item{itemCount > 1 ? "s" : ""}
                       </td>
                       <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            order.fulfillmentStatus === "fulfilled"
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : order.fulfillmentStatus === "partially_fulfilled"
-                              ? "bg-blue-50 text-blue-700 border border-blue-200"
-                              : "bg-amber-50 text-amber-700 border border-amber-200"
-                          }`}
-                        >
-                          {order.fulfillmentStatus || order.status}
-                        </span>
+                        <div className="flex flex-col gap-1 items-start">
+                          <VendorStatusBadge status={order.fulfillmentStatus || order.status} entityType="order" />
+                          {order.vendorFulfillment?.acceptanceStatus && (
+                            <span
+                              className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${
+                                order.vendorFulfillment.acceptanceStatus === "accepted"
+                                  ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                  : order.vendorFulfillment.acceptanceStatus === "rejected"
+                                  ? "bg-rose-50 text-rose-800 border-rose-200"
+                                  : "bg-amber-50 text-amber-800 border-amber-200"
+                              }`}
+                            >
+                              {order.vendorFulfillment.acceptanceStatus === "pending"
+                                ? "Action Required"
+                                : `Acceptance: ${order.vendorFulfillment.acceptanceStatus}`}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-right font-bold text-slate-900">
                         ₹{Number(order.subtotal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
@@ -227,6 +365,21 @@ export default function VendorOrdersPage() {
                 })}
               </tbody>
             </table>
+
+            {/* Pagination */}
+            <VendorTablePagination
+              page={page}
+              limit={limit}
+              total={meta?.total ?? orders.length}
+              totalPages={meta?.totalPages}
+              onPageChange={(newPage) => setPage(newPage)}
+              onLimitChange={(newLimit) => {
+                setLimit(newLimit);
+                setPage(1);
+              }}
+              isLoading={isLoading}
+              itemLabel="orders"
+            />
           </div>
         )}
       </div>

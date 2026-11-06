@@ -11,6 +11,7 @@ import { Button } from "../../ui/Button.jsx";
 export function CheckoutOrderSummary({
   items = [],
   subtotal = 0,
+  productDiscount = 0,
   discountTotal = 0,
   shippingTotal = 0,
   taxTotal = 0,
@@ -22,6 +23,7 @@ export function CheckoutOrderSummary({
   const [isMobileListOpen, setIsMobileListOpen] = useState(false);
 
   const numericSubtotal = parsePrice(subtotal);
+  const numericProductDiscount = parsePrice(productDiscount);
   const numericDiscount = parsePrice(discountTotal);
   const numericShipping = parsePrice(shippingTotal);
   const numericTax = parsePrice(taxTotal);
@@ -119,6 +121,13 @@ export function CheckoutOrderSummary({
             {formatCurrency(numericSubtotal)}
           </span>
         </div>
+
+        {numericProductDiscount > 0 && (
+          <div className="flex justify-between text-emerald-700 font-semibold">
+            <span>Promotional Savings</span>
+            <span>-{formatCurrency(numericProductDiscount)}</span>
+          </div>
+        )}
 
         {numericDiscount > 0 && (
           <div className="flex justify-between text-[#004D38] font-semibold">

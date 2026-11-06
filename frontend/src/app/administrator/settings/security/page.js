@@ -1,3 +1,5 @@
-export default function Page() {
-  return null;
+import { redirect } from "next/navigation";
+
+export default function SettingsSecurityPage() {
+  redirect("/administrator/security");
 }

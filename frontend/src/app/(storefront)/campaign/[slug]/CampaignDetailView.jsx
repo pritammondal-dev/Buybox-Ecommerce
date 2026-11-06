@@ -49,7 +49,9 @@ export function CampaignDetailView({ campaign }) {
   const [copiedCoupon, setCopiedCoupon] = useState(null);
 
   const countdown = useCountdown(campaign?.endsAt);
-  const products = campaign?.productIds || [];
+  const products = (campaign?.productIds || campaign?.products || []).filter(
+    (p) => Boolean(p && (p._id || p.id))
+  );
   const coupons = campaign?.couponIds || [];
 
   const handleCopyCoupon = (code) => {
@@ -86,7 +88,6 @@ export function CampaignDetailView({ campaign }) {
           name: product.name,
           price: product.price,
           image: product.images?.[0]?.url || product.image || null,
-          sku: product.sku,
         },
       });
       toast.success("Added to cart", { description: `${product.name} added to your cart.` });
@@ -101,17 +102,38 @@ export function CampaignDetailView({ campaign }) {
       <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs text-muted-foreground">
         <Link href="/" className="hover:text-[#004D38] transition-colors">Home</Link>
         <span>/</span>
-        <Link href="/deals" className="hover:text-[#004D38] transition-colors">Campaigns</Link>
+        <Link href="/campaigns" className="hover:text-[#004D38] transition-colors">Campaigns</Link>
         <span>/</span>
         <span className="font-bold text-slate-900 truncate">{campaign.name}</span>
       </nav>
 
       {/* Hero Banner */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#004D38] via-[#006346] to-slate-900 p-8 sm:p-12 text-white shadow-xl">
+        {campaign?.bannerUrl && (
+          <div className="absolute inset-0 z-0 opacity-20">
+            <img
+              src={campaign.bannerUrl}
+              alt={campaign.name}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+              }}
+            />
+          </div>
+        )}
         <div className="relative z-10 max-w-2xl space-y-4">
-          <div className="inline-flex items-center gap-2 rounded-full bg-amber-400/20 px-3.5 py-1 text-xs font-black uppercase tracking-wider text-amber-300 backdrop-blur-xs border border-amber-300/30">
-            <Sparkles className="size-3.5" />
-            <span>Featured Marketplace Event</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-2 rounded-full bg-amber-400/20 px-3.5 py-1 text-xs font-black uppercase tracking-wider text-amber-300 backdrop-blur-xs border border-amber-300/30">
+              <Sparkles className="size-3.5" />
+              <span className="capitalize">{campaign?.type ? campaign.type.replace(/_/g, " ") : "Featured Marketplace Event"}</span>
+            </div>
+
+            {campaign?.status === "draft" && (
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/30 px-3 py-1 text-xs font-bold text-amber-200 border border-amber-400/40">
+                <AlertCircle className="size-3.5" />
+                <span>Staff Preview Mode (Unpublished)</span>
+              </div>
+            )}
           </div>
 
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white leading-tight">
@@ -122,6 +144,23 @@ export function CampaignDetailView({ campaign }) {
             <p className="text-sm sm:text-base text-emerald-100/90 leading-relaxed max-w-xl">
               {campaign.description}
             </p>
+          )}
+
+          {Array.isArray(campaign?.categoryIds) && campaign.categoryIds.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              {campaign.categoryIds.map((c) => {
+                const name = typeof c === "object" ? c.name : c;
+                const key = typeof c === "object" ? c._id || c.slug || name : c;
+                return (
+                  <span
+                    key={key}
+                    className="rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-100 border border-white/15"
+                  >
+                    {name}
+                  </span>
+                );
+              })}
+            </div>
           )}
 
           {/* Countdown Clock */}

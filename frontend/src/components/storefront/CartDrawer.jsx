@@ -62,7 +62,7 @@ export function CartDrawer({ isOpen, onClose }) {
                 const variantId =
                   item.productVariantId?._id || item.productVariantId || item.id || `item-${idx}`;
                 const title =
-                  item.productVariantId?.sku || item.name || item.title || "Product Item";
+                  item.productVariantId?.name || item.name || item.title || "Product Item";
                 const price =
                   item.unitPrice || item.price || item.productVariantId?.price || 0;
                 const image =

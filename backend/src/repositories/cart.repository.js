@@ -22,6 +22,16 @@ const findActiveByCustomer = async (customerId, storeId = null, options = {}) =>
   return Cart.findOne(filter).session(options.session || null);
 };
 
+const findActiveByGuest = async (guestId, storeId = null, options = {}) => {
+  const filter = {
+    guestId,
+    status: "active",
+    storeId,
+  };
+
+  return Cart.findOne(filter).session(options.session || null);
+};
+
 const findByCustomer = async (customerId, options = {}) => {
   return Cart.find({
     customerId,
@@ -163,6 +173,7 @@ module.exports = {
   create,
   findById,
   findActiveByCustomer,
+  findActiveByGuest,
   findByCustomer,
   updateById,
   convertActiveCart,

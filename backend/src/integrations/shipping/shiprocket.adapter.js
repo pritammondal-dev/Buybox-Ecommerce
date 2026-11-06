@@ -1,5 +1,6 @@
 const CourierAdapter = require("./courier.adapter");
 const env = require("../../config/env");
+const crypto = require("crypto");
 
 class ShiprocketAdapter extends CourierAdapter {
   constructor() {
@@ -13,6 +14,10 @@ class ShiprocketAdapter extends CourierAdapter {
       email: runtimeCredentials?.email || env.SHIPROCKET_EMAIL || "",
       password: runtimeCredentials?.password || env.SHIPROCKET_PASSWORD || "",
       apiKey: runtimeCredentials?.apiKey || env.SHIPROCKET_API_KEY || "",
+      webhookSecret:
+        runtimeCredentials?.webhookSecret ||
+        env.SHIPROCKET_WEBHOOK_SECRET ||
+        "",
     };
   }
 
@@ -139,16 +144,205 @@ class ShiprocketAdapter extends CourierAdapter {
     }
   }
 
-  verifyWebhookSignature({ headers, runtimeCredentials }) {
+  async generateShippingLabel({ shipment, runtimeCredentials }) {
     const creds = this.resolveCredentials(runtimeCredentials);
-    const key = headers["x-api-key"] || headers["x-webhook-token"];
+    const token = await this.authenticate(creds);
+    const providerShipmentId = shipment?.providerShipmentId || shipment?.metadata?.get?.("shiprocket_shipment_id");
 
-    if (!creds.apiKey) {
-      // In dev/test mode where secret is unconfigured
-      return key ? true : false;
+    if (!token) {
+      return {
+        success: false,
+        status: "not_configured",
+        error: "Shiprocket credentials missing",
+        labelUrl: null,
+      };
     }
 
-    return key === creds.apiKey;
+    try {
+      const response = await fetch("https://apiv2.shiprocket.in/v1/external/courier/generate/label", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          shipment_id: [providerShipmentId || shipment?.shipmentNumber],
+        }),
+      });
+
+      const data = await response.json();
+      return {
+        success: true,
+        labelUrl: data?.label_url || null,
+        carrier: "Shiprocket",
+        raw: data,
+      };
+    } catch (err) {
+      return {
+        success: false,
+        status: "error",
+        error: err.message,
+      };
+    }
+  }
+
+  async schedulePickup({ shipment, scheduledDate, timeSlot, runtimeCredentials }) {
+    const creds = this.resolveCredentials(runtimeCredentials);
+    const token = await this.authenticate(creds);
+    const providerShipmentId = shipment?.providerShipmentId;
+
+    if (!token) {
+      return {
+        success: false,
+        status: "not_configured",
+        error: "Shiprocket credentials missing",
+      };
+    }
+
+    try {
+      const pickupDateStr = scheduledDate ? new Date(scheduledDate).toISOString().split("T")[0] : new Date().toISOString().split("T")[0];
+
+      const response = await fetch("https://apiv2.shiprocket.in/v1/external/courier/generate/pickup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          shipment_id: [providerShipmentId || shipment?.shipmentNumber],
+          pickup_date: [pickupDateStr],
+        }),
+      });
+
+      const data = await response.json();
+      return {
+        success: true,
+        pickupToken: data?.response?.pickup_token_number || `SR-PKP-${Date.now().toString(36).toUpperCase()}`,
+        status: "scheduled",
+        scheduledDate: pickupDateStr,
+        timeSlot: timeSlot || "10:00-13:00",
+        raw: data,
+      };
+    } catch (err) {
+      return {
+        success: false,
+        status: "error",
+        error: err.message,
+      };
+    }
+  }
+
+  async cancelShipment({ shipment, reason, runtimeCredentials }) {
+    const creds = this.resolveCredentials(runtimeCredentials);
+    const token = await this.authenticate(creds);
+    const providerOrderId = shipment?.providerOrderId || shipment?.shipmentNumber;
+
+    if (!token) {
+      return {
+        success: false,
+        status: "not_configured",
+        error: "Shiprocket credentials missing",
+      };
+    }
+
+    try {
+      const response = await fetch("https://apiv2.shiprocket.in/v1/external/orders/cancel", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ids: [providerOrderId],
+        }),
+      });
+
+      const data = await response.json();
+      return {
+        success: true,
+        cancellationAcknowledged: true,
+        carrier: "Shiprocket",
+        raw: data,
+      };
+    } catch (err) {
+      return {
+        success: false,
+        status: "error",
+        error: err.message,
+      };
+    }
+  }
+
+  async checkServiceability({ originPostalCode, destinationPostalCode, weightGrams, runtimeCredentials }) {
+    const creds = this.resolveCredentials(runtimeCredentials);
+    const token = await this.authenticate(creds);
+
+    if (!token) {
+      const pinRegex = /^\d{6}$/;
+      return {
+        serviceable: pinRegex.test(String(destinationPostalCode || "").trim()),
+        carrier: "Shiprocket",
+        status: "unverified_unconfigured",
+        estimatedDays: 3,
+      };
+    }
+
+    try {
+      const weightKg = ((weightGrams || 500) / 1000).toFixed(2);
+      const url = `https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=${encodeURIComponent(originPostalCode || "110001")}&delivery_postcode=${encodeURIComponent(destinationPostalCode)}&weight=${weightKg}&cod=0`;
+
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+      const companies = data?.data?.available_courier_companies || [];
+      const serviceable = companies.length > 0;
+
+      return {
+        serviceable,
+        carrier: "Shiprocket",
+        courierCount: companies.length,
+        availableCouriers: companies.map((c) => ({
+          name: c.courier_name,
+          id: c.courier_company_id,
+          rate: c.rate,
+          etd: c.etd,
+        })),
+        raw: data,
+      };
+    } catch (err) {
+      return {
+        serviceable: false,
+        error: err.message,
+      };
+    }
+  }
+
+  verifyWebhookSignature({ headers = {}, runtimeCredentials }) {
+    const creds = this.resolveCredentials(runtimeCredentials);
+    const key = headers["x-api-key"] || headers["x-webhook-token"];
+    const expectedSecret = creds.webhookSecret || creds.apiKey;
+
+    if (!expectedSecret) {
+      // In dev/test mode where secret is unconfigured
+      return Boolean(key);
+    }
+
+    if (!key || typeof key !== "string") {
+      return false;
+    }
+
+    const keyBuf = Buffer.from(key.trim(), "utf8");
+    const expBuf = Buffer.from(expectedSecret.trim(), "utf8");
+
+    if (keyBuf.length !== expBuf.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(keyBuf, expBuf);
   }
 }
 

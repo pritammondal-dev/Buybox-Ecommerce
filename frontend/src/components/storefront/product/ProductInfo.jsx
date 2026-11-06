@@ -8,36 +8,83 @@ import {
   calculateDiscountPercentage,
   parsePrice,
 } from "../../../utils/formatCurrency.js";
+import { getBrandId } from "../../../utils/category.util.js";
 
 export function ProductInfo({
   product,
   brand,
   category,
+  selectedVariant = null,
   onReviewsClick,
 }) {
-  const price = parsePrice(product?.price || 0);
-  const compareAtPrice = parsePrice(product?.compareAtPrice);
-  const discount = calculateDiscountPercentage(compareAtPrice, price);
-  const savings = compareAtPrice > price ? compareAtPrice - price : 0;
+  const isVariableProduct = product?.productType === "variable";
 
-  const brandName = brand?.name || product?.brand?.name || null;
-  const brandId = brand?._id || product?.brandId;
+  // Authoritative promotional & catalog price resolution
+  const isPromo = selectedVariant
+    ? Boolean(selectedVariant.isPromotional)
+    : Boolean(product?.isPromotional);
+
+  const promoName = selectedVariant?.promotion?.name || product?.promotion?.name || null;
+
+  const authoritativePrice = selectedVariant
+    ? (selectedVariant.isPromotional && selectedVariant.effectivePrice != null
+        ? parsePrice(selectedVariant.effectivePrice)
+        : parsePrice(selectedVariant.price))
+    : (product?.isPromotional && product?.effectivePrice != null
+        ? parsePrice(product.effectivePrice)
+        : parsePrice(product?.priceRange?.min ?? product?.price ?? 0));
+
+  const regularCatalogPrice = selectedVariant
+    ? parsePrice(selectedVariant.regularPrice || selectedVariant.price)
+    : parsePrice((product?.regularPrice || product?.price) ?? 0);
+
+  const rawCompareAt = selectedVariant
+    ? parsePrice(selectedVariant.compareAtPrice)
+    : parsePrice(product?.compareAtPrice);
+
+  const authoritativeCompareAtPrice = rawCompareAt > authoritativePrice
+    ? rawCompareAt
+    : (isPromo && regularCatalogPrice > authoritativePrice ? regularCatalogPrice : 0);
+
+  const discount = (selectedVariant?.discountPercentage || product?.discountPercentage) > 0
+    ? (selectedVariant?.discountPercentage || product?.discountPercentage)
+    : calculateDiscountPercentage(authoritativeCompareAtPrice, authoritativePrice);
+
+  const savings = authoritativeCompareAtPrice > authoritativePrice
+    ? authoritativeCompareAtPrice - authoritativePrice
+    : 0;
+
+  const brandName =
+    brand?.name ||
+    product?.brand?.name ||
+    (typeof product?.brandId === "object" ? product.brandId?.name : null) ||
+    null;
+  const brandId = getBrandId(brand) || getBrandId(product?.brandId) || getBrandId(product?.brand);
 
   const ratingAvg = Number(product?.ratingAverage) || 0;
   const ratingCount = Number(product?.ratingCount) || 0;
 
-  // Actual backend stock fields
-  const stockStatus = product?.stockStatus || "out_of_stock";
-  const isOutOfStock = stockStatus === "out_of_stock";
+  // Authoritative stock availability resolution
+  const stockQuantity = selectedVariant
+    ? (typeof selectedVariant.availableQuantity === "number" ? selectedVariant.availableQuantity : null)
+    : (typeof product?.availableQuantity === "number" ? product.availableQuantity : null);
+
+  const stockStatus = selectedVariant
+    ? (selectedVariant.stockStatus || (stockQuantity !== null && stockQuantity <= 0 ? "out_of_stock" : "in_stock"))
+    : (product?.stockStatus || "out_of_stock");
+
+  const isOutOfStock = stockQuantity !== null
+    ? stockQuantity <= 0
+    : stockStatus === "out_of_stock";
+
   const isPreorder = stockStatus === "preorder";
-  const stockQuantity = typeof product?.stockQuantity === "number" ? product.stockQuantity : null;
   const isLowStock = !isOutOfStock && !isPreorder && stockQuantity !== null && stockQuantity > 0 && stockQuantity <= 5;
 
   return (
     <div className="space-y-4">
-      {/* Overline: Brand Link & SKU Identifier */}
-      <div className="flex items-center justify-between text-xs text-muted-foreground border-b border-slate-100 pb-3">
-        {brandName ? (
+      {/* Overline: Brand Link */}
+      {brandName && (
+        <div className="flex items-center text-xs text-muted-foreground border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
               Brand:
@@ -55,19 +102,8 @@ export function ProductInfo({
               </span>
             )}
           </div>
-        ) : (
-          <div />
-        )}
-
-        {product?.sku && (
-          <div className="flex items-center gap-1.5 text-[11px] font-mono text-slate-500">
-            <span className="text-slate-400">SKU:</span>
-            <span className="rounded bg-slate-100 px-2 py-0.5 font-bold text-slate-700">
-              {product.sku}
-            </span>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Product Title */}
       <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-950 leading-[1.2]">
@@ -110,12 +146,13 @@ export function ProductInfo({
       <div className="rounded-2xl bg-slate-50 p-4 sm:p-5 border border-slate-200/80 space-y-2">
         <div className="flex flex-wrap items-baseline gap-3 sm:gap-4">
           <span className="text-3xl sm:text-4xl font-black text-[#004D38]">
-            {formatCurrency(price)}
+            {isVariableProduct && !selectedVariant && !isPromo ? "From " : ""}
+            {formatCurrency(authoritativePrice)}
           </span>
 
-          {compareAtPrice > price && (
+          {authoritativeCompareAtPrice > authoritativePrice && (
             <span className="text-base sm:text-lg text-slate-400 line-through font-normal">
-              {formatCurrency(compareAtPrice)}
+              {formatCurrency(authoritativeCompareAtPrice)}
             </span>
           )}
 
@@ -124,11 +161,17 @@ export function ProductInfo({
               Save {discount}% OFF
             </span>
           )}
+
+          {isPromo && promoName && (
+            <span className="rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs px-3 py-1 border border-emerald-200">
+              🏷️ {promoName}
+            </span>
+          )}
         </div>
 
         {savings > 0 && (
           <p className="text-xs font-semibold text-[#004D38]">
-            You save {formatCurrency(savings)} ({discount}% reduction from MRP)
+            You save {formatCurrency(savings)} ({discount}% reduction from {authoritativeCompareAtPrice === rawCompareAt ? "MRP" : "regular price"})
           </p>
         )}
 

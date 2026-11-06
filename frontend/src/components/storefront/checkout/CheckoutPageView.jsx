@@ -7,6 +7,7 @@ import { Lock, AlertCircle, ArrowRight, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../../hooks/useAuth.js";
 import { useCart } from "../../../hooks/useCart.js";
+import { useStorefrontSettings } from "../../../hooks/useStorefrontSettings.js";
 import { addressService } from "../../../services/address.service.js";
 import { useAddressStore } from "../../../stores/address.store.js";
 import { orderService } from "../../../services/order.service.js";
@@ -27,6 +28,8 @@ import { CheckoutCouponSection } from "./CheckoutCouponSection.jsx";
 import { CheckoutOrderSummary } from "./CheckoutOrderSummary.jsx";
 import { CheckoutSkeleton } from "./CheckoutSkeleton.jsx";
 import { CheckoutEmptyCart } from "./CheckoutEmptyCart.jsx";
+import { useCheckoutStore } from "../../../stores/checkout.store.js";
+import { PriceChangeConfirmationModal } from "./PriceChangeConfirmationModal.jsx";
 
 /**
  * Dynamically load Razorpay SDK checkout script
@@ -53,6 +56,9 @@ function loadRazorpayScript() {
 export function CheckoutPageView() {
   const router = useRouter();
   const { isAuthenticated, isInitialized } = useAuth();
+  const { isFeatureEnabled } = useStorefrontSettings();
+  const guestCheckoutEnabled = isFeatureEnabled("guestCheckout");
+  const [isGuestMode, setIsGuestMode] = useState(false);
   const {
     items = [],
     subtotal = 0,
@@ -81,6 +87,12 @@ export function CheckoutPageView() {
 
   // Payment method state
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("razorpay");
+
+  // Checkout store quote integration
+  const { quote, fetchQuote, isQuoteExpired } = useCheckoutStore();
+  const [priceChangeData, setPriceChangeData] = useState(null);
+  const [isRefreshingQuote, setIsRefreshingQuote] = useState(false);
+  const [priceChangeError, setPriceChangeError] = useState(null);
 
   // Cart validation on mount status
   const [cartValidationNotice, setCartValidationNotice] = useState(null);
@@ -147,6 +159,17 @@ export function CheckoutPageView() {
       isCancelled = true;
     };
   }, [isAuthenticated]);
+
+  // Fetch authoritative quote when address, coupon, or delivery option changes
+  useEffect(() => {
+    if (isAuthenticated && selectedAddressId) {
+      fetchQuote({
+        shippingAddressId: selectedAddressId,
+        couponCode: appliedCoupon?.code || null,
+        deliveryOptionId: selectedDeliveryOption || "standard",
+      });
+    }
+  }, [isAuthenticated, selectedAddressId, appliedCoupon, selectedDeliveryOption, fetchQuote]);
 
   // Calculate dynamic delivery fee from policy
   const effectiveDeliveryFee = useMemo(() => {
@@ -280,8 +303,19 @@ export function CheckoutPageView() {
     toast.info("Coupon removed.");
   };
 
+  // Authoritative financial totals
+  const numericSubtotal = quote?.subtotal ? parsePrice(quote.subtotal) : parsePrice(subtotal);
+  const numericDiscount = quote?.couponDiscount ? parsePrice(quote.couponDiscount) : (appliedCoupon?.discountAmount || 0);
+  const numericShipping = quote?.shippingTotal !== undefined ? parsePrice(quote.shippingTotal) : effectiveDeliveryFee;
+  const numericTax = quote?.taxTotal ? parsePrice(quote.taxTotal) : parsePrice(taxTotal);
+  const finalPayableEstimate = quote?.grandTotal
+    ? parsePrice(quote.grandTotal)
+    : Math.max(0, numericSubtotal - numericDiscount + numericShipping + numericTax);
+
   // Place Order & Pay Handler
-  const handlePlaceOrder = async () => {
+  const executeOrderPlacement = async (overrideQuote = null) => {
+    if (isSubmittingOrder) return;
+
     if (!selectedAddressId) {
       toast.error("Please select or add a delivery address.");
       setCurrentStep(1);
@@ -299,16 +333,66 @@ export function CheckoutPageView() {
     );
 
     setIsSubmittingOrder(true);
-    if (!idempotencyKeyRef.current) {
-      idempotencyKeyRef.current = `bb-ord-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-    }
-    const idempotencyKey = idempotencyKeyRef.current;
 
     try {
-      // 1. Create order in backend from active cart with authoritative backend calculation
+      // 1. Obtain and verify authoritative quote
+      let effectiveQuote = overrideQuote || quote;
+      const quoteExpired = typeof isQuoteExpired === "function" ? isQuoteExpired() : false;
+
+      if (!effectiveQuote?.quoteReference || quoteExpired) {
+        try {
+          effectiveQuote = await fetchQuote({
+            shippingAddressId: selectedAddressId,
+            couponCode: appliedCoupon?.code || null,
+            deliveryOptionId: selectedDeliveryOption || "standard",
+            force: true,
+          });
+        } catch {
+          toast.error("Unable to obtain latest pricing quote. Please check your network.");
+          setIsSubmittingOrder(false);
+          return;
+        }
+      }
+
+      if (!effectiveQuote?.quoteReference) {
+        toast.error("Unable to obtain a valid quote reference. Please refresh.");
+        setIsSubmittingOrder(false);
+        return;
+      }
+
+      // Check for price changes upon refresh
+      if (!overrideQuote) {
+        const freshTotal = parsePrice(effectiveQuote.grandTotal);
+        if (Math.abs(freshTotal - finalPayableEstimate) > 0.001) {
+          setPriceChangeData({
+            previousQuote: {
+              grandTotal: finalPayableEstimate,
+              subtotal: numericSubtotal,
+              discountTotal: numericDiscount,
+              shippingTotal: numericShipping,
+              taxTotal: numericTax,
+              currency: "INR",
+              items,
+            },
+            currentQuote: effectiveQuote,
+            reason: "quote_refreshed_changed",
+          });
+          setIsSubmittingOrder(false);
+          return;
+        }
+      }
+
+      if (!idempotencyKeyRef.current) {
+        idempotencyKeyRef.current = `bb-ord-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      }
+      const idempotencyKey = idempotencyKeyRef.current;
+
+      // 2. Create order with authoritative backend calculation and bound quoteReference
       const orderRes = await orderService.createOrder({
         shippingAddressId: selectedAddressId,
         couponCode: appliedCoupon?.code || null,
+        deliveryOptionId: selectedDeliveryOption || "standard",
+        quoteReference: effectiveQuote.quoteReference,
         idempotencyKey,
       });
 
@@ -319,7 +403,7 @@ export function CheckoutPageView() {
         throw new Error("Order could not be created. Please try again.");
       }
 
-      // 2. If PayPal is selected
+      // 3. If PayPal is selected
       if (selectedPaymentMethod === "paypal") {
         try {
           const paypalRes = await paymentService.createPayPalOrder(orderId, idempotencyKey);
@@ -348,10 +432,9 @@ export function CheckoutPageView() {
         }
       }
 
-      // 3. Load Razorpay script
+      // 4. Load Razorpay script
       const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded || typeof window === "undefined" || !window.Razorpay) {
-        // If Razorpay SDK cannot load, order was created safely in pending status
         await clearCart();
         toast.info(
           `Order #${order.orderNumber || orderId} was created in pending status. Payment gateway could not be loaded.`
@@ -360,7 +443,7 @@ export function CheckoutPageView() {
         return;
       }
 
-      // 3. Create payment order in backend
+      // 5. Create payment intent in backend
       let paymentRes;
       try {
         paymentRes = await paymentService.createPaymentIntent(orderId, idempotencyKey);
@@ -393,7 +476,7 @@ export function CheckoutPageView() {
         return;
       }
 
-      // 4. Open Razorpay Checkout Modal
+      // 6. Open Razorpay Checkout Modal
       const rzpOptions = {
         key: razorpayKey,
         amount: Math.round(Number(order.grandTotal) * 100),
@@ -447,10 +530,112 @@ export function CheckoutPageView() {
       });
       rzp.open();
     } catch (err) {
+      if (err?.code === "PRICE_CHANGED") {
+        idempotencyKeyRef.current = null;
+        setPriceChangeData({
+          previousQuote: err.details?.previousQuote || {
+            grandTotal: err.details?.quotedGrandTotal ?? finalPayableEstimate,
+            currency: err.details?.currency || "INR",
+          },
+          currentQuote: err.details?.currentQuote || {
+            grandTotal: err.details?.currentGrandTotal,
+            currency: err.details?.currency || "INR",
+            subtotal: err.details?.subtotal,
+            discountTotal: err.details?.discountTotal,
+            shippingTotal: err.details?.shippingTotal,
+            taxTotal: err.details?.taxTotal,
+          },
+          reason: err.details?.reason || "component_changed",
+        });
+        return;
+      }
+
+      if (err?.code === "QUOTE_EXPIRED") {
+        idempotencyKeyRef.current = null;
+        toast.info("Your checkout quote was refreshed to ensure the latest pricing.");
+        setIsRefreshingQuote(true);
+        try {
+          const refreshedQuote = await fetchQuote({
+            shippingAddressId: selectedAddressId,
+            couponCode: appliedCoupon?.code || null,
+            deliveryOptionId: selectedDeliveryOption || "standard",
+            force: true,
+          });
+          if (refreshedQuote) {
+            const refreshedTotal = parsePrice(refreshedQuote.grandTotal);
+            if (Math.abs(refreshedTotal - finalPayableEstimate) > 0.001) {
+              setPriceChangeData({
+                previousQuote: err.details?.previousQuote || {
+                  grandTotal: finalPayableEstimate,
+                  currency: "INR",
+                  items,
+                },
+                currentQuote: refreshedQuote,
+                reason: "expired_refresh_change",
+              });
+            }
+          }
+        } catch {
+          toast.error("Could not refresh quote. Please try again.");
+        } finally {
+          setIsRefreshingQuote(false);
+        }
+        return;
+      }
+
       toast.error(err?.message || "Failed to place order. Please review your cart and stock.");
     } finally {
       setIsSubmittingOrder(false);
     }
+  };
+
+  const handlePlaceOrder = () => executeOrderPlacement();
+
+  const handleConfirmPriceChange = async () => {
+    setIsRefreshingQuote(true);
+    setPriceChangeError(null);
+    try {
+      const freshQuote = await fetchQuote({
+        shippingAddressId: selectedAddressId,
+        couponCode: appliedCoupon?.code || null,
+        deliveryOptionId: selectedDeliveryOption || "standard",
+        force: true,
+      });
+
+      if (!freshQuote) {
+        throw new Error("Unable to retrieve updated quote. Please check your connection.");
+      }
+
+      const modalCurrentTotal = parsePrice(
+        priceChangeData?.currentQuote?.grandTotal ?? priceChangeData?.currentQuote?.currentGrandTotal ?? 0
+      );
+      const freshTotal = parsePrice(freshQuote.grandTotal);
+
+      if (Math.abs(modalCurrentTotal - freshTotal) > 0.001) {
+        setPriceChangeData({
+          previousQuote: priceChangeData.currentQuote,
+          currentQuote: freshQuote,
+          reason: "re_updated",
+        });
+        toast.info("Pricing was updated again. Please review the updated total.");
+        return;
+      }
+
+      setPriceChangeData(null);
+      idempotencyKeyRef.current = `bb-ord-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      toast.success("Price confirmed. Proceeding to place order...");
+      await executeOrderPlacement(freshQuote);
+    } catch (err) {
+      setPriceChangeError(err?.message || "Failed to confirm updated pricing. Please retry.");
+    } finally {
+      setIsRefreshingQuote(false);
+    }
+  };
+
+  const handleCancelPriceChange = () => {
+    setPriceChangeData(null);
+    setPriceChangeError(null);
+    router.push("/cart");
   };
 
   // Wait for initial auth check and cart hydration
@@ -459,7 +644,7 @@ export function CheckoutPageView() {
   }
 
   // Auth requirement gate
-  if (!isAuthenticated) {
+  if (!isAuthenticated && (!guestCheckoutEnabled || !isGuestMode)) {
     return (
       <div className="mx-auto max-w-lg px-4 py-20 text-center space-y-6">
         <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-emerald-50 text-[#004D38] shadow-xs">
@@ -470,7 +655,9 @@ export function CheckoutPageView() {
             Sign In to Complete Checkout
           </h1>
           <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-sm mx-auto">
-            To protect your orders, shipping details, and order history, please sign in. Your cart items will remain safely saved in your session.
+            {guestCheckoutEnabled
+              ? "Sign in to access your saved addresses and order history, or continue as guest to complete your order."
+              : "Guest checkout is currently disabled. Please sign in or create an account to securely complete your order. Your cart items are preserved."}
           </p>
         </div>
         <div className="flex flex-col gap-3 pt-2">
@@ -486,7 +673,19 @@ export function CheckoutPageView() {
           >
             Create an Account
           </Link>
+          {guestCheckoutEnabled && (
+            <button
+              type="button"
+              onClick={() => setIsGuestMode(true)}
+              className="w-full rounded-full border border-[#004D38] text-[#004D38] font-bold text-sm py-3 hover:bg-emerald-50 text-center transition-all cursor-pointer"
+            >
+              Continue as Guest
+            </button>
+          )}
         </div>
+        <p className="text-xs text-slate-400">
+          Your cart items will be safely preserved across sessions.
+        </p>
       </div>
     );
   }
@@ -609,6 +808,7 @@ export function CheckoutPageView() {
           <CheckoutOrderSummary
             items={items}
             subtotal={subtotal}
+            productDiscount={quote?.productDiscount || 0}
             discountTotal={appliedCoupon?.discountAmount || 0}
             shippingTotal={effectiveDeliveryFee}
             taxTotal={taxTotal}
@@ -648,6 +848,17 @@ export function CheckoutPageView() {
           </button>
         </div>
       </div>
+
+      {/* Authoritative Price Change Confirmation Dialog */}
+      <PriceChangeConfirmationModal
+        isOpen={Boolean(priceChangeData)}
+        previousQuote={priceChangeData?.previousQuote}
+        currentQuote={priceChangeData?.currentQuote}
+        isRefreshing={isRefreshingQuote}
+        error={priceChangeError}
+        onConfirm={handleConfirmPriceChange}
+        onCancel={handleCancelPriceChange}
+      />
     </div>
   );
 }

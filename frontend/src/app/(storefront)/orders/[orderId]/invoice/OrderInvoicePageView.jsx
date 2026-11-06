@@ -52,7 +52,7 @@ export function OrderInvoicePageView({ orderId }) {
         <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center space-y-3">
           <p className="font-bold text-slate-800">Invoice Unavailable</p>
           <p className="text-xs text-slate-500">{error || "Could not retrieve order."}</p>
-          <Link href="/orders" className="text-xs font-bold text-[#004D38] hover:underline">
+          <Link href="/account/orders" className="text-xs font-bold text-[#004D38] hover:underline">
             Back to Orders
           </Link>
         </div>
@@ -125,13 +125,15 @@ export function OrderInvoicePageView({ orderId }) {
               <span className="font-bold uppercase tracking-wider text-slate-400 text-[10px]">
                 Billed To
               </span>
-              <p className="font-bold text-slate-900">{order.shippingAddress?.name || "Customer"}</p>
+              <p className="font-bold text-slate-900">
+                {order.billingAddress?.fullName || order.billingAddress?.name || order.shippingAddress?.fullName || order.shippingAddress?.name || "Customer"}
+              </p>
               <p className="text-slate-600 leading-relaxed text-[11px]">
-                {order.shippingAddress?.street || order.shippingAddress?.addressLine1}
+                {order.billingAddress?.street || order.billingAddress?.addressLine1 || order.billingAddress?.address || order.shippingAddress?.street || order.shippingAddress?.addressLine1 || order.shippingAddress?.address || ""}
                 <br />
-                {order.shippingAddress?.city}, {order.shippingAddress?.state} - {order.shippingAddress?.postalCode}
+                {order.billingAddress?.city || order.shippingAddress?.city || ""}, {order.billingAddress?.state || order.shippingAddress?.state || ""} - {order.billingAddress?.postalCode || order.billingAddress?.pincode || order.billingAddress?.zipCode || order.shippingAddress?.postalCode || order.shippingAddress?.pincode || order.shippingAddress?.zipCode || ""}
                 <br />
-                Phone: {order.shippingAddress?.phone}
+                Phone: {order.billingAddress?.phone || order.shippingAddress?.phone || "N/A"}
               </p>
             </div>
 
@@ -139,11 +141,13 @@ export function OrderInvoicePageView({ orderId }) {
               <span className="font-bold uppercase tracking-wider text-slate-400 text-[10px]">
                 Shipped To
               </span>
-              <p className="font-bold text-slate-900">{order.shippingAddress?.name || "Customer"}</p>
+              <p className="font-bold text-slate-900">
+                {order.shippingAddress?.fullName || order.shippingAddress?.name || "Customer"}
+              </p>
               <p className="text-slate-600 leading-relaxed text-[11px]">
-                {order.shippingAddress?.street || order.shippingAddress?.addressLine1}
+                {order.shippingAddress?.street || order.shippingAddress?.addressLine1 || order.shippingAddress?.address || ""}
                 <br />
-                {order.shippingAddress?.city}, {order.shippingAddress?.state} - {order.shippingAddress?.postalCode}
+                {order.shippingAddress?.city || ""}, {order.shippingAddress?.state || ""} - {order.shippingAddress?.postalCode || order.shippingAddress?.pincode || order.shippingAddress?.zipCode || ""}
                 <br />
                 Country: {order.shippingAddress?.country || "India"}
               </p>
@@ -167,14 +171,13 @@ export function OrderInvoicePageView({ orderId }) {
                 {(order.items || []).map((item, idx) => {
                   const unitRate = Number(item.unitPrice ?? item.price ?? 0);
                   const qty = Number(item.quantity || 1);
-                  const lineTotal = Number(item.totalPrice ?? (unitRate * qty));
-                  const itemName = item.productName || item.name || "Purchased Item";
+                  const lineTotal = Number(item.totalPrice ?? item.lineTotal ?? (unitRate * qty));
+                  const itemName = item.productName || item.name || item.title || "Purchased Item";
                   return (
                     <tr key={idx}>
                       <td className="p-3 text-slate-400 font-medium">{idx + 1}</td>
                       <td className="p-3">
                         <p className="font-bold text-slate-900">{itemName}</p>
-                        {item.sku && <p className="text-[10px] text-slate-400 font-mono">SKU: {item.sku}</p>}
                       </td>
                       <td className="p-3 text-right font-medium text-slate-800">{qty}</td>
                       <td className="p-3 text-right text-slate-600">{formatCurrency(unitRate)}</td>

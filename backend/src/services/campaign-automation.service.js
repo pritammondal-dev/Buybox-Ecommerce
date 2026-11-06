@@ -109,7 +109,8 @@ const activateCampaignWithCoupons = async (campaignId) => {
 
       if (
         campaign.status === "cancelled" ||
-        campaign.status === "completed"
+        campaign.status === "completed" ||
+        campaign.status === "archived"
       ) {
         throw new AppError(
           "Campaign cannot be activated from its current state",

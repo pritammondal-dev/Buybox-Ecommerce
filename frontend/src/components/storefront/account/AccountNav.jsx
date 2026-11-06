@@ -18,6 +18,7 @@ import {
   Tag,
   History,
   CreditCard,
+  Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../../hooks/useAuth.js";
@@ -40,6 +41,7 @@ export function AccountNav() {
   const LINKS = [
     { label: "Dashboard", href: "/account", icon: User },
     { label: "My Orders", href: "/account/orders", icon: Package },
+    { label: "Digital Downloads", href: "/account/downloads", icon: Download },
     { label: "Saved Addresses", href: "/account/addresses", icon: MapPin },
     { label: "Payment Methods", href: "/account/payment-methods", icon: CreditCard },
     { label: "Wishlist", href: "/account/wishlist", icon: Heart },

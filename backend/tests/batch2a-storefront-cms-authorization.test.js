@@ -213,8 +213,9 @@ describe("Phase 1G / Batch 2A — Storefront & CMS Operational Route Authorizati
     { name: "Update Homepage", method: "PATCH", path: `/api/v1/storefront/homepages/${testId}`, requiredPermission: PERMISSIONS.SETTINGS_MANAGE },
     { name: "Delete Homepage", method: "DELETE", path: `/api/v1/storefront/homepages/${testId}`, requiredPermission: PERMISSIONS.SETTINGS_MANAGE },
 
-    // 5. Storefront Media (5)
+    // 5. Storefront Media (6)
     { name: "Create Media", method: "POST", path: "/api/v1/storefront/media", requiredPermission: PERMISSIONS.SETTINGS_MANAGE },
+    { name: "Upload Media File", method: "POST", path: "/api/v1/storefront/media/upload", requiredPermission: PERMISSIONS.SETTINGS_MANAGE },
     { name: "List Media (Admin)", method: "GET", path: "/api/v1/storefront/media", requiredPermission: PERMISSIONS.SETTINGS_READ },
     { name: "Get Media by ID", method: "GET", path: `/api/v1/storefront/media/${testId}`, requiredPermission: PERMISSIONS.SETTINGS_READ },
     { name: "Update Media", method: "PATCH", path: `/api/v1/storefront/media/${testId}`, requiredPermission: PERMISSIONS.SETTINGS_MANAGE },
@@ -299,14 +300,14 @@ describe("Phase 1G / Batch 2A — Storefront & CMS Operational Route Authorizati
     await mongoose.disconnect();
   });
 
-  describe("1. Migration Scope Invariant: Exactly 61 Endpoints", () => {
-    test("Batch 2A registry contains exactly 61 production endpoints (55 Storefront + 6 CMS Mutations)", () => {
-      expect(BATCH_2A_ROUTES).toHaveLength(61);
+  describe("1. Migration Scope Invariant: Exactly 62 Endpoints", () => {
+    test("Batch 2A registry contains exactly 62 production endpoints (56 Storefront + 6 CMS Mutations)", () => {
+      expect(BATCH_2A_ROUTES).toHaveLength(62);
 
       const storefrontRoutes = BATCH_2A_ROUTES.filter((r) =>
         r.path.startsWith("/api/v1/storefront/")
       );
-      expect(storefrontRoutes).toHaveLength(55);
+      expect(storefrontRoutes).toHaveLength(56);
 
       const cmsRoutes = BATCH_2A_ROUTES.filter((r) =>
         r.path.startsWith("/api/v1/cms/")
@@ -361,8 +362,8 @@ describe("Phase 1G / Batch 2A — Storefront & CMS Operational Route Authorizati
         }
       }
 
-      // Assert actual registered route count is exactly 61
-      expect(actualProtectedRoutes).toHaveLength(61);
+      // Assert actual registered route count is exactly 62
+      expect(actualProtectedRoutes).toHaveLength(62);
 
       // Verify every actual registered route matches an entry in BATCH_2A_ROUTES
       for (const actual of actualProtectedRoutes) {

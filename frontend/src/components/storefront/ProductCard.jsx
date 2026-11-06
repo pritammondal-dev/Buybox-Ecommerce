@@ -57,9 +57,23 @@ export function ProductCard({
     product.image ||
     null;
 
-  const price = parsePrice(product.price || product.basePrice || 0);
-  const compareAtPrice = parsePrice(product.compareAtPrice);
-  const discount = calculateDiscountPercentage(compareAtPrice, price);
+  const isVariable = product.productType === "variable";
+  const hasEffectivePrice = product.effectivePrice != null && product.isPromotional;
+  const regularPrice = parsePrice(product.regularPrice || product.price || product.basePrice || 0);
+  const price = hasEffectivePrice
+    ? parsePrice(product.effectivePrice)
+    : (isVariable && product.priceRange?.min != null
+        ? parsePrice(product.priceRange.min)
+        : regularPrice);
+
+  const rawCompareAt = parsePrice(product.compareAtPrice);
+  const compareAtPrice = rawCompareAt > price
+    ? rawCompareAt
+    : (hasEffectivePrice && regularPrice > price ? regularPrice : 0);
+
+  const discount = product.discountPercentage > 0
+    ? product.discountPercentage
+    : calculateDiscountPercentage(compareAtPrice, price);
 
   const productUrl = `/product/${product.slug || product._id || product.id}`;
   const brandName = product.brand?.name || product.brandName || "";
@@ -205,6 +219,7 @@ export function ProductCard({
             {/* Price Line */}
             <div className="mt-2 flex items-baseline gap-2 flex-wrap">
               <span className="text-base sm:text-lg font-black tracking-tight text-[#007A55]">
+                {isVariable && !hasEffectivePrice ? "From " : ""}
                 {formatCurrency(price)}
               </span>
               {compareAtPrice > price && (
@@ -212,9 +227,14 @@ export function ProductCard({
                   {formatCurrency(compareAtPrice)}
                 </span>
               )}
-              {discount > 0 && (
+              {discount > 0 && (!isVariable || hasEffectivePrice) && (
                 <span className="text-[11px] font-extrabold text-[#E02424]">
                   {discount}% off
+                </span>
+              )}
+              {hasEffectivePrice && (
+                <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                  {product.promotion?.name || "Deal"}
                 </span>
               )}
             </div>
@@ -235,29 +255,44 @@ export function ProductCard({
           </div>
         </div>
 
-        {/* 3. Action Footer: Single Prominent Full-Width Add To Cart Button */}
+        {/* 3. Action Footer: Single Prominent Full-Width Add To Cart or Select Options Button */}
         <div className="mt-3.5 pt-2 border-t border-slate-100">
-          <button
-            type="button"
-            suppressHydrationWarning
-            onClick={() => !isOutOfStock && onAddToCart?.(product)}
-            disabled={isAddingToCart || isOutOfStock}
-            className={cn(
-              "flex w-full items-center justify-center gap-2 rounded-full py-2.5 px-4 text-xs font-bold shadow-xs transition-all duration-200",
-              isOutOfStock
-                ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
-                : "bg-[#007A55] text-white hover:bg-[#006346] hover:shadow-md active:scale-95 cursor-pointer disabled:opacity-50"
-            )}
-          >
-            <ShoppingBag className="size-3.5 shrink-0" />
-            <span>
-              {isAddingToCart
-                ? "Adding..."
-                : isOutOfStock
-                ? "Unavailable"
-                : "Add to Cart"}
-            </span>
-          </button>
+          {isVariable ? (
+            <Link
+              href={productUrl}
+              className={cn(
+                "flex w-full items-center justify-center gap-2 rounded-full py-2.5 px-4 text-xs font-bold shadow-xs transition-all duration-200",
+                isOutOfStock
+                  ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed pointer-events-none"
+                  : "bg-[#007A55] text-white hover:bg-[#006346] hover:shadow-md active:scale-95 cursor-pointer"
+              )}
+            >
+              <ShoppingBag className="size-3.5 shrink-0" />
+              <span>{isOutOfStock ? "Unavailable" : "Select Options"}</span>
+            </Link>
+          ) : (
+            <button
+              type="button"
+              suppressHydrationWarning
+              onClick={() => !isOutOfStock && onAddToCart?.(product)}
+              disabled={isAddingToCart || isOutOfStock}
+              className={cn(
+                "flex w-full items-center justify-center gap-2 rounded-full py-2.5 px-4 text-xs font-bold shadow-xs transition-all duration-200",
+                isOutOfStock
+                  ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                  : "bg-[#007A55] text-white hover:bg-[#006346] hover:shadow-md active:scale-95 cursor-pointer disabled:opacity-50"
+              )}
+            >
+              <ShoppingBag className="size-3.5 shrink-0" />
+              <span>
+                {isAddingToCart
+                  ? "Adding..."
+                  : isOutOfStock
+                  ? "Unavailable"
+                  : "Add to Cart"}
+              </span>
+            </button>
+          )}
         </div>
       </div>
 

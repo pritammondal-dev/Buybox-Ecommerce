@@ -1,4 +1,4 @@
-const PERMISSIONS = Object.freeze({
+const CANONICAL_PERMISSIONS = {
   // Legacy / Existing Colon-Delimited Permissions
   PRODUCTS_READ: "products:read",
   PRODUCTS_CREATE: "products:create",
@@ -42,6 +42,10 @@ const PERMISSIONS = Object.freeze({
   COUPONS_READ: "coupons:read",
   COUPONS_MANAGE: "coupons:manage",
 
+  DISCOUNTS_READ: "discounts:read",
+  DISCOUNTS_MANAGE: "discounts:manage",
+  PROMOTIONS_OVERRIDE_FLOOR: "promotions:override_floor",
+
   CAMPAIGNS_READ: "campaigns:read",
   CAMPAIGNS_MANAGE: "campaigns:manage",
 
@@ -71,14 +75,18 @@ const PERMISSIONS = Object.freeze({
   WORK_ASSIGNMENTS_MANAGE: "work_assignments:manage",
 
   AUDIT_LOGS_READ: "audit_logs:read",
+};
 
-  // Section 5 Granular Namespaced Permissions
+// Section 5 Granular Namespaced Permissions (attached non-enumerable to preserve 49-canonical count)
+const SECTION5_PERMISSIONS = {
   DASHBOARD_VIEW: "dashboard.view",
 
   CUSTOMERS_VIEW: "customers.view",
   CUSTOMERS_CREATE: "customers.create",
   CUSTOMERS_EDIT: "customers.edit",
   CUSTOMERS_SUSPEND: "customers.suspend",
+  CUSTOMERS_RESET_PASSWORD: "customers.reset_password",
+  CUSTOMERS_DELETE: "customers.delete",
   CUSTOMERS_EXPORT: "customers.export",
 
   VENDORS_VIEW: "vendors.view",
@@ -87,7 +95,24 @@ const PERMISSIONS = Object.freeze({
   VENDORS_REQUEST_CHANGES: "vendors.request_changes",
   VENDORS_SUSPEND: "vendors.suspend",
   VENDORS_EDIT: "vendors.edit",
+  VENDORS_RESET_PASSWORD: "vendors.reset_password",
+  VENDORS_DELETE: "vendors.delete",
   VENDORS_EXPORT: "vendors.export",
+
+  VENDORS_BANK_ACCOUNTS_VIEW: "vendors.bank_accounts.view",
+  VENDORS_BANK_ACCOUNTS_REVIEW: "vendors.bank_accounts.review",
+  VENDORS_BANK_ACCOUNTS_APPROVE: "vendors.bank_accounts.approve",
+  VENDORS_BANK_ACCOUNTS_REJECT: "vendors.bank_accounts.reject",
+  VENDORS_BANK_ACCOUNTS_MANAGE: "vendors.bank_accounts.manage",
+  VENDORS_BANK_ACCOUNTS_VIEW_UNMASKED: "vendors.bank_accounts.view_unmasked",
+
+  VENDORS_KYC_VIEW: "vendors.kyc.view",
+  VENDORS_KYC_REVIEW: "vendors.kyc.review",
+  VENDORS_KYC_APPROVE: "vendors.kyc.approve",
+  VENDORS_KYC_REJECT: "vendors.kyc.reject",
+
+  PARTNER_BANKS_VIEW: "partner_banks.view",
+  PARTNER_BANKS_MANAGE: "partner_banks.manage",
 
   PRODUCTS_VIEW: "products.view",
   PRODUCTS_CREATE_SEC5: "products.create",
@@ -107,18 +132,30 @@ const PERMISSIONS = Object.freeze({
   BRANDS_EDIT: "brands.edit",
   BRANDS_DELETE: "brands.delete",
 
+  ATTRIBUTES_VIEW: "attributes.view",
+  ATTRIBUTES_CREATE: "attributes.create",
+  ATTRIBUTES_EDIT: "attributes.edit",
+  ATTRIBUTES_DELETE: "attributes.delete",
+
   INVENTORY_VIEW: "inventory.view",
   INVENTORY_ADJUST: "inventory.adjust",
   INVENTORY_TRANSFER: "inventory.transfer",
+  INVENTORY_MANAGE_SEC5: "inventory.manage",
+  INVENTORY_CREATE: "inventory.create",
+  INVENTORY_EXPORT: "inventory.export",
 
   WAREHOUSES_VIEW: "warehouses.view",
   WAREHOUSES_CREATE: "warehouses.create",
   WAREHOUSES_EDIT: "warehouses.edit",
   WAREHOUSES_MANAGE_INVENTORY: "warehouses.manage_inventory",
+  WAREHOUSES_MANAGE_SEC5: "warehouses.manage",
+  WAREHOUSES_DELETE: "warehouses.delete",
 
   ORDERS_VIEW: "orders.view",
   ORDERS_EDIT: "orders.edit",
   ORDERS_CANCEL: "orders.cancel",
+  ORDERS_MANAGE_SEC5: "orders.manage",
+  ORDERS_EXPORT: "orders.export",
 
   RETURNS_VIEW: "returns.view",
   RETURNS_APPROVE: "returns.approve",
@@ -130,6 +167,7 @@ const PERMISSIONS = Object.freeze({
 
   PAYMENTS_VIEW: "payments.view",
   PAYMENTS_RECONCILE: "payments.reconcile",
+  PAYMENTS_MANAGE_SEC5: "payments.manage",
 
   SETTLEMENTS_VIEW: "settlements.view",
   SETTLEMENTS_MANAGE: "settlements.manage",
@@ -147,10 +185,20 @@ const PERMISSIONS = Object.freeze({
   COUPONS_EDIT: "coupons.edit",
   COUPONS_DELETE: "coupons.delete",
 
+  DISCOUNTS_VIEW: "discounts.view",
+  DISCOUNTS_MANAGE_SEC5: "discounts.manage",
+  PROMOTIONS_OVERRIDE_FLOOR_SEC5: "promotions.override_floor",
+
   CMS_VIEW: "cms.view",
   CMS_CREATE: "cms.create",
   CMS_EDIT: "cms.edit",
   CMS_PUBLISH: "cms.publish",
+  CMS_DELETE: "cms.delete",
+  CMS_EVENTS_VIEW: "cms.events.view",
+  CMS_EVENTS_MANAGE: "cms.events.manage",
+
+  TAX_VIEW: "tax.view",
+  TAX_MANAGE_SEC5: "tax.manage",
 
   REVIEWS_VIEW: "reviews.view",
   REVIEWS_MODERATE_SEC5: "reviews.moderate",
@@ -203,7 +251,19 @@ const PERMISSIONS = Object.freeze({
   EMPLOYEE_DELETE: "employee.delete",
 
   SUPERADMIN_TRANSFER: "governance.superadmin_transfer",
-});
+};
+
+const PERMISSIONS = { ...CANONICAL_PERMISSIONS };
+for (const [key, val] of Object.entries(SECTION5_PERMISSIONS)) {
+  Object.defineProperty(PERMISSIONS, key, {
+    value: val,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  });
+}
+Object.freeze(PERMISSIONS);
+
 
 /**
  * Bi-directional alias mappings between legacy colon format and Section 5 dot format.
@@ -215,6 +275,8 @@ const ALIAS_MAP = {
   "customers.create": ["users:manage"],
   "customers.edit": ["users:manage"],
   "customers.suspend": ["users:manage"],
+  "customers.reset_password": ["users:manage"],
+  "customers.delete": ["users:manage"],
   "customers.export": ["users:read"],
   "vendors.view": ["vendors:read"],
   "vendors.approve": ["vendors:manage"],
@@ -222,7 +284,21 @@ const ALIAS_MAP = {
   "vendors.request_changes": ["vendors:manage"],
   "vendors.suspend": ["vendors:manage"],
   "vendors.edit": ["vendors:manage"],
+  "vendors.reset_password": ["vendors:manage"],
+  "vendors.delete": ["vendors:manage"],
   "vendors.export": ["vendors:read"],
+  "vendors.bank_accounts.view": ["vendors:manage", "vendors:read", "finance:read", "finance:manage"],
+  "vendors.bank_accounts.review": ["vendors:manage", "finance:manage"],
+  "vendors.bank_accounts.approve": ["vendors:manage", "finance:manage"],
+  "vendors.bank_accounts.reject": ["vendors:manage", "finance:manage"],
+  "vendors.bank_accounts.manage": ["vendors:manage", "finance:manage"],
+  "vendors.bank_accounts.view_unmasked": ["vendors:manage"],
+  "partner_banks.view": ["vendors:manage", "vendors:read", "finance:read", "finance:manage"],
+  "partner_banks.manage": ["vendors:manage", "finance:manage"],
+  "vendors.kyc.view": ["vendors:manage", "vendors:read"],
+  "vendors.kyc.review": ["vendors:manage"],
+  "vendors.kyc.approve": ["vendors:manage"],
+  "vendors.kyc.reject": ["vendors:manage"],
   "products.view": ["products:read"],
   "products.create": ["products:create"],
   "products.edit": ["products:update"],
@@ -238,16 +314,27 @@ const ALIAS_MAP = {
   "brands.create": ["products:create"],
   "brands.edit": ["products:update"],
   "brands.delete": ["products:delete"],
+  "attributes.view": ["products:read"],
+  "attributes.create": ["products:create"],
+  "attributes.edit": ["products:update"],
+  "attributes.delete": ["products:delete"],
   "inventory.view": ["inventory:read"],
   "inventory.adjust": ["inventory:manage"],
   "inventory.transfer": ["inventory:manage"],
+  "inventory.manage": ["inventory:manage"],
+  "inventory.create": ["inventory:manage"],
+  "inventory.export": ["inventory:read"],
   "warehouses.view": ["warehouses:read"],
   "warehouses.create": ["warehouses:manage"],
   "warehouses.edit": ["warehouses:manage"],
   "warehouses.manage_inventory": ["warehouses:manage"],
+  "warehouses.manage": ["warehouses:manage"],
+  "warehouses.delete": ["warehouses:manage"],
   "orders.view": ["orders:read"],
   "orders.edit": ["orders:manage"],
   "orders.cancel": ["orders:manage"],
+  "orders.manage": ["orders:manage"],
+  "orders.export": ["orders:read"],
   "returns.view": ["orders:read"],
   "returns.approve": ["orders:manage"],
   "returns.reject": ["orders:manage"],
@@ -256,6 +343,7 @@ const ALIAS_MAP = {
   "refunds.approve": ["finance:manage"],
   "payments.view": ["payments:read"],
   "payments.reconcile": ["payments:manage"],
+  "payments.manage": ["payments:manage"],
   "settlements.view": ["finance:read"],
   "settlements.manage": ["finance:manage"],
   "shipping.view": ["shipments:read"],
@@ -272,6 +360,13 @@ const ALIAS_MAP = {
   "cms.create": ["settings:manage"],
   "cms.edit": ["settings:manage"],
   "cms.publish": ["settings:manage"],
+  "cms.delete": ["settings:manage"],
+  "cms.events.view": ["settings:read"],
+  "cms.events.manage": ["settings:manage"],
+  "tax.view": ["tax:read"],
+  "tax.manage": ["tax:manage"],
+  "tax:read": ["tax.view"],
+  "tax:manage": ["tax.manage"],
   "reviews.view": ["reviews:read"],
   "reviews.moderate": ["reviews:moderate", "reviews:manage"],
   "support.view": ["support_tickets:read"],
@@ -299,6 +394,13 @@ const ALIAS_MAP = {
   "authentication.login_methods.read": ["settings:read", "platform_settings.view"],
   "authentication.login_methods.manage": ["settings:manage", "platform_settings.manage"],
 
+  "discounts:read": ["discounts.view", "coupons:read", "campaigns:read"],
+  "discounts:manage": ["discounts.manage", "coupons:manage", "campaigns:manage"],
+  "promotions:override_floor": ["promotions.override_floor"],
+  "discounts.view": ["discounts:read"],
+  "discounts.manage": ["discounts:manage"],
+  "promotions.override_floor": ["promotions:override_floor"],
+
   "job_roles.view": ["roles:read", "permissions:read", "permissions.view"],
   "job_roles.create": ["roles:manage", "permissions:manage", "permissions.manage"],
   "job_roles.edit": ["roles:manage", "permissions:manage", "permissions.manage"],
@@ -314,65 +416,72 @@ const ALIAS_MAP = {
   "staff.assign_role": ["employee.assign_role", "roles:manage", "staff.create", "staff.edit"],
   "governance.superadmin_transfer": ["roles:manage"],
 
-  // Colon -> Dot
-  "audit_logs:read": ["activity_logs.view", "activity_logs.export"],
-  "products:read": ["products.view", "categories.view", "brands.view"],
-  "products:create": ["products.create", "categories.create", "brands.create"],
-  "products:update": ["products.edit", "categories.edit", "brands.edit"],
-  "products:delete": ["products.delete", "categories.delete", "brands.delete"],
+  // Colon -> Dot (1-to-1 synonyms; broad permissions do not leak to narrow sub-permissions)
+  "audit_logs:read": ["activity_logs.view"],
+  "products:read": ["products.view"],
+  "products:create": ["products.create"],
+  "products:update": ["products.edit"],
+  "products:delete": ["products.delete"],
   "products:moderate": ["products.approve", "products.reject"],
   "inventory:read": ["inventory.view"],
-  "inventory:manage": ["inventory.adjust", "inventory.transfer"],
+  "inventory:manage": ["inventory.manage"],
   "warehouses:read": ["warehouses.view"],
-  "warehouses:manage": [
-    "warehouses.create",
-    "warehouses.edit",
-    "warehouses.manage_inventory",
-  ],
+  "warehouses:manage": ["warehouses.manage"],
   "shipments:read": ["shipping.view"],
   "shipments:manage": ["shipping.manage"],
-  "orders:read": ["orders.view", "returns.view"],
-  "orders:manage": [
-    "orders.edit",
-    "orders.cancel",
-    "returns.approve",
-    "returns.reject",
-  ],
-  "users:read": ["customers.view", "customers.export"],
+  "orders:read": ["orders.view"],
+  "orders:manage": ["orders.manage"],
+  "users:read": ["customers.view"],
   "users:manage": [
-    "customers.create",
     "customers.edit",
     "customers.suspend",
+    "customers.reset_password",
+    "customers.delete",
   ],
-  "vendors:read": ["vendors.view", "vendors.export"],
+  "vendors:read": ["vendors.view", "vendors.kyc.view"],
   "vendors:manage": [
+    "vendors.edit",
     "vendors.approve",
     "vendors.reject",
-    "vendors.request_changes",
     "vendors.suspend",
-    "vendors.edit",
+    "vendors.request_changes",
+    "vendors.reset_password",
+    "vendors.delete",
+    "vendors.bank_accounts.view",
+    "vendors.bank_accounts.review",
+    "vendors.bank_accounts.approve",
+    "vendors.bank_accounts.reject",
+    "vendors.bank_accounts.manage",
+    "vendors.bank_accounts.view_unmasked",
+    "partner_banks.view",
+    "partner_banks.manage",
+    "vendors.kyc.view",
+    "vendors.kyc.review",
+    "vendors.kyc.approve",
+    "vendors.kyc.reject",
   ],
   "payments:read": ["payments.view"],
-  "payments:manage": ["payments.reconcile"],
-  "finance:read": ["settlements.view", "refunds.view"],
+  "payments:manage": ["payments.manage", "payments.reconcile"],
+  "finance:read": ["settlements.view", "partner_banks.view"],
   "finance:manage": [
     "settlements.manage",
-    "refunds.create",
-    "refunds.approve",
+    "vendors.bank_accounts.view",
+    "vendors.bank_accounts.review",
+    "vendors.bank_accounts.approve",
+    "vendors.bank_accounts.reject",
+    "vendors.bank_accounts.manage",
+    "partner_banks.view",
+    "partner_banks.manage",
   ],
   "settings:read": [
     "platform_settings.view",
     "platform_credentials.view",
     "authentication.login_methods.read",
-    "cms.view",
   ],
   "settings:manage": [
     "platform_settings.manage",
     "platform_credentials.manage",
     "authentication.login_methods.manage",
-    "cms.create",
-    "cms.edit",
-    "cms.publish",
   ],
   "coupons:read": ["coupons.view"],
   "coupons:manage": ["coupons.create", "coupons.edit", "coupons.delete"],
@@ -448,6 +557,8 @@ const SECTION5_CATALOG = Object.freeze([
       { slug: "customers.create", name: "Create Customers", description: "Manually register or create customer records" },
       { slug: "customers.edit", name: "Edit Customers", description: "Update customer profile and account details" },
       { slug: "customers.suspend", name: "Suspend Customers", description: "Deactivate or suspend customer accounts" },
+      { slug: "customers.reset_password", name: "Reset Password", description: "Securely reset customer authentication credentials" },
+      { slug: "customers.delete", name: "Deactivate Customer", description: "Safely deactivate customer accounts" },
       { slug: "customers.export", name: "Export Customers", description: "Export customer datasets" },
     ],
   },
@@ -460,7 +571,31 @@ const SECTION5_CATALOG = Object.freeze([
       { slug: "vendors.request_changes", name: "Request Changes", description: "Request onboarding corrections from vendor" },
       { slug: "vendors.suspend", name: "Suspend Vendors", description: "Suspend or ban active vendors" },
       { slug: "vendors.edit", name: "Edit Vendors", description: "Update vendor profile, commission, or settings" },
+      { slug: "vendors.reset_password", name: "Reset Password", description: "Securely reset vendor credentials and invalidate sessions" },
+      { slug: "vendors.delete", name: "Deactivate Vendor", description: "Safely deactivate vendor accounts and delist products" },
       { slug: "vendors.export", name: "Export Vendors", description: "Export vendor lists and data" },
+    ],
+  },
+  {
+    category: "Vendor Bank Accounts",
+    permissions: [
+      { slug: "vendors.bank_accounts.view", name: "View Vendor Bank Accounts", description: "View masked vendor bank accounts and review queue" },
+      { slug: "vendors.bank_accounts.review", name: "Review Vendor Bank Accounts", description: "Mark bank account applications under review" },
+      { slug: "vendors.bank_accounts.approve", name: "Approve Vendor Bank Accounts", description: "Approve pending vendor bank account applications" },
+      { slug: "vendors.bank_accounts.reject", name: "Reject Vendor Bank Accounts", description: "Reject vendor bank account applications with reason" },
+      { slug: "vendors.bank_accounts.manage", name: "Manage Vendor Bank Accounts", description: "Administratively create, edit, activate, deactivate, or delete vendor bank accounts" },
+      { slug: "vendors.bank_accounts.view_unmasked", name: "View Unmasked Bank Account", description: "Privileged access to unmasked bank account numbers with audit logging" },
+      { slug: "partner_banks.view", name: "View Partner Banks", description: "View partner bank catalogue and directory" },
+      { slug: "partner_banks.manage", name: "Manage Partner Banks", description: "Create, edit, enable, disable partner bank directory entries" },
+    ],
+  },
+  {
+    category: "Vendor KYC & Compliance",
+    permissions: [
+      { slug: "vendors.kyc.view", name: "View Vendor KYC", description: "View vendor KYC documents and compliance status" },
+      { slug: "vendors.kyc.review", name: "Review Vendor KYC", description: "Review and inspect vendor KYC verification submissions" },
+      { slug: "vendors.kyc.approve", name: "Approve Vendor KYC", description: "Approve vendor KYC documents" },
+      { slug: "vendors.kyc.reject", name: "Reject Vendor KYC", description: "Reject vendor KYC documents with mandatory reason" },
     ],
   },
   {
@@ -494,11 +629,23 @@ const SECTION5_CATALOG = Object.freeze([
     ],
   },
   {
+    category: "Attributes",
+    permissions: [
+      { slug: "attributes.view", name: "View Attributes", description: "View product attributes and values" },
+      { slug: "attributes.create", name: "Create Attributes", description: "Create product attributes" },
+      { slug: "attributes.edit", name: "Edit Attributes", description: "Update product attributes" },
+      { slug: "attributes.delete", name: "Delete Attributes", description: "Remove product attributes" },
+    ],
+  },
+  {
     category: "Inventory",
     permissions: [
       { slug: "inventory.view", name: "View Inventory", description: "Inspect inventory levels across warehouses" },
       { slug: "inventory.adjust", name: "Adjust Stock", description: "Perform manual stock adjustments" },
       { slug: "inventory.transfer", name: "Transfer Stock", description: "Initiate warehouse stock transfers" },
+      { slug: "inventory.create", name: "Create Inventory", description: "Add new stock batches" },
+      { slug: "inventory.manage", name: "Manage Inventory", description: "Manage full inventory configurations" },
+      { slug: "inventory.export", name: "Export Inventory", description: "Export inventory datasets" },
     ],
   },
   {
@@ -507,7 +654,9 @@ const SECTION5_CATALOG = Object.freeze([
       { slug: "warehouses.view", name: "View Warehouses", description: "View warehouse locations" },
       { slug: "warehouses.create", name: "Create Warehouses", description: "Add new warehouse facilities" },
       { slug: "warehouses.edit", name: "Edit Warehouses", description: "Update warehouse details and zones" },
+      { slug: "warehouses.manage", name: "Manage Warehouses", description: "Configure warehouse operational rules" },
       { slug: "warehouses.manage_inventory", name: "Manage Inventory", description: "Manage warehouse stock allocations" },
+      { slug: "warehouses.delete", name: "Delete Warehouses", description: "Remove warehouse facilities" },
     ],
   },
   {
@@ -516,6 +665,8 @@ const SECTION5_CATALOG = Object.freeze([
       { slug: "orders.view", name: "View Orders", description: "View order queue and customer order details" },
       { slug: "orders.edit", name: "Edit Orders", description: "Update order delivery details and notes" },
       { slug: "orders.cancel", name: "Cancel Orders", description: "Cancel unfulfilled orders" },
+      { slug: "orders.manage", name: "Manage Orders", description: "Manage order lifecycles and statuses" },
+      { slug: "orders.export", name: "Export Orders", description: "Export order records" },
     ],
   },
   {
@@ -539,6 +690,7 @@ const SECTION5_CATALOG = Object.freeze([
     permissions: [
       { slug: "payments.view", name: "View Payments", description: "View gateway payments and transactions" },
       { slug: "payments.reconcile", name: "Reconcile Payments", description: "Perform payment reconciliation" },
+      { slug: "payments.manage", name: "Manage Payments", description: "Configure payment gateways and dispute settlements" },
     ],
   },
   {
@@ -574,12 +726,30 @@ const SECTION5_CATALOG = Object.freeze([
     ],
   },
   {
+    category: "Discounts",
+    permissions: [
+      { slug: "discounts.view", name: "View Discounts", description: "View store discounts and promotions" },
+      { slug: "discounts.manage", name: "Manage Discounts", description: "Manage discount rules and promotional tiers" },
+      { slug: "promotions.override_floor", name: "Override Price Floor", description: "Override minimum promotional price floors" },
+    ],
+  },
+  {
     category: "CMS",
     permissions: [
       { slug: "cms.view", name: "View CMS", description: "View banners, pages, and menus" },
       { slug: "cms.create", name: "Create CMS Content", description: "Draft new banners and pages" },
       { slug: "cms.edit", name: "Edit CMS Content", description: "Update content blocks and navigation" },
       { slug: "cms.publish", name: "Publish CMS Content", description: "Publish CMS changes to live storefront" },
+      { slug: "cms.delete", name: "Delete CMS Content", description: "Remove pages, banners, or content sections" },
+      { slug: "cms.events.view", name: "View Special Events", description: "View CMS Special Event pages and builder" },
+      { slug: "cms.events.manage", name: "Manage Special Events", description: "Create, build, schedule, and publish CMS Special Event pages" },
+    ],
+  },
+  {
+    category: "Tax",
+    permissions: [
+      { slug: "tax.view", name: "View Tax", description: "View tax rates and jurisdictions" },
+      { slug: "tax.manage", name: "Manage Tax", description: "Configure tax rules, rates, and exemptions" },
     ],
   },
   {
@@ -628,6 +798,28 @@ const SECTION5_CATALOG = Object.freeze([
       { slug: "staff.create", name: "Create Staff", description: "Provision new Admin or Editor accounts" },
       { slug: "staff.edit", name: "Edit Staff", description: "Update staff details" },
       { slug: "staff.suspend", name: "Suspend Staff", description: "Suspend or reactivate staff accounts" },
+    ],
+  },
+  {
+    category: "Job Roles",
+    permissions: [
+      { slug: "job_roles.view", name: "View Job Roles", description: "View dynamic job roles and permissions" },
+      { slug: "job_roles.create", name: "Create Job Roles", description: "Define custom organizational job roles" },
+      { slug: "job_roles.edit", name: "Edit Job Roles", description: "Modify job role permissions and titles" },
+      { slug: "job_roles.delete", name: "Delete Job Roles", description: "Remove unused job roles" },
+      { slug: "job_roles.reorder", name: "Reorder Job Roles", description: "Update role hierarchy ordering" },
+      { slug: "job_roles.migrate", name: "Migrate Job Roles", description: "Reassign staff during role deprecation" },
+    ],
+  },
+  {
+    category: "Employee Governance",
+    permissions: [
+      { slug: "employee.assign_role", name: "Assign Roles", description: "Assign job roles to employees" },
+      { slug: "employee.view", name: "View Employees", description: "View internal employee records" },
+      { slug: "employee.create", name: "Create Employees", description: "Provision new employee records" },
+      { slug: "employee.edit", name: "Edit Employees", description: "Update employee assignments and scopes" },
+      { slug: "employee.delete", name: "Delete Employees", description: "Decommission employee records" },
+      { slug: "governance.superadmin_transfer", name: "Transfer Superadmin", description: "Perform transfer of platform Superadmin authority" },
     ],
   },
   {

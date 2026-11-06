@@ -4,10 +4,10 @@ const objectId = z
   .string()
   .regex(/^[a-fA-F0-9]{24}$/, "Invalid ObjectId");
 
-const urlField = z
+const urlOrPathField = z
   .string()
   .trim()
-  .url()
+  .max(1000)
   .nullable()
   .optional();
 
@@ -15,8 +15,8 @@ const hexColor = z
   .string()
   .trim()
   .regex(
-    /^#[0-9A-Fa-f]{6}$/,
-    "Color must be a valid 6-digit hex color"
+    /^#[0-9A-Fa-f]{3,8}$/,
+    "Color must be a valid hex color code"
   );
 
 const contactSchema = z
@@ -53,11 +53,11 @@ const themeSchema = z
 
 const socialLinksSchema = z
   .object({
-    facebook: urlField,
-    instagram: urlField,
-    twitter: urlField,
-    youtube: urlField,
-    linkedin: urlField,
+    facebook: urlOrPathField,
+    instagram: urlOrPathField,
+    twitter: urlOrPathField,
+    youtube: urlOrPathField,
+    linkedin: urlOrPathField,
   })
   .optional();
 
@@ -79,6 +79,46 @@ const currencySchema = z
   })
   .optional();
 
+const featureFlagsSchema = z
+  .object({
+    coupons: z.boolean().optional(),
+    flashSale: z.boolean().optional(),
+    vendorRegistration: z.boolean().optional(),
+    vendorApprovalRequired: z.boolean().optional(),
+    productApprovalRequired: z.boolean().optional(),
+    reviews: z.boolean().optional(),
+    wishlist: z.boolean().optional(),
+    compare: z.boolean().optional(),
+    guestCheckout: z.boolean().optional(),
+    customerRegistration: z.boolean().optional(),
+    returns: z.boolean().optional(),
+    giftCards: z.boolean().optional(),
+  })
+  .passthrough()
+  .optional();
+
+const policiesSchema = z
+  .object({
+    returnWindowDays: z.number().int().min(1, 'Return window must be at least 1 day').max(90, 'Return window cannot exceed 90 days').optional(),
+    refundWindowDays: z.number().min(0).optional(),
+    minOrderValue: z.number().min(0).optional(),
+    freeShippingThreshold: z.number().min(0).optional(),
+    defaultTaxRate: z.number().min(0).optional(),
+    lowStockThreshold: z.number().min(0).optional(),
+  })
+  .passthrough()
+  .optional();
+
+const logoDimensionsSchema = z
+  .object({
+    desktopWidth: z.number().int().min(40).max(400).optional(),
+    desktopMaxHeight: z.number().int().min(20).max(120).optional(),
+    mobileWidth: z.number().int().min(30).max(250).optional(),
+    mobileMaxHeight: z.number().int().min(16).max(80).optional(),
+    footerMaxHeight: z.number().int().min(16).max(100).optional(),
+  })
+  .optional();
+
 const createStorefrontSettingsSchema = z.object({
   storeName: z
     .string()
@@ -86,17 +126,19 @@ const createStorefrontSettingsSchema = z.object({
     .min(1)
     .max(150),
 
-  logoUrl: urlField,
-
-  faviconUrl: urlField,
-
+  tagline: z.string().trim().max(255).optional(),
+  logoUrl: urlOrPathField,
+  faviconUrl: urlOrPathField,
+  logoDimensions: logoDimensionsSchema,
   theme: themeSchema,
-
   contact: contactSchema,
-
   socialLinks: socialLinksSchema,
-
   currency: currencySchema,
+  timezone: z.string().trim().max(100).optional(),
+  language: z.string().trim().max(10).optional(),
+  maintenanceMode: z.boolean().optional(),
+  featureFlags: featureFlagsSchema,
+  policies: policiesSchema,
 });
 
 const updateStorefrontSettingsSchema = z
@@ -108,29 +150,28 @@ const updateStorefrontSettingsSchema = z
       .max(150)
       .optional(),
 
-    logoUrl: urlField,
-
-    faviconUrl: urlField,
-
+    tagline: z.string().trim().max(255).optional(),
+    logoUrl: urlOrPathField,
+    faviconUrl: urlOrPathField,
+    logoDimensions: logoDimensionsSchema,
     theme: themeSchema,
-
     contact: contactSchema,
-
     socialLinks: socialLinksSchema,
-
     currency: currencySchema,
-
+    timezone: z.string().trim().max(100).optional(),
+    language: z.string().trim().max(10).optional(),
+    maintenanceMode: z.boolean().optional(),
+    featureFlags: featureFlagsSchema,
+    policies: policiesSchema,
     isActive: z.boolean().optional(),
   })
-  .refine(
-    (data) =>
-      Object.values(data).some(
-        (value) => value !== undefined
-      ),
-    {
-      message: "At least one field is required",
-    }
-  );
+  .passthrough();
+
+const updateFeatureFlagsSchema = z
+  .record(z.boolean())
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "At least one feature flag must be provided",
+  });
 
 const storefrontSettingsIdParamsSchema = z.object({
   settingsId: objectId,
@@ -139,5 +180,6 @@ const storefrontSettingsIdParamsSchema = z.object({
 module.exports = {
   createStorefrontSettingsSchema,
   updateStorefrontSettingsSchema,
+  updateFeatureFlagsSchema,
   storefrontSettingsIdParamsSchema,
 };

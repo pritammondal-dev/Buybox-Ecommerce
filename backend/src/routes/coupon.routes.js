@@ -62,6 +62,13 @@ router.patch(
   couponController.deactivateCoupon
 );
 
+// Delete/Archive coupon
+router.delete(
+  "/:couponId",
+  requirePermissions(PERMISSIONS.COUPONS_MANAGE),
+  couponController.deleteCoupon
+);
+
 // Customer-facing coupon validation
 router.post(
   "/validate",

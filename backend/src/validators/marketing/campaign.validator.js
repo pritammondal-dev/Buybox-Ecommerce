@@ -16,39 +16,80 @@ const campaignStatus = z.enum([
   "paused",
   "completed",
   "cancelled",
+  "archived",
 ]);
 
-const createCampaignSchema = z.object({
-  name: z.string().trim().min(1).max(150),
+const campaignType = z.enum([
+  "seasonal",
+  "flash_sale",
+  "holiday",
+  "clearance",
+  "brand_special",
+  "general",
+]);
 
-  slug: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .min(1)
-    .max(180)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Invalid campaign slug"),
+const standardCreateCampaignSchema = z
+  .object({
+    name: z.string().trim().min(1).max(150),
 
-  description: z.string().trim().max(1000).nullable().optional(),
+    slug: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .min(1)
+      .max(180)
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Invalid campaign slug"),
 
-  startsAt: z.coerce.date(),
+    description: z.string().trim().max(1000).nullable().optional(),
 
-  endsAt: z.coerce.date(),
+    type: campaignType.default("general"),
 
-  scope: campaignScope.default("all"),
+    timezone: z.string().trim().default("Asia/Kolkata"),
 
-  productIds: z.array(objectId).default([]),
+    bannerUrl: z.string().trim().nullable().optional(),
 
-  categoryIds: z.array(objectId).default([]),
+    mobileBannerUrl: z.string().trim().nullable().optional(),
 
-  vendorIds: z.array(objectId).default([]),
+    destinationUrl: z.string().trim().nullable().optional(),
 
-  couponIds: z.array(objectId).default([]),
+    startsAt: z.coerce.date(),
 
-  metadata: z.record(z.string(), z.string()).optional(),
+    endsAt: z.coerce.date(),
 
-  isActive: z.boolean().optional(),
+    status: campaignStatus.default("draft"),
+
+    scope: campaignScope.default("all"),
+
+    productIds: z.array(objectId).default([]),
+
+    categoryIds: z.array(objectId).default([]),
+
+    vendorIds: z.array(objectId).default([]),
+
+    couponIds: z.array(objectId).default([]),
+
+    discountIds: z.array(objectId).default([]),
+
+    metadata: z.record(z.string(), z.string()).optional(),
+
+    isActive: z.boolean().optional(),
+  })
+  .refine(
+    (data) => data.endsAt > data.startsAt,
+    {
+      message: "Campaign end date must be after start date",
+      path: ["endsAt"],
+    }
+  );
+
+const duplicateCampaignSchema = z.object({
+  duplicateFrom: objectId,
 });
+
+const createCampaignSchema = z.union([
+  duplicateCampaignSchema,
+  standardCreateCampaignSchema,
+]);
 
 const updateCampaignSchema = z
   .object({
@@ -65,9 +106,21 @@ const updateCampaignSchema = z
 
     description: z.string().trim().max(1000).nullable().optional(),
 
+    type: campaignType.optional(),
+
+    timezone: z.string().trim().optional(),
+
+    bannerUrl: z.string().trim().nullable().optional(),
+
+    mobileBannerUrl: z.string().trim().nullable().optional(),
+
+    destinationUrl: z.string().trim().nullable().optional(),
+
     startsAt: z.coerce.date().optional(),
 
     endsAt: z.coerce.date().optional(),
+
+    status: campaignStatus.optional(),
 
     scope: campaignScope.optional(),
 
@@ -78,6 +131,8 @@ const updateCampaignSchema = z
     vendorIds: z.array(objectId).optional(),
 
     couponIds: z.array(objectId).optional(),
+
+    discountIds: z.array(objectId).optional(),
 
     metadata: z.record(z.string(), z.string()).optional(),
 

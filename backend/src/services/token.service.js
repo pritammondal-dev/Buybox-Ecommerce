@@ -6,6 +6,7 @@ const TOKEN_AUDIENCES = Object.freeze({
   CUSTOMER: "buybox-customer",
   VENDOR: "buybox-vendor",
   ADMINISTRATOR: "buybox-administrator",
+  GUEST: "buybox-guest",
   LEGACY: "buybox-client",
 });
 
@@ -13,12 +14,14 @@ const TOKEN_CONTEXTS = Object.freeze({
   CUSTOMER: "customer",
   VENDOR: "vendor",
   ADMINISTRATOR: "administrator",
+  GUEST: "guest",
 });
 
 const ALL_VALID_AUDIENCES = [
   TOKEN_AUDIENCES.CUSTOMER,
   TOKEN_AUDIENCES.VENDOR,
   TOKEN_AUDIENCES.ADMINISTRATOR,
+  TOKEN_AUDIENCES.GUEST,
   TOKEN_AUDIENCES.LEGACY,
 ];
 
@@ -41,20 +44,33 @@ const generateAccessToken = (payload = {}, options = {}) => {
       ? TOKEN_AUDIENCES.VENDOR
       : TOKEN_AUDIENCES.CUSTOMER);
 
+  const { sub: payloadSub, ...restPayload } = payload;
+  const subject =
+    options.subject ||
+    (payload.userId ? payload.userId.toString() : null) ||
+    (payload.id ? payload.id.toString() : null) ||
+    payloadSub;
+
+  const signOptions = {
+    expiresIn: env.JWT_ACCESS_EXPIRES_IN,
+    issuer: "buybox-api",
+    audience,
+  };
+
+  if (subject) {
+    signOptions.subject = String(subject);
+  }
+
   return jwt.sign(
     {
       authVersion: payload.authVersion ?? 1,
       permissionVersion: payload.permissionVersion ?? 1,
-      ...payload,
+      ...restPayload,
       context,
       type: "access",
     },
     env.JWT_ACCESS_SECRET,
-    {
-      expiresIn: env.JWT_ACCESS_EXPIRES_IN,
-      issuer: "buybox-api",
-      audience,
-    }
+    signOptions
   );
 };
 
@@ -131,6 +147,52 @@ const verifyRefreshToken = (token, options = {}) => {
   return decoded;
 };
 
+const generateGuestToken = (payload = {}, options = {}) => {
+  const guestId = payload.guestId || options.guestId || payload.sub;
+  if (!guestId) {
+    throw new Error("guestId is required to generate a guest token");
+  }
+
+  const signOptions = {
+    expiresIn: options.expiresIn || "7d",
+    issuer: "buybox-api",
+    audience: TOKEN_AUDIENCES.GUEST,
+    subject: String(guestId),
+  };
+
+  return jwt.sign(
+    {
+      guestId: String(guestId),
+      context: TOKEN_CONTEXTS.GUEST,
+      type: "guest",
+      ...payload,
+    },
+    env.JWT_ACCESS_SECRET,
+    signOptions
+  );
+};
+
+const verifyGuestToken = (token) => {
+  if (!token || typeof token !== "string") {
+    const err = new Error("Guest token is required");
+    err.name = "JsonWebTokenError";
+    throw err;
+  }
+
+  const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET, {
+    issuer: "buybox-api",
+    audience: TOKEN_AUDIENCES.GUEST,
+  });
+
+  if (decoded.context !== TOKEN_CONTEXTS.GUEST && decoded.type !== "guest") {
+    const err = new Error(`Invalid token context. Expected ${TOKEN_CONTEXTS.GUEST}, got ${decoded.context}`);
+    err.name = "JsonWebTokenError";
+    throw err;
+  }
+
+  return decoded;
+};
+
 module.exports = {
   TOKEN_AUDIENCES,
   TOKEN_CONTEXTS,
@@ -138,4 +200,6 @@ module.exports = {
   generateRefreshToken,
   verifyAccessToken,
   verifyRefreshToken,
+  generateGuestToken,
+  verifyGuestToken,
 };

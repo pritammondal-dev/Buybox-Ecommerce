@@ -86,6 +86,26 @@ const warehouseSchema = new mongoose.Schema(
       maxlength: 254,
     },
 
+    capacity: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    managerUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
+
+    operatingHours: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 100,
+    },
+
     isActive: {
       type: Boolean,
       default: true,

@@ -283,11 +283,10 @@ const linkOrphanGatewayOrderId = async (
 };
 
 const findEligibleForReconciliation = async (
-  { limit = 50, gateway = "razorpay" } = {},
+  { limit = 50, gateway } = {},
   options = {}
 ) => {
-  return Payment.find({
-    gateway,
+  const query = {
     status: {
       $in: ["created", "pending", "authorized"],
     },
@@ -306,7 +305,15 @@ const findEligibleForReconciliation = async (
         },
       },
     ],
-  })
+  };
+
+  if (gateway) {
+    query.gateway = gateway;
+  } else {
+    query.gateway = { $in: ["razorpay", "paypal"] };
+  }
+
+  return Payment.find(query)
     .session(options.session || null)
     .sort({ createdAt: 1 })
     .limit(limit);

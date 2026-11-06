@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
+  BarChart3,
   Package,
   Boxes,
   Warehouse,
@@ -12,6 +13,9 @@ import {
   Truck,
   RotateCcw,
   Wallet,
+  Landmark,
+  Coins,
+  FileText,
   Star,
   HelpCircle,
   Store,
@@ -32,7 +36,8 @@ const navSections = [
   {
     title: "Marketplace Operations",
     items: [
-      { name: "Dashboard", href: "/vendor/dashboard", icon: LayoutDashboard },
+      { name: "Dashboard", href: "/vendor/dashboard", icon: LayoutDashboard, exact: true },
+      { name: "Analytics", href: "/vendor/analytics", icon: BarChart3 },
       { name: "Products", href: "/vendor/products", icon: Package },
       { name: "Inventory", href: "/vendor/inventory", icon: Boxes },
       { name: "Warehouses", href: "/vendor/warehouses", icon: Warehouse },
@@ -44,7 +49,20 @@ const navSections = [
   {
     title: "Finance & Payouts",
     items: [
-      { name: "Settlements & Finance", href: "/vendor/finance", icon: Wallet },
+      { name: "Finance Overview", href: "/vendor/finance", icon: Wallet, exact: true },
+      {
+        name: "Wallet & Withdrawals",
+        href: "/vendor/finance/wallet",
+        icon: Coins,
+        matchPrefixes: ["/vendor/finance/withdrawals"],
+      },
+      { name: "Bank Accounts", href: "/vendor/finance/bank-accounts", icon: Landmark },
+      {
+        name: "Statements",
+        href: "/vendor/finance/statements",
+        icon: FileText,
+        matchPrefixes: ["/vendor/finance/settlements"],
+      },
     ],
   },
   {
@@ -58,6 +76,7 @@ const navSections = [
     title: "Settings & Support",
     items: [
       { name: "Store Settings", href: "/vendor/store", icon: Store },
+      { name: "Compliance & KYC", href: "/vendor/compliance", icon: ShieldCheck },
       { name: "Account & Security", href: "/vendor/settings", icon: Settings },
       { name: "Notifications", href: "/vendor/notifications", icon: Bell },
       { name: "Support Tickets", href: "/vendor/support", icon: LifeBuoy },
@@ -151,7 +170,15 @@ export function VendorSidebar({
             <ul className="space-y-0.5">
               {section.items.map((item) => {
                 const Icon = item.icon;
-                const isActive = pathname === item.href || (item.href !== "/vendor/dashboard" && pathname.startsWith(item.href));
+                const isActive = item.exact
+                  ? pathname === item.href
+                  : pathname === item.href ||
+                    pathname.startsWith(item.href + "/") ||
+                    Boolean(
+                      item.matchPrefixes?.some(
+                        (prefix) => pathname === prefix || pathname.startsWith(prefix + "/")
+                      )
+                    );
 
                 return (
                   <li key={item.href}>

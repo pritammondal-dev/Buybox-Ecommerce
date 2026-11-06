@@ -14,6 +14,7 @@ import {
   Package,
 } from "lucide-react";
 import { adminCatalogService } from "@/services/admin/admin.service.js";
+import { ConfirmDialog } from "@/components/admin/ConfirmDialog.jsx";
 
 export default function AdminReviewsModerationPage() {
   const [reviews, setReviews] = useState([]);
@@ -31,6 +32,8 @@ export default function AdminReviewsModerationPage() {
   const [selectedReview, setSelectedReview] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [reviewToApprove, setReviewToApprove] = useState(null);
+  const [approving, setApproving] = useState(false);
 
   const fetchReviews = async () => {
     setLoading(true);
@@ -59,17 +62,25 @@ export default function AdminReviewsModerationPage() {
     fetchReviews();
   }, [statusFilter, ratingFilter]);
 
-  const handleApprove = async (review) => {
-    if (!confirm(`Are you sure you want to approve this review?`)) return;
+  const handleApprove = (review) => {
+    setReviewToApprove(review);
+  };
+
+  const handleConfirmApprove = async () => {
+    if (!reviewToApprove) return;
+    setApproving(true);
     try {
-      await adminCatalogService.moderateReview(review._id, "approved");
+      await adminCatalogService.moderateReview(reviewToApprove._id, "approved");
       setSuccess("Review approved and published to storefront");
       setTimeout(() => setSuccess(null), 4000);
       fetchReviews();
+      setReviewToApprove(null);
     } catch (err) {
       setError(
         err?.response?.data?.message || err?.message || "Failed to approve review"
       );
+    } finally {
+      setApproving(false);
     }
   };
 
@@ -314,6 +325,18 @@ export default function AdminReviewsModerationPage() {
           </div>
         </div>
       )}
+
+      {/* Confirm Approve Review Dialog */}
+      <ConfirmDialog
+        isOpen={Boolean(reviewToApprove)}
+        onClose={() => setReviewToApprove(null)}
+        onConfirm={handleConfirmApprove}
+        title="Approve Review"
+        description="Are you sure you want to approve this customer review? It will be immediately published to the public storefront."
+        confirmLabel="Approve & Publish"
+        variant="default"
+        isLoading={approving}
+      />
     </div>
   );
 }

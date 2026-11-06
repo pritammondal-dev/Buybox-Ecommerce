@@ -39,14 +39,14 @@ router.get(
 router.get(
   "/",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   storefrontPublicationController.listPublications
 );
 
 router.get(
   "/:publicationId",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   validate(
     storefrontPublicationIdParamsSchema,
     "params"
@@ -57,7 +57,7 @@ router.get(
 router.get(
   "/resource/:resourceType/:resourceId",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   validate(
     storefrontPublicationResourceParamsSchema,
     "params"
@@ -68,7 +68,7 @@ router.get(
 router.post(
   "/",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_PUBLISH),
   validate(
     createStorefrontPublicationSchema,
     "body"
@@ -79,7 +79,7 @@ router.post(
 router.post(
   "/resource/:resourceType/:resourceId/publish",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_PUBLISH),
   validate(
     storefrontPublicationResourceParamsSchema,
     "params"
@@ -90,7 +90,7 @@ router.post(
 router.post(
   "/resource/:resourceType/:resourceId/unpublish",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_PUBLISH),
   validate(
     storefrontPublicationResourceParamsSchema,
     "params"
@@ -101,7 +101,7 @@ router.post(
 router.post(
   "/resource/:resourceType/:resourceId/preview",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   validate(
     storefrontPublicationResourceParamsSchema,
     "params"

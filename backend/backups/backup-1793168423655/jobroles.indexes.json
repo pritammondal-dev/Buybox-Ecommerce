@@ -1,0 +1,65 @@
+[
+  {
+    "v": 2,
+    "key": {
+      "_id": 1
+    },
+    "name": "_id_"
+  },
+  {
+    "v": 2,
+    "key": {
+      "name": 1
+    },
+    "name": "name_1",
+    "unique": true
+  },
+  {
+    "v": 2,
+    "key": {
+      "slug": 1
+    },
+    "name": "slug_1",
+    "unique": true
+  },
+  {
+    "v": 2,
+    "key": {
+      "tier": 1
+    },
+    "name": "tier_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "isSystemRole": 1
+    },
+    "name": "isSystemRole_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "isSuperadminRole": 1
+    },
+    "name": "isSuperadminRole_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "isActive": 1
+    },
+    "name": "isActive_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "isSuperadminRole": 1
+    },
+    "name": "unique_active_superadmin_job_role_idx",
+    "unique": true,
+    "partialFilterExpression": {
+      "isSuperadminRole": true,
+      "isActive": true
+    }
+  }
+]

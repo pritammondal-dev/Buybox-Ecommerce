@@ -123,6 +123,12 @@ const couponSchema = new mongoose.Schema(
       index: true,
     },
 
+    deletedAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
     metadata: {
       type: Map,
       of: String,
@@ -136,6 +142,7 @@ const couponSchema = new mongoose.Schema(
 );
 
 couponSchema.index({
+  deletedAt: 1,
   status: 1,
   isActive: 1,
   startsAt: 1,

@@ -14,11 +14,16 @@ const createPayment = async (req, res) => {
   const idempotencyKey =
     req.get("Idempotency-Key");
 
+  const isGuest = Boolean(req.isGuest || req.user?.isGuest);
+  const guestId = req.guestId || req.user?.guestId;
+  const token = req.get("X-Order-Token") || req.body?.orderAccessToken;
+
   const payment =
     await paymentService.createPaymentForOrder(
       req.params.orderId,
       req.user.id,
-      idempotencyKey
+      idempotencyKey,
+      { isGuest, guestId, token, guestOrderAccessToken: token }
     );
 
   return apiResponse.sendSuccess(res, {
@@ -30,6 +35,10 @@ const createPayment = async (req, res) => {
 };
 
 const verifyPayment = async (req, res) => {
+  const isGuest = Boolean(req.isGuest || req.user?.isGuest);
+  const guestId = req.guestId || req.user?.guestId;
+  const token = req.get("X-Order-Token") || req.body?.orderAccessToken;
+
   const payment =
     await paymentVerificationService.verifyRazorpayPayment(
       {
@@ -41,6 +50,10 @@ const verifyPayment = async (req, res) => {
           req.body.razorpayPaymentId,
         razorpaySignature:
           req.body.razorpaySignature,
+        isGuest,
+        guestId,
+        token,
+        guestOrderAccessToken: token,
       }
     );
 
@@ -52,11 +65,19 @@ const verifyPayment = async (req, res) => {
 };
 
 const capturePayment = async (req, res) => {
+  const isGuest = Boolean(req.isGuest || req.user?.isGuest);
+  const guestId = req.guestId || req.user?.guestId;
+  const token = req.get("X-Order-Token") || req.body?.orderAccessToken;
+
   const payment =
     await paymentCaptureService.captureRazorpayPayment(
       {
         orderId: req.params.orderId,
         userId: req.user.id,
+        isGuest,
+        guestId,
+        token,
+        guestOrderAccessToken: token,
       }
     );
 
@@ -69,10 +90,15 @@ const capturePayment = async (req, res) => {
 
 const createPayPalPayment = async (req, res) => {
   const idempotencyKey = req.get("Idempotency-Key");
+  const isGuest = Boolean(req.isGuest || req.user?.isGuest);
+  const guestId = req.guestId || req.user?.guestId;
+  const token = req.get("X-Order-Token") || req.body?.orderAccessToken;
+
   const payment = await paymentService.createPayPalOrderForOrder(
     req.params.orderId,
     req.user.id,
-    idempotencyKey
+    idempotencyKey,
+    { isGuest, guestId, token, guestOrderAccessToken: token }
   );
 
   return apiResponse.sendSuccess(res, {
@@ -83,10 +109,18 @@ const createPayPalPayment = async (req, res) => {
 };
 
 const capturePayPalPayment = async (req, res) => {
+  const isGuest = Boolean(req.isGuest || req.user?.isGuest);
+  const guestId = req.guestId || req.user?.guestId;
+  const token = req.get("X-Order-Token") || req.body?.orderAccessToken;
+
   const payment = await paymentService.capturePayPalOrder({
     orderId: req.body.orderId,
     userId: req.user.id,
     paypalOrderId: req.body.paypalOrderId,
+    isGuest,
+    guestId,
+    token,
+    guestOrderAccessToken: token,
   });
 
   return apiResponse.sendSuccess(res, {
@@ -111,9 +145,17 @@ const listPaymentTransactions = async (req, res) => {
 };
 
 const cancelPayment = async (req, res) => {
+  const isGuest = Boolean(req.isGuest || req.user?.isGuest);
+  const guestId = req.guestId || req.user?.guestId;
+  const token = req.get("X-Order-Token") || req.body?.orderAccessToken;
+
   const result = await paymentService.recordPaymentCancellation({
     orderId: req.params.orderId,
     userId: req.user.id,
+    isGuest,
+    guestId,
+    token,
+    guestOrderAccessToken: token,
   });
 
   return apiResponse.sendSuccess(res, {

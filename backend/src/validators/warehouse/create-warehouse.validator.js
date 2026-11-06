@@ -84,6 +84,30 @@ const createWarehouseSchema = z
       .max(254)
       .nullable()
       .optional(),
+
+    capacity: z
+      .number()
+      .int()
+      .nonnegative()
+      .nullable()
+      .optional(),
+
+    operatingHours: z
+      .string()
+      .trim()
+      .max(100)
+      .nullable()
+      .optional(),
+
+    managerUserId: z
+      .string()
+      .regex(/^[0-9a-fA-F]{24}$/, "Invalid ObjectId")
+      .nullable()
+      .optional(),
+
+    isActive: z
+      .boolean()
+      .optional(),
   })
   .strict();
 

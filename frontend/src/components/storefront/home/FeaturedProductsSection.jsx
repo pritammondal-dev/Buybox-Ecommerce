@@ -12,10 +12,20 @@ export function FeaturedProductsSection({
   wishlistVariantIds = [],
   onWishlistToggle,
   onAddToCart,
+  title: propTitle,
+  subtitle: propSubtitle,
+  theme,
+  viewAllHref: propViewAllHref,
+  viewAllText: propViewAllText,
 }) {
   const [products, setProducts] = useState(initialProducts);
-  const [title, setTitle] = useState("Featured Products");
-  const [subtitle, setSubtitle] = useState("Handpicked for you, only the best.");
+  const [title, setTitle] = useState(propTitle || "Featured Products");
+  const [subtitle, setSubtitle] = useState(propSubtitle || "Handpicked for you, only the best.");
+
+  useEffect(() => {
+    if (propTitle) setTitle(propTitle);
+    if (propSubtitle) setSubtitle(propSubtitle);
+  }, [propTitle, propSubtitle]);
 
   useEffect(() => {
     if (initialProducts.length > 0) return;
@@ -36,8 +46,8 @@ export function FeaturedProductsSection({
           featuredSec.productIds.length > 0
         ) {
           if (!isMounted) return;
-          if (featuredSec.title) setTitle(featuredSec.title);
-          if (featuredSec.subtitle) setSubtitle(featuredSec.subtitle);
+          if (featuredSec.title && !propTitle) setTitle(featuredSec.title);
+          if (featuredSec.subtitle && !propSubtitle) setSubtitle(featuredSec.subtitle);
           setProducts(featuredSec.productIds);
           return;
         }
@@ -63,7 +73,7 @@ export function FeaturedProductsSection({
     return () => {
       isMounted = false;
     };
-  }, [initialProducts]);
+  }, [initialProducts, propTitle, propSubtitle]);
 
   if (products.length === 0) {
     return null;
@@ -71,16 +81,17 @@ export function FeaturedProductsSection({
 
   return (
     <SectionContainer
-      title={title}
-      subtitle={subtitle}
+      title={propTitle || title}
+      subtitle={propSubtitle || subtitle}
       badge="CURATED"
       badgeColor="bg-amber-600 text-white"
       icon={Star}
       iconBg="bg-amber-100 text-amber-500"
-      viewAllHref="/shop?sort=featured"
-      viewAllText="View All Featured"
+      viewAllHref={propViewAllHref !== undefined ? propViewAllHref : "/shop?sort=featured"}
+      viewAllText={propViewAllText || "View All Featured"}
       variant="featured"
       ariaLabel="Featured Products"
+      theme={theme}
     >
       <ProductCarousel
         products={products}

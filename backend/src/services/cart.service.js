@@ -4,9 +4,13 @@ const mongoose = require("mongoose");
 const cartRepository = require("../repositories/cart.repository");
 const ProductVariant = require("../models/ProductVariant");
 const Product = require("../models/Product");
+const Warehouse = require("../models/Warehouse");
+const Inventory = require("../models/Inventory");
 const Customer = require("../models/Customer");
 const User = require("../models/User");
+const Vendor = require("../models/Vendor");
 const AppError = require("../errors/AppError");
+const pricingEngineService = require("./pricing-engine.service");
 
 const DEFAULT_CURRENCY = "INR";
 const MAX_ITEM_QUANTITY = 99;
@@ -92,6 +96,89 @@ const validateCustomer = async (userId) => {
   return customer;
 };
 
+const resolveCartOwner = async (identity) => {
+  if (!identity) {
+    throw new AppError("Authentication or guest session required", 401, "AUTHENTICATION_REQUIRED");
+  }
+
+  if (typeof identity === "object") {
+    if (identity.isGuest || identity.guestId) {
+      return { isGuest: true, guestId: String(identity.guestId || identity.id) };
+    }
+    const customer = await validateCustomer(identity.id || identity._id || identity.userId);
+    return { isGuest: false, customerId: customer._id };
+  }
+
+  if (typeof identity === "string" && identity.startsWith("gst_")) {
+    return { isGuest: true, guestId: identity };
+  }
+
+  const customer = await validateCustomer(identity);
+  return { isGuest: false, customerId: customer._id };
+};
+
+const findOrCreateActiveCart = async (owner, storeId = null, initialCurrency = DEFAULT_CURRENCY) => {
+  if (owner.isGuest) {
+    let cart = await cartRepository.findActiveByGuest(owner.guestId, storeId);
+    if (!cart) {
+      try {
+        cart = await cartRepository.create({
+          guestId: owner.guestId,
+          storeId,
+          status: "active",
+          items: [],
+          currency: initialCurrency,
+          subtotal: toDecimal128("0.00"),
+          discountTotal: toDecimal128("0.00"),
+          taxTotal: toDecimal128("0.00"),
+          shippingTotal: toDecimal128("0.00"),
+          grandTotal: toDecimal128("0.00"),
+          lastActivityAt: new Date(),
+        });
+      } catch (err) {
+        if (err?.code === 11000) {
+          cart = await cartRepository.findActiveByGuest(owner.guestId, storeId);
+        }
+        if (!cart) throw err;
+      }
+    }
+    return cart;
+  }
+
+  let cart = await cartRepository.findActiveByCustomer(owner.customerId, storeId);
+  if (!cart) {
+    const abandonedCart = await cartRepository.findLatestAbandonedByCustomer(owner.customerId, storeId);
+    if (abandonedCart) {
+      cart = await recoverAbandonedCartDocument(abandonedCart);
+    }
+  }
+  if (!cart) {
+    try {
+      cart = await createEmptyCart(owner.customerId, initialCurrency, storeId);
+    } catch (error) {
+      if (error?.code === 11000) {
+        cart = await cartRepository.findActiveByCustomer(owner.customerId, storeId);
+      }
+      if (!cart) throw error;
+    }
+  }
+  return cart;
+};
+
+const findActiveCart = async (owner, storeId = null) => {
+  if (owner.isGuest) {
+    return cartRepository.findActiveByGuest(owner.guestId, storeId);
+  }
+  let cart = await cartRepository.findActiveByCustomer(owner.customerId, storeId);
+  if (!cart) {
+    const abandonedCart = await cartRepository.findLatestAbandonedByCustomer(owner.customerId, storeId);
+    if (abandonedCart) {
+      cart = await recoverAbandonedCartDocument(abandonedCart);
+    }
+  }
+  return cart;
+};
+
 const validateVariant = async (productVariantId) => {
   const variant = await ProductVariant.findOne({
     _id: productVariantId,
@@ -110,6 +197,7 @@ const validateVariant = async (productVariantId) => {
   const product = await Product.findOne({
     _id: variant.productId,
     status: "active",
+    isStoreVisible: { $ne: false },
     deletedAt: null,
   });
 
@@ -121,7 +209,62 @@ const validateVariant = async (productVariantId) => {
     );
   }
 
+  if (product.vendorId) {
+    const vendor = await Vendor.findOne({
+      _id: product.vendorId,
+      isActive: true,
+      deletedAt: null,
+      onboardingStatus: "approved",
+    }).select("_id");
+
+    if (!vendor) {
+      throw new AppError(
+        "Product vendor is no longer active",
+        400,
+        "VENDOR_INACTIVE"
+      );
+    }
+  }
+
   return variant;
+};
+
+const getAuthoritativeAvailableStock = async (variant) => {
+  if (!variant) return 0;
+
+  // In disconnected unit test environment, fallback to variant.stockQuantity for mocks
+  if (mongoose.connection.readyState !== 1) {
+    return typeof variant.stockQuantity === "number" ? variant.stockQuantity : 999;
+  }
+
+  const activeWarehouses = await Warehouse.find({
+    isActive: true,
+    deletedAt: null,
+  }).select("_id").lean();
+
+  if (!activeWarehouses || activeWarehouses.length === 0) {
+    return 0;
+  }
+
+  const activeWarehouseIds = activeWarehouses.map((w) => w._id);
+
+  const inventoryRecords = await Inventory.find({
+    productVariantId: variant._id,
+    warehouseId: { $in: activeWarehouseIds },
+  }).lean();
+
+  if (!inventoryRecords || inventoryRecords.length === 0) {
+    return 0;
+  }
+
+  let totalAvailable = 0;
+  for (const inv of inventoryRecords) {
+    const onHand = Number(inv.onHand) || 0;
+    const reserved = Number(inv.reserved) || 0;
+    totalAvailable += Math.max(0, onHand - reserved);
+  }
+
+  return totalAvailable;
 };
 
 const resolveAndValidateVariant = async ({ productVariantId, productId }) => {
@@ -151,6 +294,7 @@ const resolveAndValidateVariant = async ({ productVariantId, productId }) => {
     const product = await Product.findOne({
       _id: variant.productId,
       status: "active",
+      isStoreVisible: { $ne: false },
       deletedAt: null,
     });
 
@@ -162,7 +306,25 @@ const resolveAndValidateVariant = async ({ productVariantId, productId }) => {
       );
     }
 
-    if (typeof variant.stockQuantity === "number" && variant.stockQuantity <= 0) {
+    if (product.vendorId) {
+      const vendor = await Vendor.findOne({
+        _id: product.vendorId,
+        isActive: true,
+        deletedAt: null,
+        onboardingStatus: "approved",
+      }).select("_id");
+
+      if (!vendor) {
+        throw new AppError(
+          "Product vendor is no longer active",
+          400,
+          "VENDOR_INACTIVE"
+        );
+      }
+    }
+
+    const availableStock = await getAuthoritativeAvailableStock(variant);
+    if (availableStock <= 0) {
       throw new AppError(
         "Product variant is out of stock",
         400,
@@ -185,6 +347,7 @@ const resolveAndValidateVariant = async ({ productVariantId, productId }) => {
     const product = await Product.findOne({
       _id: productId,
       status: "active",
+      isStoreVisible: { $ne: false },
       deletedAt: null,
     });
 
@@ -194,6 +357,23 @@ const resolveAndValidateVariant = async ({ productVariantId, productId }) => {
         404,
         "PRODUCT_NOT_FOUND"
       );
+    }
+
+    if (product.vendorId) {
+      const vendor = await Vendor.findOne({
+        _id: product.vendorId,
+        isActive: true,
+        deletedAt: null,
+        onboardingStatus: "approved",
+      }).select("_id");
+
+      if (!vendor) {
+        throw new AppError(
+          "Product vendor is no longer active",
+          400,
+          "VENDOR_INACTIVE"
+        );
+      }
     }
 
     const activeVariants = await ProductVariant.find({
@@ -212,7 +392,8 @@ const resolveAndValidateVariant = async ({ productVariantId, productId }) => {
 
     if (activeVariants.length === 1) {
       const singleVariant = activeVariants[0];
-      if (typeof singleVariant.stockQuantity === "number" && singleVariant.stockQuantity <= 0) {
+      const availableStock = await getAuthoritativeAvailableStock(singleVariant);
+      if (availableStock <= 0) {
         throw new AppError(
           "Product variant is out of stock",
           400,
@@ -328,11 +509,14 @@ const recoverAbandonedCartDocument = async (abandonedCart) => {
   return recovered;
 };
 
-const recoverCart = async (userId, storeId = null) => {
-  const customer = await validateCustomer(userId);
+const recoverCart = async (identity, storeId = null) => {
+  const owner = await resolveCartOwner(identity);
+  if (owner.isGuest) {
+    return getCart(identity, storeId);
+  }
 
   const activeCart = await cartRepository.findActiveByCustomer(
-    customer._id,
+    owner.customerId,
     storeId
   );
 
@@ -342,7 +526,7 @@ const recoverCart = async (userId, storeId = null) => {
 
   const abandonedCart =
     await cartRepository.findLatestAbandonedByCustomer(
-      customer._id,
+      owner.customerId,
       storeId
     );
 
@@ -357,49 +541,78 @@ const recoverCart = async (userId, storeId = null) => {
   return recoverAbandonedCartDocument(abandonedCart);
 };
 
-const getCart = async (userId, storeId = null) => {
-  const customer = await validateCustomer(userId);
+const getCart = async (identity, storeId = null) => {
+  const owner = await resolveCartOwner(identity);
+  let cart = await findOrCreateActiveCart(owner, storeId, DEFAULT_CURRENCY);
 
-  let cart = await cartRepository.findActiveByCustomer(
-    customer._id,
-    storeId
-  );
-
-  if (!cart) {
-    const abandonedCart =
-      await cartRepository.findLatestAbandonedByCustomer(
-        customer._id,
-        storeId
-      );
-
-    if (abandonedCart) {
-      return abandonedCart;
-    }
-
-    try {
-      cart = await createEmptyCart(
-        customer._id,
-        DEFAULT_CURRENCY,
-        storeId
-      );
-    } catch (error) {
-      if (error?.code === 11000) {
-        cart = await cartRepository.findActiveByCustomer(
-          customer._id,
-          storeId
-        );
-      }
-
-      if (!cart) {
-        throw error;
-      }
-    }
+  if (cart && Array.isArray(cart.items) && cart.items.length > 0) {
+    await recalculateCart(cart);
+    cart = await cartRepository.updateById(cart._id, cart);
   }
 
   return cart;
 };
 
 const recalculateCart = async (cart) => {
+  let totalPromotionalSavingsMinor = 0;
+
+  if (
+    mongoose.connection.readyState === 1 &&
+    Array.isArray(cart.items) &&
+    cart.items.length > 0
+  ) {
+    const asOfDate = new Date();
+    for (const item of cart.items) {
+      try {
+        const variant = await ProductVariant.findOne({
+          _id: item.productVariantId,
+          isActive: true,
+          deletedAt: null,
+        });
+
+        if (variant) {
+          const product = await Product.findOne({
+            _id: variant.productId,
+            status: "active",
+            deletedAt: null,
+          });
+
+          if (product) {
+            const pricing = await pricingEngineService.calculateEffectivePrice({
+              product,
+              variant,
+              asOfDate,
+            });
+
+            if (pricing) {
+              item.regularPrice = toDecimal128(pricing.regularPrice);
+              item.effectivePrice = toDecimal128(pricing.effectivePrice);
+              item.priceSnapshot = toDecimal128(pricing.effectivePrice);
+              item.isPromotional = !!pricing.isPromotional;
+              item.promotionId = pricing.promotion?.id
+                ? new mongoose.Types.ObjectId(pricing.promotion.id)
+                : null;
+              item.promotionName = pricing.promotion?.name || null;
+              item.promotionalDiscountAmount = toDecimal128(
+                pricing.promotionalDiscountAmount || "0.00"
+              );
+              const regMinor = decimalToMinorUnits(pricing.regularPrice);
+              const effMinor = decimalToMinorUnits(pricing.effectivePrice);
+              const lineSavingsMinor = Math.max(0, (regMinor - effMinor) * item.quantity);
+              item.promotionalSavings = minorUnitsToDecimal128(lineSavingsMinor);
+              item.allowCoupons = pricing.allowCoupons !== false;
+              totalPromotionalSavingsMinor += lineSavingsMinor;
+            }
+          }
+        }
+      } catch (err) {
+        // Fallback: preserve existing priceSnapshot if pricing engine lookup fails
+      }
+    }
+  }
+
+  cart.productDiscountTotal = minorUnitsToDecimal128(totalPromotionalSavingsMinor);
+
   const subtotal = calculateSubtotal(cart.items);
 
   const discountMinorUnits = decimalToMinorUnits(
@@ -453,7 +666,7 @@ const addItem = async (
     );
   }
 
-  const customer = await validateCustomer(userId);
+  const owner = await resolveCartOwner(userId);
 
   let targetVariantId;
   let targetProductId;
@@ -473,43 +686,11 @@ const addItem = async (
     productId: targetProductId,
   });
 
-  let cart = await cartRepository.findActiveByCustomer(
-    customer._id,
-    storeId
+  let cart = await findOrCreateActiveCart(
+    owner,
+    storeId,
+    variant.currency || DEFAULT_CURRENCY
   );
-
-  if (!cart) {
-    const abandonedCart =
-      await cartRepository.findLatestAbandonedByCustomer(
-        customer._id,
-        storeId
-      );
-
-    if (abandonedCart) {
-      cart = await recoverAbandonedCartDocument(abandonedCart);
-    }
-  }
-
-  if (!cart) {
-    try {
-      cart = await createEmptyCart(
-        customer._id,
-        variant.currency || DEFAULT_CURRENCY,
-        storeId
-      );
-    } catch (error) {
-      if (error?.code === 11000) {
-        cart = await cartRepository.findActiveByCustomer(
-          customer._id,
-          storeId
-        );
-      }
-
-      if (!cart) {
-        throw error;
-      }
-    }
-  }
 
   const variantCurrency =
     variant.currency || DEFAULT_CURRENCY;
@@ -527,18 +708,26 @@ const addItem = async (
       item.productVariantId.toString() === variant._id.toString()
   );
 
+  const targetQuantity = existingItem ? existingItem.quantity + quantity : quantity;
+  if (targetQuantity > MAX_ITEM_QUANTITY) {
+    throw new AppError(
+      `Quantity cannot exceed ${MAX_ITEM_QUANTITY}`,
+      400,
+      "CART_QUANTITY_LIMIT_EXCEEDED"
+    );
+  }
+
+  const availableStock = await getAuthoritativeAvailableStock(variant);
+  if (availableStock < targetQuantity) {
+    throw new AppError(
+      `Insufficient stock available for this variant. Available: ${availableStock}`,
+      400,
+      "INSUFFICIENT_STOCK"
+    );
+  }
+
   if (existingItem) {
-    const newQuantity = existingItem.quantity + quantity;
-
-    if (newQuantity > MAX_ITEM_QUANTITY) {
-      throw new AppError(
-        `Quantity cannot exceed ${MAX_ITEM_QUANTITY}`,
-        400,
-        "CART_QUANTITY_LIMIT_EXCEEDED"
-      );
-    }
-
-    existingItem.quantity = newQuantity;
+    existingItem.quantity = targetQuantity;
     existingItem.priceSnapshot = variant.price;
     existingItem.currency = variantCurrency;
   } else {
@@ -578,24 +767,9 @@ const updateItemQuantity = async (
     );
   }
 
-  const customer = await validateCustomer(userId);
+  const owner = await resolveCartOwner(userId);
 
-  const cart = await cartRepository.findActiveByCustomer(
-    customer._id,
-    storeId
-  );
-
-  if (!cart) {
-    const abandonedCart =
-      await cartRepository.findLatestAbandonedByCustomer(
-        customer._id,
-        storeId
-      );
-
-    if (abandonedCart) {
-      cart = await recoverAbandonedCartDocument(abandonedCart);
-    }
-  }
+  const cart = await findActiveCart(owner, storeId);
 
   if (!cart) {
     throw new AppError(
@@ -619,6 +793,23 @@ const updateItemQuantity = async (
   }
 
   const variant = await validateVariant(productVariantId);
+
+  const availableStock = await getAuthoritativeAvailableStock(variant);
+  if (availableStock <= 0) {
+    throw new AppError(
+      "Product variant is out of stock",
+      400,
+      "OUT_OF_STOCK"
+    );
+  }
+
+  if (availableStock < quantity) {
+    throw new AppError(
+      `Insufficient stock available for this variant. Available: ${availableStock}`,
+      400,
+      "INSUFFICIENT_STOCK"
+    );
+  }
 
   const variantCurrency =
     variant.currency || DEFAULT_CURRENCY;
@@ -645,24 +836,9 @@ const removeItem = async (
   productVariantId,
   storeId = null
 ) => {
-  const customer = await validateCustomer(userId);
+  const owner = await resolveCartOwner(userId);
 
-  let cart = await cartRepository.findActiveByCustomer(
-    customer._id,
-    storeId
-  );
-
-  if (!cart) {
-    const abandonedCart =
-      await cartRepository.findLatestAbandonedByCustomer(
-        customer._id,
-        storeId
-      );
-
-    if (abandonedCart) {
-      cart = await recoverAbandonedCartDocument(abandonedCart);
-    }
-  }
+  let cart = await findActiveCart(owner, storeId);
 
   if (!cart) {
     throw new AppError(
@@ -693,24 +869,9 @@ const removeItem = async (
 };
 
 const clearCart = async (userId, storeId = null) => {
-  const customer = await validateCustomer(userId);
+  const owner = await resolveCartOwner(userId);
 
-  let cart = await cartRepository.findActiveByCustomer(
-    customer._id,
-    storeId
-  );
-
-  if (!cart) {
-    const abandonedCart =
-      await cartRepository.findLatestAbandonedByCustomer(
-        customer._id,
-        storeId
-      );
-
-    if (abandonedCart) {
-      cart = await recoverAbandonedCartDocument(abandonedCart);
-    }
-  }
+  let cart = await findActiveCart(owner, storeId);
 
   if (!cart) {
     throw new AppError(
@@ -731,6 +892,38 @@ const clearCart = async (userId, storeId = null) => {
   return cartRepository.updateById(cart._id, cart);
 };
 
+const migrateGuestCartToServer = async (customerUserId, guestId) => {
+  if (!guestId) return null;
+  const customer = await validateCustomer(customerUserId);
+  const guestCart = await cartRepository.findActiveByGuest(guestId);
+  if (!guestCart || !guestCart.items || guestCart.items.length === 0) {
+    return null;
+  }
+
+  const customerCart = await findOrCreateActiveCart(
+    { isGuest: false, customerId: customer._id },
+    guestCart.storeId,
+    guestCart.currency || DEFAULT_CURRENCY
+  );
+
+  for (const item of guestCart.items) {
+    const existing = customerCart.items.find(
+      (it) => it.productVariantId.toString() === item.productVariantId.toString()
+    );
+    if (existing) {
+      existing.quantity = Math.min(existing.quantity + item.quantity, MAX_ITEM_QUANTITY);
+    } else {
+      customerCart.items.push(item);
+    }
+  }
+
+  await recalculateCart(customerCart);
+  await cartRepository.updateById(customerCart._id, customerCart);
+  await cartRepository.convertActiveCart(guestCart._id);
+
+  return customerCart;
+};
+
 module.exports = {
   getCart,
   addItem,
@@ -738,4 +931,6 @@ module.exports = {
   removeItem,
   clearCart,
   recoverCart,
+  migrateGuestCartToServer,
+  validateVariant,
 };

@@ -3,6 +3,7 @@ const administratorAuthController = require("../controllers/administrator-auth.c
 const validate = require("../middlewares/validate.middleware");
 const { loginSchema } = require("../validators/auth/login.validator");
 const { authenticateAdministrator } = require("../middlewares/authentication.middleware");
+const { authLoginLimiter, tokenRefreshLimiter } = require("../middlewares/rate-limiter.middleware");
 const AppError = require("../errors/AppError");
 
 const router = express.Router();
@@ -20,12 +21,14 @@ router.all("/register", (req, res, next) => {
 
 router.post(
   "/login",
+  authLoginLimiter,
   validate(loginSchema),
   administratorAuthController.login
 );
 
 router.post(
   "/refresh",
+  tokenRefreshLimiter,
   administratorAuthController.refresh
 );
 
@@ -38,6 +41,12 @@ router.get(
   "/me",
   authenticateAdministrator,
   administratorAuthController.getMe
+);
+
+router.post(
+  "/heartbeat",
+  authenticateAdministrator,
+  administratorAuthController.heartbeat
 );
 
 module.exports = router;

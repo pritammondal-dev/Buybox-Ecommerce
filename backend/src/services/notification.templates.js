@@ -189,6 +189,54 @@ Return to your cart anytime to complete your purchase.
   `.trim(),
 });
 
+const vendorNewOrderTemplate = ({
+  vendorName,
+  orderNumber,
+  items = [],
+  orderUrl,
+}) => {
+  const itemsHtml = (items || [])
+    .map(
+      (it) =>
+        `<li><strong>${it.productName}${it.variantName ? ` (${it.variantName})` : ""}</strong> (SKU: ${it.sku || "N/A"}) &times; ${it.quantity}</li>`
+    )
+    .join("");
+
+  const itemsText = (items || [])
+    .map(
+      (it) =>
+        `- ${it.productName}${it.variantName ? ` (${it.variantName})` : ""} (SKU: ${it.sku || "N/A"}) x ${it.quantity}`
+    )
+    .join("\n");
+
+  return {
+    subject: `New Order Assigned - #${orderNumber}`,
+    html: `
+      <h2>New Order Received</h2>
+      <p>Hello ${vendorName || "Merchant"},</p>
+      <p>A customer order containing your products (Order <strong>#${orderNumber}</strong>) has been confirmed and is ready for fulfillment.</p>
+      <p><strong>Your Assigned Items:</strong></p>
+      <ul>
+        ${itemsHtml}
+      </ul>
+      <p><a href="${orderUrl}">View and manage this order in your Vendor Portal</a></p>
+    `,
+    text: `
+New Order Received
+
+Hello ${vendorName || "Merchant"},
+
+A customer order containing your products (Order #${orderNumber}) has been confirmed and is ready for fulfillment.
+
+Your Assigned Items:
+${itemsText}
+
+View and manage this order in your Vendor Portal:
+${orderUrl}
+    `.trim(),
+  };
+};
+
 module.exports = {
   orderConfirmationTemplate,
   paymentConfirmationTemplate,
@@ -198,4 +246,5 @@ module.exports = {
   emailVerificationTemplate,
   passwordResetTemplate,
   abandonedCartTemplate,
+  vendorNewOrderTemplate,
 };

@@ -488,7 +488,7 @@ const SYSTEM_ROLES = [
     isSystem: true,
     isActive: true,
     // ALL 49 permissions: 40 operational + 9 RBAC governance
-    permissions: Object.values(PERMISSIONS),
+    permissions: PERMISSION_DEFINITIONS.map((def) => def.slug),
   },
 ];
 

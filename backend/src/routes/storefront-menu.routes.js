@@ -32,28 +32,28 @@ router.use(authenticate);
 
 router.get(
   "/",
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   validate(storefrontMenuListQuerySchema, "query"),
   storefrontMenuController.listMenus
 );
 
 router.get(
   "/:menuId",
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   validate(storefrontMenuIdParamsSchema, "params"),
   storefrontMenuController.getMenuById
 );
 
 router.post(
   "/",
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_CREATE),
   validate(createStorefrontMenuSchema),
   storefrontMenuController.createMenu
 );
 
 router.patch(
   "/:menuId",
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_EDIT),
   validate(storefrontMenuIdParamsSchema, "params"),
   validate(updateStorefrontMenuSchema),
   storefrontMenuController.updateMenu
@@ -61,7 +61,7 @@ router.patch(
 
 router.delete(
   "/:menuId",
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_DELETE),
   validate(storefrontMenuIdParamsSchema, "params"),
   storefrontMenuController.deleteMenu
 );

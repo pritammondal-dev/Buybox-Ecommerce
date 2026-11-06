@@ -39,14 +39,14 @@ router.get(
 router.get(
   "/",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   storefrontHomepageController.listHomepages
 );
 
 router.get(
   "/key/:key",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   validate(
     storefrontHomepageKeyParamsSchema,
     "params"
@@ -57,7 +57,7 @@ router.get(
 router.get(
   "/:homepageId",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   validate(
     storefrontHomepageIdParamsSchema,
     "params"
@@ -68,7 +68,7 @@ router.get(
 router.post(
   "/",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_CREATE),
   validate(
     createStorefrontHomepageSchema,
     "body"
@@ -79,7 +79,7 @@ router.post(
 router.patch(
   "/:homepageId",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_EDIT),
   validate(
     storefrontHomepageIdParamsSchema,
     "params"
@@ -94,7 +94,7 @@ router.patch(
 router.delete(
   "/:homepageId",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_DELETE),
   validate(
     storefrontHomepageIdParamsSchema,
     "params"

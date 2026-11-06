@@ -12,7 +12,7 @@ export const paymentMethodService = {
    */
   async getAvailablePaymentMethods(params = {}) {
     const response = await apiClient.get("/payment-methods/available", { params });
-    return response.data;
+    return response;
   },
 
   /**
@@ -22,7 +22,7 @@ export const paymentMethodService = {
    */
   async listAllPaymentMethods(params = {}) {
     const response = await apiClient.get("/payment-methods", { params });
-    return response.data;
+    return response;
   },
 
   /**
@@ -32,7 +32,7 @@ export const paymentMethodService = {
    */
   async getPaymentMethodById(id) {
     const response = await apiClient.get(`/payment-methods/${id}`);
-    return response.data;
+    return response;
   },
 
   /**
@@ -42,7 +42,7 @@ export const paymentMethodService = {
    */
   async createPaymentMethod(data) {
     const response = await apiClient.post("/payment-methods", data);
-    return response.data;
+    return response;
   },
 
   /**
@@ -53,7 +53,7 @@ export const paymentMethodService = {
    */
   async updatePaymentMethod(id, data) {
     const response = await apiClient.patch(`/payment-methods/${id}`, data);
-    return response.data;
+    return response;
   },
 
   /**
@@ -63,7 +63,7 @@ export const paymentMethodService = {
    */
   async togglePaymentMethod(id) {
     const response = await apiClient.patch(`/payment-methods/${id}/toggle`);
-    return response.data;
+    return response;
   },
 
   /**
@@ -73,7 +73,7 @@ export const paymentMethodService = {
    */
   async deletePaymentMethod(id) {
     const response = await apiClient.delete(`/payment-methods/${id}`);
-    return response.data;
+    return response;
   },
 
   /**
@@ -83,7 +83,7 @@ export const paymentMethodService = {
    */
   async reorderPaymentMethods(orderedIds) {
     const response = await apiClient.post("/payment-methods/reorder", { orderedIds });
-    return response.data;
+    return response;
   },
 
   /**
@@ -93,7 +93,7 @@ export const paymentMethodService = {
    */
   async listTransactions(params = {}) {
     const response = await apiClient.get("/payments/admin/transactions", { params });
-    return response.data;
+    return response;
   },
 
   /**
@@ -130,7 +130,7 @@ export const paymentMethodService = {
    */
   async getMyPaymentMethods() {
     const response = await apiClient.get("/payment-methods/my");
-    return response.data;
+    return response;
   },
 
   /**
@@ -140,7 +140,7 @@ export const paymentMethodService = {
    */
   async saveCustomerPaymentMethod(data) {
     const response = await apiClient.post("/payment-methods/my", data);
-    return response.data;
+    return response;
   },
 
   /**
@@ -150,7 +150,7 @@ export const paymentMethodService = {
    */
   async setDefaultPaymentMethod(id) {
     const response = await apiClient.patch(`/payment-methods/my/${id}/default`);
-    return response.data;
+    return response;
   },
 
   /**
@@ -160,7 +160,7 @@ export const paymentMethodService = {
    */
   async deleteCustomerPaymentMethod(id) {
     const response = await apiClient.delete(`/payment-methods/my/${id}`);
-    return response.data;
+    return response;
   },
 };
 

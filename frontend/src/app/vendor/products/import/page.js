@@ -19,6 +19,7 @@ import {
   Layers,
   Check,
   ChevronRight,
+  Archive,
 } from "lucide-react";
 import { toast } from "sonner";
 import { vendorService } from "@/services/vendor.service";
@@ -26,10 +27,12 @@ import { vendorService } from "@/services/vendor.service";
 export default function BulkProductImportPage() {
   const router = useRouter();
   const fileInputRef = useRef(null);
+  const zipInputRef = useRef(null);
 
   // States
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedZipFile, setSelectedZipFile] = useState(null);
   const [isValidating, setIsValidating] = useState(false);
   const [isCommitting, setIsCommitting] = useState(false);
   const [validationReport, setValidationReport] = useState(null);
@@ -42,12 +45,43 @@ export default function BulkProductImportPage() {
     setDownloadingTemplate(true);
     try {
       const res = await vendorService.downloadImportTemplate(format);
-      const blob = new Blob([res.data], {
-        type:
-          format === "xlsx"
-            ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            : "text/csv;charset=utf-8;",
-      });
+
+      // Handle Axios response interceptor unwrapping:
+      // If apiClient unwraps response.data, `res` is already the Blob.
+      // If wrapped, extract from res.data.
+      let blob = res instanceof Blob ? res : (res?.data instanceof Blob ? res.data : null);
+
+      if (!blob) {
+        if (res && typeof res === "object" && !(res instanceof ArrayBuffer)) {
+          throw new Error(res.message || "Failed to download template from server");
+        }
+        blob = new Blob([res?.data || res], {
+          type:
+            format === "xlsx"
+              ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              : "text/csv;charset=utf-8;",
+        });
+      }
+
+      // Guard: Detect if an error JSON or HTML was returned as a successful blob
+      if (blob.type.includes("application/json") || blob.type.includes("text/html")) {
+        const text = await blob.text();
+        try {
+          const json = JSON.parse(text);
+          throw new Error(json.message || "Server returned an error");
+        } catch {
+          throw new Error("Invalid response format received from server");
+        }
+      }
+
+      // Integrity check: A valid XLSX workbook archive is always > 1,000 bytes; CSV > 50 bytes
+      if (format === "xlsx" && blob.size < 1000) {
+        throw new Error("Downloaded Excel template is corrupt or truncated");
+      }
+      if (format === "csv" && blob.size < 50) {
+        throw new Error("Downloaded CSV template is empty");
+      }
+
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -59,7 +93,7 @@ export default function BulkProductImportPage() {
       toast.success(`Template downloaded (${format.toUpperCase()})`);
     } catch (err) {
       toast.error("Failed to download template", {
-        description: err.response?.data?.message || err.message,
+        description: err?.response?.data?.message || err.message,
       });
     } finally {
       setDownloadingTemplate(false);
@@ -92,8 +126,30 @@ export default function BulkProductImportPage() {
     }
   };
 
+  const handleZipChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".zip")) {
+      toast.error("Invalid archive format", {
+        description: "Please upload a ZIP (.zip) file.",
+      });
+      return;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      toast.error("Archive too large", {
+        description: "Maximum archive size is 50MB.",
+      });
+      return;
+    }
+    setSelectedZipFile(file);
+    toast.success(`Image archive attached: ${file.name}`);
+    if (selectedFile) {
+      processFile(selectedFile, file);
+    }
+  };
+
   // Validate File
-  const processFile = async (file) => {
+  const processFile = async (file, zipFile = selectedZipFile) => {
     const validExtensions = [".csv", ".xlsx", ".xls"];
     const fileExt = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
     if (!validExtensions.includes(fileExt)) {
@@ -117,6 +173,9 @@ export default function BulkProductImportPage() {
 
     const formData = new FormData();
     formData.append("file", file);
+    if (zipFile) {
+      formData.append("images", zipFile);
+    }
 
     try {
       const res = await vendorService.validateBulkImport(formData);
@@ -158,7 +217,7 @@ export default function BulkProductImportPage() {
 
     setIsCommitting(true);
     try {
-      const res = await vendorService.commitBulkImport(validRows);
+      const res = await vendorService.commitBulkImport(validRows, validationReport?.stagingId);
       const data = res.data?.data || res.data;
       setCommitResult(data);
       toast.success("Products imported successfully!", {
@@ -209,10 +268,14 @@ export default function BulkProductImportPage() {
   // Reset Form
   const handleReset = () => {
     setSelectedFile(null);
+    setSelectedZipFile(null);
     setValidationReport(null);
     setCommitResult(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+    if (zipInputRef.current) {
+      zipInputRef.current.value = "";
     }
   };
 
@@ -424,6 +487,60 @@ export default function BulkProductImportPage() {
                 </button>
               </div>
             )}
+
+            {/* Optional Images ZIP Archive Selector */}
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-emerald-50 rounded-lg text-[#004D38]">
+                    <Archive className="size-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-slate-800">Optional Images Archive (ZIP)</span>
+                    <span className="ml-2 text-[10px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">Optional</span>
+                  </div>
+                </div>
+                {selectedZipFile && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedZipFile(null);
+                      if (zipInputRef.current) zipInputRef.current.value = "";
+                      if (selectedFile) processFile(selectedFile, null);
+                    }}
+                    className="inline-flex items-center gap-1 text-xs text-rose-600 hover:text-rose-700 font-semibold"
+                  >
+                    <X className="size-3.5" />
+                    <span>Remove ZIP</span>
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Upload a ZIP archive (up to 50MB, max 300 files) containing product images (<code className="bg-slate-100 px-1 py-0.5 rounded text-[11px]">.jpg, .jpeg, .png, .webp, .gif, .avif</code>). Referenced filenames in columns <strong className="text-slate-700">Image 1</strong> to <strong className="text-slate-700">Image 4</strong> will be deterministically matched and imported. Remote HTTPS image URLs in spreadsheet cells continue to work directly.
+              </p>
+              <input
+                ref={zipInputRef}
+                type="file"
+                accept=".zip"
+                onChange={handleZipChange}
+                className="hidden"
+              />
+              <div className="flex items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => zipInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition-colors"
+                >
+                  <Archive className="size-3.5 text-slate-500" />
+                  <span>{selectedZipFile ? "Replace Images ZIP" : "Choose Images ZIP Archive"}</span>
+                </button>
+                {selectedZipFile && (
+                  <div className="text-xs text-emerald-800 font-medium">
+                    Attached: <span className="font-bold">{selectedZipFile.name}</span> ({(selectedZipFile.size / (1024 * 1024)).toFixed(1)} MB)
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Sidebar Instructions */}
@@ -450,7 +567,7 @@ export default function BulkProductImportPage() {
                 <li className="flex items-start gap-2">
                   <Check className="size-3.5 text-[#004D38] shrink-0 mt-0.5" />
                   <span>
-                    <strong className="text-slate-800">Images:</strong> Provide direct image URLs separated by comma (e.g. <code>https://...jpg, https://...png</code>).
+                    <strong className="text-slate-800">Images:</strong> Image cells (Image 1–4) accept secure HTTPS URLs or relative filenames matching files in an uploaded ZIP archive. Blank image cells preserve existing product images during updates.
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
@@ -474,6 +591,26 @@ export default function BulkProductImportPage() {
       {/* Validation Report & Preview Table */}
       {validationReport && !commitResult && (
         <div className="space-y-4 pt-4 border-t border-slate-200">
+          {validationReport.archiveSummary && (
+            <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-4 flex items-center justify-between shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-100 rounded-lg text-[#004D38]">
+                  <Archive className="size-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-emerald-950">
+                    Images Archive Validated ({validationReport.archiveSummary.totalFiles} images staged)
+                  </div>
+                  <div className="text-[11px] text-emerald-700 font-mono">
+                    Staging ID: {validationReport.archiveSummary.stagingId}
+                  </div>
+                </div>
+              </div>
+              <span className="text-xs font-semibold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-full">
+                Archive Staged
+              </span>
+            </div>
+          )}
           {/* Summary Metric Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">

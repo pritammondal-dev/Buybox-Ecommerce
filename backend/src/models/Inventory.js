@@ -36,6 +36,24 @@ const inventorySchema = new mongoose.Schema(
       default: 5,
     },
 
+    damaged: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    defective: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    expired: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     version: {
       type: Number,
       default: 0,
@@ -63,10 +81,19 @@ inventorySchema.index(
 );
 
 inventorySchema.virtual("available").get(function () {
-  return Math.max(this.onHand - this.reserved, 0);
+  const nonSellable =
+    (this.damaged || 0) + (this.defective || 0) + (this.expired || 0);
+  return Math.max(this.onHand - this.reserved - nonSellable, 0);
+});
+
+inventorySchema.virtual("nonSellable").get(function () {
+  return (this.damaged || 0) + (this.defective || 0) + (this.expired || 0);
 });
 
 inventorySchema.set("toJSON", {
+  virtuals: true,
+});
+inventorySchema.set("toObject", {
   virtuals: true,
 });
 

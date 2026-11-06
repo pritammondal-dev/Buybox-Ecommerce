@@ -48,7 +48,7 @@ export const getVendorWarehouseUrl = (warehouse) => {
 
 export const getAdminVendorUrl = (vendor) => {
   const id = getSecureId(vendor, "vendor");
-  return `/admin/vendors/${encodeURIComponent(id)}`;
+  return `/administrator/vendors/${encodeURIComponent(id)}`;
 };
 
 export const getVendorSettlementUrl = (settlement) => {
@@ -58,12 +58,12 @@ export const getVendorSettlementUrl = (settlement) => {
 
 export const getAdminOrderUrl = (order) => {
   const id = getSecureId(order, "order");
-  return `/admin/orders/${encodeURIComponent(id)}`;
+  return `/administrator/operations/orders/${encodeURIComponent(id)}`;
 };
 
 export const getAdminSettlementUrl = (settlement) => {
   const id = getSecureId(settlement, "settlement");
-  return `/admin/settlements/${encodeURIComponent(id)}`;
+  return `/administrator/finance/settlements/${encodeURIComponent(id)}`;
 };
 
 const secureIdUtil = {

@@ -23,6 +23,12 @@ import { toast } from "sonner";
 import { useAuthStore } from "@/stores/auth.store";
 import { vendorService } from "@/services/vendor.service";
 import { getVendorOrderUrl, getVendorInventoryUrl } from "@/utils/secure-id.util";
+import {
+  VendorPageHeader,
+  VendorKpiCard,
+  VendorStatusBadge,
+  VendorEmptyState,
+} from "@/components/vendor";
 
 export default function VendorDashboardPage() {
   const { user } = useAuthStore();
@@ -192,50 +198,46 @@ export default function VendorDashboardPage() {
   return (
     <div className="space-y-6">
       {/* Top Banner / Welcome & Controls */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-            Store Performance Overview
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Real-time analytics and inventory health calculated directly from live marketplace database records.
-          </p>
-        </div>
+      <VendorPageHeader
+        title="Store Performance Overview"
+        subtitle="Real-time analytics and inventory health calculated directly from live marketplace database records."
+        breadcrumbs={[{ label: "Overview" }]}
+        actions={
+          <div className="flex items-center gap-2">
+            {/* Time Range Selector */}
+            <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
+              {[
+                { id: "today", label: "Today" },
+                { id: "7d", label: "7 Days" },
+                { id: "30d", label: "30 Days" },
+                { id: "90d", label: "90 Days" },
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setRange(t.id)}
+                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
+                    range === t.id
+                      ? "bg-[#004D38] text-white shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
 
-        <div className="flex items-center gap-2 self-stretch sm:self-auto">
-          {/* Time Range Selector */}
-          <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
-            {[
-              { id: "today", label: "Today" },
-              { id: "7d", label: "7 Days" },
-              { id: "30d", label: "30 Days" },
-              { id: "90d", label: "90 Days" },
-            ].map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setRange(t.id)}
-                className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
-                  range === t.id
-                    ? "bg-[#004D38] text-white shadow-sm"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="p-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
+              title="Refresh Live Data"
+              aria-label="Refresh live metrics"
+            >
+              <RefreshCw className={`size-4 ${isRefreshing ? "animate-spin text-emerald-600" : ""}`} />
+            </button>
           </div>
-
-          <button
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="p-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
-            title="Refresh Live Data"
-            aria-label="Refresh live metrics"
-          >
-            <RefreshCw className={`size-4 ${isRefreshing ? "animate-spin text-emerald-600" : ""}`} />
-          </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Actionable Live Alerts (if any) */}
       {alerts.length > 0 && (
@@ -290,120 +292,77 @@ export default function VendorDashboardPage() {
       )}
 
       {/* Live KPI Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {/* Gross Sales */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Total Gross Sales
+        <VendorKpiCard
+          title="Total Gross Sales"
+          value={`₹${Number(metrics.totalSales || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`}
+          subtitle={
+            <span className="flex items-center gap-1">
+              <span className="font-semibold text-emerald-700">₹{Number(metrics.todaySales || 0).toFixed(2)}</span>
+              <span>earned today</span>
             </span>
-            <div className="size-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
-              <DollarSign className="size-4.5" />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-slate-900 tracking-tight">
-            ₹{Number(metrics.totalSales || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
-            <span className="font-semibold text-emerald-700">₹{Number(metrics.todaySales || 0).toFixed(2)}</span>
-            <span>earned today</span>
-          </div>
-        </div>
+          }
+          icon={DollarSign}
+          variant="emerald"
+        />
 
         {/* Orders Count */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Vendor Orders
+        <VendorKpiCard
+          title="Vendor Orders"
+          value={metrics.ordersCount ?? 0}
+          subtitle={
+            <span className="flex items-center gap-1">
+              <span className="font-semibold text-amber-700">{metrics.pendingOrdersCount ?? 0} pending</span>
+              <span>fulfillment</span>
             </span>
-            <div className="size-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center">
-              <ShoppingBag className="size-4.5" />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-slate-900 tracking-tight">
-            {metrics.ordersCount ?? 0}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
-            <span className="font-semibold text-amber-700">{metrics.pendingOrdersCount ?? 0} pending</span>
-            <span>fulfillment</span>
-          </div>
-        </div>
+          }
+          icon={ShoppingBag}
+          variant="blue"
+          href="/vendor/orders"
+        />
 
         {/* Product Catalog */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Active Listings
-            </span>
-            <div className="size-9 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center">
-              <Package className="size-4.5" />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-slate-900 tracking-tight">
-            {metrics.activeProductsCount ?? 0}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
-            <span>of {metrics.productsCount ?? 0} total products</span>
-          </div>
-        </div>
+        <VendorKpiCard
+          title="Active Listings"
+          value={metrics.activeProductsCount ?? 0}
+          subtitle={`of ${metrics.productsCount ?? 0} total products`}
+          icon={Package}
+          variant="purple"
+          href="/vendor/products"
+        />
 
         {/* Low Stock Indicator */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Low Stock Alerts
-            </span>
-            <div className={`size-9 rounded-xl flex items-center justify-center ${
-              (metrics.lowStockCount || 0) > 0 ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"
-            }`}>
-              <Boxes className="size-4.5" />
-            </div>
-          </div>
-          <div className={`text-2xl font-black tracking-tight ${
-            (metrics.lowStockCount || 0) > 0 ? "text-amber-700" : "text-slate-900"
-          }`}>
-            {metrics.lowStockCount ?? 0}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-1">
-            {metrics.totalStockOnHand ?? 0} total units on hand
-          </div>
-        </div>
+        <VendorKpiCard
+          title="Low Stock Alerts"
+          value={metrics.lowStockCount ?? 0}
+          subtitle={`${metrics.totalStockOnHand ?? 0} units on hand`}
+          icon={Boxes}
+          variant={(metrics.lowStockCount || 0) > 0 ? "amber" : "emerald"}
+          alert={(metrics.lowStockCount || 0) > 0}
+          href="/vendor/inventory"
+        />
 
         {/* Returns */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Pending Returns
-            </span>
-            <div className="size-9 rounded-xl bg-rose-50 text-rose-700 flex items-center justify-center">
-              <RotateCcw className="size-4.5" />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-slate-900 tracking-tight">
-            {metrics.pendingReturnsCount ?? 0}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-1">
-            Awaiting inspection / RMA
-          </div>
-        </div>
+        <VendorKpiCard
+          title="Pending Returns"
+          value={metrics.pendingReturnsCount ?? 0}
+          subtitle="Awaiting RMA inspection"
+          icon={RotateCcw}
+          variant="rose"
+          alert={(metrics.pendingReturnsCount || 0) > 0}
+          href="/vendor/returns"
+        />
 
         {/* Pending Settlements */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Pending Payouts
-            </span>
-            <div className="size-9 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center">
-              <Wallet className="size-4.5" />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-slate-900 tracking-tight">
-            ₹{Number(metrics.pendingSettlementAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-1">
-            Across {metrics.pendingSettlementsCount ?? 0} pending settlements
-          </div>
-        </div>
+        <VendorKpiCard
+          title="Pending Payouts"
+          value={`₹${Number(metrics.pendingSettlementAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`}
+          subtitle={`Across ${metrics.pendingSettlementsCount ?? 0} settlements`}
+          icon={Wallet}
+          variant="teal"
+          href="/vendor/finance"
+        />
       </div>
 
       {/* Sales Trend Bar Visual & Quick Actions */}
@@ -545,13 +504,15 @@ export default function VendorDashboardPage() {
         </div>
 
         {recentOrders.length === 0 ? (
-          <div className="p-12 text-center">
-            <ShoppingBag className="size-10 text-slate-300 mx-auto mb-3" />
-            <h4 className="text-sm font-bold text-slate-700">No Orders Yet</h4>
-            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              When customers purchase products from your catalog, your vendor-scoped line items will appear here immediately.
-            </p>
-          </div>
+          <VendorEmptyState
+            icon={ShoppingBag}
+            title="No Orders Yet"
+            description="When customers purchase products from your catalog, your vendor-scoped line items will appear here immediately."
+            action={{
+              label: "Explore Products",
+              href: "/vendor/products",
+            }}
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -588,15 +549,7 @@ export default function VendorDashboardPage() {
                         {itemCount} line item{itemCount > 1 ? "s" : ""}
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          order.fulfillmentStatus === "fulfilled"
-                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                            : order.fulfillmentStatus === "partially_fulfilled"
-                            ? "bg-blue-50 text-blue-700 border border-blue-200"
-                            : "bg-amber-50 text-amber-700 border border-amber-200"
-                        }`}>
-                          {order.fulfillmentStatus || "unfulfilled"}
-                        </span>
+                        <VendorStatusBadge status={order.fulfillmentStatus || "unfulfilled"} />
                       </td>
                       <td className="px-6 py-4 text-right font-bold text-slate-900">
                         ₹{Number(order.subtotal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}

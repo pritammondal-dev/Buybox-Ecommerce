@@ -419,7 +419,15 @@ const resolveShipmentScope = async (shipmentOrId) => {
   ) {
     shipment = shipmentOrId;
   } else {
-    const id = shipmentOrId._id || shipmentOrId;
+    let id = shipmentOrId._id || shipmentOrId;
+    if (typeof id === "string" && id.startsWith("shp_")) {
+      try {
+        const { decodeSecureId } = require("../utils/secure-id.util");
+        id = decodeSecureId(id, "shipment", { strict: false });
+      } catch {
+        return null;
+      }
+    }
     if (!mongoose.isValidObjectId(id)) return null;
     shipment = await Shipment.findById(id)
       .select("vendorId warehouseId orderId")

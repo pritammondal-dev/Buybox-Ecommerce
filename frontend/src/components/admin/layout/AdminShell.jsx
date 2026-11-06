@@ -6,6 +6,8 @@ import { AdminSidebar } from "../AdminSidebar.jsx";
 import { AdminHeader } from "../AdminHeader.jsx";
 import { AdminMobileNav } from "../AdminMobileNav.jsx";
 import { useAdminAuth } from "@/hooks/useAdminAuth.js";
+import { useAdminInactivity } from "@/hooks/admin/useAdminInactivity.js";
+import { AdminInactivityWarningModal } from "./AdminInactivityWarningModal.jsx";
 
 export function AdminShell({ children }) {
   const pathname = usePathname();
@@ -13,6 +15,14 @@ export function AdminShell({ children }) {
   const { user, isAuthenticated, isLoading, isInitialized, initializeAuth } = useAdminAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  const {
+    isWarningOpen,
+    secondsRemaining,
+    isContinuing,
+    handleContinueSession,
+    handleLogoutNow,
+  } = useAdminInactivity();
 
   // If on login page, render children directly without admin chrome
   const isLoginPage =
@@ -67,6 +77,14 @@ export function AdminShell({ children }) {
           <div className="mx-auto max-w-7xl space-y-6">{children}</div>
         </main>
       </div>
+
+      <AdminInactivityWarningModal
+        isOpen={isWarningOpen}
+        secondsRemaining={secondsRemaining}
+        isContinuing={isContinuing}
+        onContinueSession={handleContinueSession}
+        onLogoutNow={handleLogoutNow}
+      />
     </div>
   );
 }

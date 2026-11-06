@@ -21,7 +21,7 @@ const paymentWebhookEventSchema =
       gateway: {
         type: String,
         required: true,
-        enum: ["razorpay"],
+        enum: ["razorpay", "paypal"],
         default: "razorpay",
         index: true,
       },

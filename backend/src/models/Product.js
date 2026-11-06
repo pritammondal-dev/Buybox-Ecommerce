@@ -35,13 +35,25 @@ const productSchema = new mongoose.Schema(
       maxlength: 500,
     },
 
+    productType: {
+      type: String,
+      enum: ["simple", "variable"],
+      default: "simple",
+      index: true,
+    },
+
+    defaultVariantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ProductVariant",
+      default: null,
+      index: true,
+    },
+
     sku: {
       type: String,
       required: true,
-      unique: true,
       uppercase: true,
       trim: true,
-      index: true,
     },
 
     categoryId: {
@@ -211,6 +223,129 @@ const productSchema = new mongoose.Schema(
       ],
     },
 
+    dimensions: {
+      length: {
+        type: Number,
+        default: null,
+        min: 0,
+      },
+      width: {
+        type: Number,
+        default: null,
+        min: 0,
+      },
+      height: {
+        type: Number,
+        default: null,
+        min: 0,
+      },
+      unit: {
+        type: String,
+        enum: ["cm", "in", "m", "mm"],
+        default: "cm",
+      },
+    },
+
+    weight: {
+      value: {
+        type: Number,
+        default: null,
+        min: 0,
+      },
+      unit: {
+        type: String,
+        enum: ["g", "kg", "lb", "oz"],
+        default: "kg",
+      },
+    },
+
+    shippingClass: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 100,
+    },
+
+    isVirtual: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    isDownloadable: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    isStoreVisible: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
+
+    downloadableFiles: [
+      {
+        id: {
+          type: String,
+          required: true,
+          default: () => new mongoose.Types.ObjectId().toString(),
+        },
+        name: {
+          type: String,
+          required: true,
+          trim: true,
+          maxlength: 200,
+        },
+        fileKey: {
+          type: String,
+          default: null,
+          trim: true,
+        },
+        storageKey: {
+          type: String,
+          default: null,
+          trim: true,
+        },
+        fileUrl: {
+          type: String,
+          default: null,
+          trim: true,
+        },
+        fileSize: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+        mimeType: {
+          type: String,
+          default: "application/octet-stream",
+          trim: true,
+        },
+        version: {
+          type: String,
+          default: "1.0",
+          trim: true,
+        },
+        uploadedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+
+    downloadLimit: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+
+    downloadExpiryDays: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+
     ratingAverage: {
       type: Number,
       default: 0,
@@ -234,6 +369,11 @@ const productSchema = new mongoose.Schema(
     timestamps: true,
     versionKey: false,
   },
+);
+
+productSchema.index(
+  { sku: 1 },
+  { unique: true, partialFilterExpression: { deletedAt: null } }
 );
 
 productSchema.index({

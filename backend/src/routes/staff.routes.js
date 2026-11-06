@@ -67,17 +67,24 @@ const requireStaffProvisioningAuthority = async (req, res, next) => {
 
 const { adminSensitiveOpLimiter } = require("../middlewares/rate-limiter.middleware");
 
-// Create staff member (Superadmin or authorized staff with dynamic authority)
+// Create staff member (Superadmin only)
 router.post(
   "/",
   adminSensitiveOpLimiter,
-  requireStaffProvisioningAuthority,
+  requireRoles(ROLES.SUPER_ADMIN),
   validate(createStaffSchema),
   staffController.createStaff
 );
 
 // Update staff details (Superadmin only)
 router.patch(
+  "/:id",
+  requireRoles(ROLES.SUPER_ADMIN),
+  validateObjectId("id"),
+  validate(updateStaffSchema),
+  staffController.updateStaff
+);
+router.put(
   "/:id",
   requireRoles(ROLES.SUPER_ADMIN),
   validateObjectId("id"),
@@ -143,6 +150,7 @@ const jobRoleController = require("../controllers/job-role.controller");
 // Pre-flight preview of employee role change (diff calculation)
 router.post(
   "/:id/role-preview",
+  requirePermissions(PERMISSIONS.EMPLOYEE_ASSIGN_ROLE),
   validateObjectId("id"),
   jobRoleController.previewRoleChange
 );
@@ -150,6 +158,7 @@ router.post(
 // Assign dynamic Job Role to employee (promotion / demotion / lateral)
 router.post(
   "/:id/change-role",
+  requirePermissions(PERMISSIONS.EMPLOYEE_ASSIGN_ROLE),
   validateObjectId("id"),
   jobRoleController.assignEmployeeRole
 );

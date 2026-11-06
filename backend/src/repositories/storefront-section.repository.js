@@ -1,36 +1,73 @@
 const StorefrontSection = require("../models/StorefrontSection");
 
+const applyPopulateAndSession = (query, options = {}) => {
+  if (!query) return query;
+  if (typeof query.populate === "function") {
+    query = query
+      .populate("productIds")
+      .populate("pinnedProductIds")
+      .populate("excludedProductIds");
+  }
+  if (typeof query.session === "function") {
+    return query.session(options.session || null);
+  }
+  return query;
+};
+
 const findById = (sectionId, options = {}) =>
-  StorefrontSection.findById(sectionId).session(
-    options.session || null
-  );
+  applyPopulateAndSession(StorefrontSection.findById(sectionId), options);
 
 const findByKey = (key, options = {}) =>
-  StorefrontSection.findOne({ key }).session(
-    options.session || null
-  );
+  applyPopulateAndSession(StorefrontSection.findOne({ key }), options);
+
+const getActiveQuery = () => {
+  const now = new Date();
+  return {
+    isActive: true,
+    publicationStatus: { $nin: ["draft", "archived"] },
+    $and: [
+      {
+        $or: [
+          { startsAt: null },
+          { startsAt: { $exists: false } },
+          { startsAt: { $lte: now } },
+        ],
+      },
+      {
+        $or: [
+          { endsAt: null },
+          { endsAt: { $exists: false } },
+          { endsAt: { $gte: now } },
+        ],
+      },
+    ],
+  };
+};
 
 const findActiveByKey = (key, options = {}) =>
-  StorefrontSection.findOne({
-    key,
-    isActive: true,
-  })
-    .populate("productIds")
-    .session(options.session || null);
+  applyPopulateAndSession(
+    StorefrontSection.findOne({
+      key,
+      ...getActiveQuery(),
+    }),
+    options
+  );
 
-const findMany = (filter = {}, options = {}) =>
-  StorefrontSection.find(filter)
-    .sort({ displayOrder: 1, createdAt: -1 })
-    .populate("productIds")
-    .session(options.session || null);
+const findMany = (filter = {}, options = {}) => {
+  let query = StorefrontSection.find(filter);
+  if (query && typeof query.sort === "function") {
+    query = query.sort({ displayOrder: 1, createdAt: 1 });
+  }
+  return applyPopulateAndSession(query, options);
+};
 
-const findActive = (options = {}) =>
-  StorefrontSection.find({
-    isActive: true,
-  })
-    .sort({ displayOrder: 1, createdAt: -1 })
-    .populate("productIds")
-    .session(options.session || null);
+const findActive = (options = {}) => {
+  let query = StorefrontSection.find(getActiveQuery());
+  if (query && typeof query.sort === "function") {
+    query = query.sort({ displayOrder: 1, createdAt: 1 });
+  }
+  return applyPopulateAndSession(query, options);
+};
 
 const create = (data, options = {}) =>
   StorefrontSection.create([data], options).then(
@@ -41,8 +78,8 @@ const updateById = (
   sectionId,
   update,
   options = {}
-) =>
-  StorefrontSection.findByIdAndUpdate(
+) => {
+  let query = StorefrontSection.findByIdAndUpdate(
     sectionId,
     update,
     {
@@ -51,6 +88,14 @@ const updateById = (
       session: options.session || null,
     }
   );
+  if (query && typeof query.populate === "function") {
+    query = query
+      .populate("productIds")
+      .populate("pinnedProductIds")
+      .populate("excludedProductIds");
+  }
+  return query;
+};
 
 const deleteById = (sectionId, options = {}) =>
   StorefrontSection.findByIdAndDelete(
@@ -59,6 +104,32 @@ const deleteById = (sectionId, options = {}) =>
       session: options.session || null,
     }
   );
+
+const bulkReorder = async (sections = [], userId, options = {}) => {
+  if (!sections.length) return [];
+
+  const operations = sections.map((item) => {
+    const updateDoc = {
+      displayOrder: item.displayOrder,
+      updatedBy: userId,
+    };
+    if (typeof item.isActive === "boolean") {
+      updateDoc.isActive = item.isActive;
+    }
+    return {
+      updateOne: {
+        filter: { _id: item.id },
+        update: { $set: updateDoc },
+      },
+    };
+  });
+
+  await StorefrontSection.bulkWrite(operations, {
+    session: options.session || null,
+  });
+
+  return findMany({}, options);
+};
 
 module.exports = {
   findById,
@@ -69,4 +140,5 @@ module.exports = {
   create,
   updateById,
   deleteById,
-};
+  bulkReorder,
+};

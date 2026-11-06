@@ -240,6 +240,13 @@ describe("Phase 1G / Batch 2C — Coupon Operational Route Authorization (PBAC)"
       requiredPermission: PERMISSIONS.COUPONS_MANAGE,
     },
     {
+      name: "Delete Coupon",
+      batch: "Batch 2C",
+      method: "DELETE",
+      path: `/api/v1/coupons/${testId}`,
+      requiredPermission: PERMISSIONS.COUPONS_MANAGE,
+    },
+    {
       name: "Redeem Coupon (Mutation)",
       batch: "Batch 2C",
       method: "POST",
@@ -301,11 +308,11 @@ describe("Phase 1G / Batch 2C — Coupon Operational Route Authorization (PBAC)"
   });
 
   describe("1. Mechanical Route Registry & Express Router Stack Verification", () => {
-    test("verifies canonical inventory contains exactly 9 administrative routes (4 Batch 1 + 5 Batch 2C)", () => {
-      expect(COUPON_ADMIN_ROUTES).toHaveLength(9);
+    test("verifies canonical inventory contains exactly 10 administrative routes (4 Batch 1 + 6 Batch 2C)", () => {
+      expect(COUPON_ADMIN_ROUTES).toHaveLength(10);
       const batch1Routes = COUPON_ADMIN_ROUTES.filter((r) => r.batch === "Batch 1 (Phase 1D)");
       expect(batch1Routes).toHaveLength(4);
-      expect(BATCH_2C_MUTATION_ROUTES).toHaveLength(5);
+      expect(BATCH_2C_MUTATION_ROUTES).toHaveLength(6);
     });
 
     test("verifies canonical Batch 2C routes all mandate COUPONS_MANAGE permission", () => {
@@ -343,8 +350,8 @@ describe("Phase 1G / Batch 2C — Coupon Operational Route Authorization (PBAC)"
       }
 
       expect(routerHasAuth).toBe(true);
-      // Exactly 6 admin routes in coupon.routes.js (GET /, GET /:couponId, POST /, PATCH /:couponId, PATCH /:couponId/activate, PATCH /:couponId/deactivate)
-      expect(actualProtectedRoutes).toHaveLength(6);
+      // Exactly 7 admin routes in coupon.routes.js (GET /, GET /:couponId, POST /, PATCH /:couponId, PATCH /:couponId/activate, PATCH /:couponId/deactivate, DELETE /:couponId)
+      expect(actualProtectedRoutes).toHaveLength(7);
 
       for (const actual of actualProtectedRoutes) {
         const regexStr = "^" + actual.fullPath.replace(/\/:[a-zA-Z0-9_-]+/g, "/[^/]+") + "$";

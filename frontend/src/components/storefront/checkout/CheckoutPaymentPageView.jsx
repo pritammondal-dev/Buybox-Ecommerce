@@ -30,6 +30,7 @@ import { formatCurrency, parsePrice } from "../../../utils/formatCurrency.js";
 import { CheckoutStepIndicator } from "./CheckoutStepIndicator.jsx";
 import { CheckoutEmptyCart } from "./CheckoutEmptyCart.jsx";
 import { Button } from "../../ui/Button.jsx";
+import { PriceChangeConfirmationModal } from "./PriceChangeConfirmationModal.jsx";
 
 function loadRazorpayScript() {
   return new Promise((resolve) => {
@@ -60,7 +61,8 @@ const POPULAR_BANKS = [
 
 export function CheckoutPaymentPageView() {
   const router = useRouter();
-  const { isAuthenticated, isInitialized } = useAuth();
+  const { isAuthenticated, isInitialized, user, customerProfile } = useAuth();
+  const customerId = user?.id || user?._id || customerProfile?.id || customerProfile?._id || null;
   const { items = [], subtotal = 0, isHydrated, consumeCart } = useCart();
   const {
     selectedAddressId,
@@ -72,10 +74,12 @@ export function CheckoutPaymentPageView() {
     setCurrentOrderId,
     isPaymentCancelled,
     setIsPaymentCancelled,
+    validateAndSyncCustomer,
     fetchQuote,
     quote,
     isLoadingQuote,
     resetCheckout,
+    isQuoteExpired,
   } = useCheckoutStore();
 
   const [methods, setMethods] = useState([]);
@@ -83,6 +87,11 @@ export function CheckoutPaymentPageView() {
   const [selectedGatewayType, setSelectedGatewayType] = useState("upi"); // upi, card, netbanking, wallet, paypal, cod
   const [selectedBank, setSelectedBank] = useState("HDFC");
   const [upiId, setUpiId] = useState("");
+
+  // Price change confirmation & quote expiry recovery states
+  const [priceChangeData, setPriceChangeData] = useState(null);
+  const [isRefreshingQuote, setIsRefreshingQuote] = useState(false);
+  const [priceChangeError, setPriceChangeError] = useState(null);
 
   const availableMethods = useMemo(() => {
     if (!methods || methods.length === 0) {
@@ -103,7 +112,14 @@ export function CheckoutPaymentPageView() {
   const [isProcessing, setIsProcessing] = useState(false);
   const idempotencyKeyRef = useRef(null);
 
-  // 1. Guards
+  // 1. Customer session synchronization & boundary protection
+  useEffect(() => {
+    if (isInitialized) {
+      validateAndSyncCustomer(customerId);
+    }
+  }, [isInitialized, customerId, validateAndSyncCustomer]);
+
+  // 2. Guards: Address selection
   useEffect(() => {
     if (isInitialized && isAuthenticated && !selectedAddressId) {
       toast.info("Please select a delivery address first.");
@@ -111,7 +127,40 @@ export function CheckoutPaymentPageView() {
     }
   }, [isInitialized, isAuthenticated, selectedAddressId, router]);
 
-  // 2. Fetch authoritative quote
+  // 3. Proactive validation of existing currentOrderId on mount
+  useEffect(() => {
+    let isCancelled = false;
+    if (isAuthenticated && currentOrderId) {
+      orderService
+        .getOrderById(currentOrderId)
+        .then((res) => {
+          if (isCancelled) return;
+          const ord = res?.data?.order || res?.data;
+          const isPayable =
+            ord &&
+            ord.status === "pending" &&
+            ord.paymentStatus === "pending" &&
+            (!ord.cancellationStatus || ord.cancellationStatus === "none");
+
+          if (!isPayable) {
+            setCurrentOrderId(null);
+            setIsPaymentCancelled(false);
+          }
+        })
+        .catch((err) => {
+          if (isCancelled) return;
+          if (err?.status === 403 || err?.status === 404 || err?.code === "ORDER_ACCESS_DENIED") {
+            setCurrentOrderId(null);
+            setIsPaymentCancelled(false);
+          }
+        });
+    }
+    return () => {
+      isCancelled = true;
+    };
+  }, [isAuthenticated, currentOrderId, setCurrentOrderId, setIsPaymentCancelled]);
+
+  // 4. Fetch authoritative quote
   useEffect(() => {
     if (isAuthenticated && selectedAddressId) {
       fetchQuote({
@@ -122,7 +171,7 @@ export function CheckoutPaymentPageView() {
     }
   }, [isAuthenticated, selectedAddressId, appliedCoupon, selectedDeliveryOption, fetchQuote]);
 
-  // 3. Fetch active payment methods from backend
+  // 5. Fetch active payment methods from backend
   useEffect(() => {
     let isCancelled = false;
     paymentMethodService
@@ -165,8 +214,10 @@ export function CheckoutPaymentPageView() {
     ? parsePrice(quote.grandTotal)
     : Math.max(0, numericSubtotal - numericDiscount + numericShipping + numericTax);
 
-  // Handle Pay / Place Order
-  const handlePay = async () => {
+  // Execute Order Creation & Payment
+  const executeOrderAndPayment = async (overrideQuote = null) => {
+    if (isProcessing) return;
+
     if (!selectedAddressId) {
       toast.error("Please select a delivery address.");
       router.push("/checkout/address");
@@ -176,20 +227,93 @@ export function CheckoutPaymentPageView() {
     setIsProcessing(true);
     setIsPaymentCancelled(false);
 
-    if (!idempotencyKeyRef.current) {
-      idempotencyKeyRef.current = `bb-ord-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-    }
-    const idempotencyKey = idempotencyKeyRef.current;
-
     try {
       let orderId = currentOrderId;
 
-      // If we don't have an existing pending order, create one
+      // Verify existing order is valid and payable before reusing
+      if (orderId) {
+        try {
+          const checkRes = await orderService.getOrderById(orderId);
+          const existingOrder = checkRes?.data?.order || checkRes?.data;
+          const isPayable =
+            existingOrder &&
+            existingOrder.status === "pending" &&
+            existingOrder.paymentStatus === "pending" &&
+            (!existingOrder.cancellationStatus || existingOrder.cancellationStatus === "none");
+
+          if (!isPayable) {
+            setCurrentOrderId(null);
+            setIsPaymentCancelled(false);
+            orderId = null;
+          }
+        } catch {
+          setCurrentOrderId(null);
+          setIsPaymentCancelled(false);
+          orderId = null;
+        }
+      }
+
+      // If we don't have a valid existing order, create a fresh one for the CURRENT customer & cart
       if (!orderId) {
+        setIsPaymentCancelled(false);
+
+        // Determine effective quote and ensure it is fresh
+        let effectiveQuote = overrideQuote || quote;
+        const quoteExpired = typeof isQuoteExpired === "function" ? isQuoteExpired() : false;
+
+        if (!effectiveQuote?.quoteReference || quoteExpired) {
+          try {
+            effectiveQuote = await fetchQuote({
+              shippingAddressId: selectedAddressId,
+              couponCode: appliedCoupon?.code || null,
+              deliveryOptionId: selectedDeliveryOption || "standard",
+              force: true,
+            });
+          } catch {
+            toast.error("Unable to obtain latest pricing quote. Please check your network.");
+            setIsProcessing(false);
+            return;
+          }
+        }
+
+        if (!effectiveQuote?.quoteReference) {
+          toast.error("Unable to obtain a valid quote reference. Please refresh the page.");
+          setIsProcessing(false);
+          return;
+        }
+
+        // Check if freshly fetched quote materially changed from what customer was viewing
+        if (!overrideQuote) {
+          const freshTotal = parsePrice(effectiveQuote.grandTotal);
+          if (Math.abs(freshTotal - numericGrandTotal) > 0.001) {
+            setPriceChangeData({
+              previousQuote: {
+                grandTotal: numericGrandTotal,
+                subtotal: numericSubtotal,
+                discountTotal: numericDiscount,
+                shippingTotal: numericShipping,
+                taxTotal: numericTax,
+                currency: "INR",
+                items: quote?.items || [],
+              },
+              currentQuote: effectiveQuote,
+              reason: "quote_refreshed_changed",
+            });
+            setIsProcessing(false);
+            return;
+          }
+        }
+
+        if (!idempotencyKeyRef.current) {
+          idempotencyKeyRef.current = `bb-ord-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+        }
+        const idempotencyKey = idempotencyKeyRef.current;
+
         const orderRes = await orderService.createOrder({
           shippingAddressId: selectedAddressId,
           couponCode: appliedCoupon?.code || null,
           deliveryOptionId: selectedDeliveryOption || "standard",
+          quoteReference: effectiveQuote.quoteReference,
           idempotencyKey,
         });
 
@@ -198,10 +322,12 @@ export function CheckoutPaymentPageView() {
         if (!orderId) {
           throw new Error("Could not create order. Please check stock and try again.");
         }
-        setCurrentOrderId(orderId);
-        // Cart has been converted by backend order creation: idempotently consume local cart
+        setCurrentOrderId(orderId, customerId);
         consumeCart();
       }
+
+      // At this point we have a valid orderId. Proceed to payment gateway initiation
+      const idempotencyKey = idempotencyKeyRef.current || `bb-pay-${Date.now().toString(36)}`;
 
       // Branch 1: PayPal selected
       const selectedMethodObj = availableMethods.find((m) => m.code === effectiveSelectedGatewayType);
@@ -224,8 +350,15 @@ export function CheckoutPaymentPageView() {
           router.push(`/order/success/${orderId}`);
           return;
         } catch (payErr) {
-          setIsPaymentCancelled(true);
-          toast.error(payErr?.message || "Order created, but PayPal payment could not be initiated.");
+          const isAuthDenied = payErr?.status === 403 || payErr?.code === "ORDER_ACCESS_DENIED";
+          if (isAuthDenied) {
+            setCurrentOrderId(null);
+            setIsPaymentCancelled(false);
+            toast.error("Previous order session expired. Please retry payment to place your order.");
+          } else {
+            setIsPaymentCancelled(true);
+            toast.error(payErr?.message || "Order created, but PayPal payment could not be initiated.");
+          }
           return;
         }
       }
@@ -242,8 +375,15 @@ export function CheckoutPaymentPageView() {
       try {
         paymentRes = await paymentService.createPaymentIntent(orderId, idempotencyKey);
       } catch (payErr) {
-        setIsPaymentCancelled(true);
-        toast.error(payErr?.message || "Payment initiation failed.");
+        const isAuthDenied = payErr?.status === 403 || payErr?.code === "ORDER_ACCESS_DENIED";
+        if (isAuthDenied) {
+          setCurrentOrderId(null);
+          setIsPaymentCancelled(false);
+          toast.error("Previous order session expired. Please retry payment to place your order.");
+        } else {
+          setIsPaymentCancelled(true);
+          toast.error(payErr?.message || "Payment initiation failed.");
+        }
         return;
       }
 
@@ -309,11 +449,124 @@ export function CheckoutPaymentPageView() {
       rzp.open();
     } catch (err) {
       setIsProcessing(false);
-      setIsPaymentCancelled(true);
-      toast.error(err?.message || "Failed to proceed to payment.");
+
+      if (err?.code === "PRICE_CHANGED") {
+        idempotencyKeyRef.current = null;
+        setPriceChangeData({
+          previousQuote: err.details?.previousQuote || {
+            grandTotal: err.details?.quotedGrandTotal ?? numericGrandTotal,
+            currency: err.details?.currency || "INR",
+          },
+          currentQuote: err.details?.currentQuote || {
+            grandTotal: err.details?.currentGrandTotal,
+            currency: err.details?.currency || "INR",
+            subtotal: err.details?.subtotal,
+            discountTotal: err.details?.discountTotal,
+            shippingTotal: err.details?.shippingTotal,
+            taxTotal: err.details?.taxTotal,
+          },
+          reason: err.details?.reason || "component_changed",
+        });
+        return;
+      }
+
+      if (err?.code === "QUOTE_EXPIRED") {
+        idempotencyKeyRef.current = null;
+        toast.info("Your checkout quote was refreshed to ensure the latest pricing.");
+        setIsRefreshingQuote(true);
+        try {
+          const refreshedQuote = await fetchQuote({
+            shippingAddressId: selectedAddressId,
+            couponCode: appliedCoupon?.code || null,
+            deliveryOptionId: selectedDeliveryOption || "standard",
+            force: true,
+          });
+          if (refreshedQuote) {
+            const refreshedTotal = parsePrice(refreshedQuote.grandTotal);
+            if (Math.abs(refreshedTotal - numericGrandTotal) > 0.001) {
+              setPriceChangeData({
+                previousQuote: err.details?.previousQuote || {
+                  grandTotal: numericGrandTotal,
+                  subtotal: numericSubtotal,
+                  discountTotal: numericDiscount,
+                  shippingTotal: numericShipping,
+                  taxTotal: numericTax,
+                  currency: "INR",
+                  items: quote?.items || [],
+                },
+                currentQuote: refreshedQuote,
+                reason: "expired_refresh_change",
+              });
+            }
+          }
+        } catch {
+          toast.error("Could not refresh quote. Please try again.");
+        } finally {
+          setIsRefreshingQuote(false);
+        }
+        return;
+      }
+
+      const isAuthDenied = err?.status === 403 || err?.code === "ORDER_ACCESS_DENIED";
+      if (isAuthDenied) {
+        setCurrentOrderId(null);
+        setIsPaymentCancelled(false);
+        toast.error("Previous order session expired. Please retry payment.");
+      } else {
+        toast.error(err?.message || "Failed to proceed to payment.");
+      }
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handlePay = () => executeOrderAndPayment();
+
+  const handleConfirmPriceChange = async () => {
+    setIsRefreshingQuote(true);
+    setPriceChangeError(null);
+    try {
+      const freshQuote = await fetchQuote({
+        shippingAddressId: selectedAddressId,
+        couponCode: appliedCoupon?.code || null,
+        deliveryOptionId: selectedDeliveryOption || "standard",
+        force: true,
+      });
+
+      if (!freshQuote) {
+        throw new Error("Unable to retrieve updated quote. Please check your connection.");
+      }
+
+      const modalCurrentTotal = parsePrice(
+        priceChangeData?.currentQuote?.grandTotal ?? priceChangeData?.currentQuote?.currentGrandTotal ?? 0
+      );
+      const freshTotal = parsePrice(freshQuote.grandTotal);
+
+      if (Math.abs(modalCurrentTotal - freshTotal) > 0.001) {
+        setPriceChangeData({
+          previousQuote: priceChangeData.currentQuote,
+          currentQuote: freshQuote,
+          reason: "re_updated",
+        });
+        toast.info("Pricing was updated again. Please review the updated total.");
+        return;
+      }
+
+      setPriceChangeData(null);
+      idempotencyKeyRef.current = `bb-ord-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      toast.success("Price confirmed. Proceeding to checkout...");
+      await executeOrderAndPayment(freshQuote);
+    } catch (err) {
+      setPriceChangeError(err?.message || "Failed to confirm updated pricing. Please retry.");
+    } finally {
+      setIsRefreshingQuote(false);
+    }
+  };
+
+  const handleCancelPriceChange = () => {
+    setPriceChangeData(null);
+    setPriceChangeError(null);
+    router.push("/cart");
   };
 
   return (
@@ -653,6 +906,17 @@ export function CheckoutPaymentPageView() {
           </div>
         </div>
       </div>
+
+      {/* Authoritative Price Change Confirmation Dialog */}
+      <PriceChangeConfirmationModal
+        isOpen={Boolean(priceChangeData)}
+        previousQuote={priceChangeData?.previousQuote}
+        currentQuote={priceChangeData?.currentQuote}
+        isRefreshing={isRefreshingQuote}
+        error={priceChangeError}
+        onConfirm={handleConfirmPriceChange}
+        onCancel={handleCancelPriceChange}
+      />
     </div>
   );
 }

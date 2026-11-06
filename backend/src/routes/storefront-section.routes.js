@@ -19,8 +19,10 @@ const validate = require("../middlewares/validate.middleware");
 const {
   createStorefrontSectionSchema,
   updateStorefrontSectionSchema,
+  reorderStorefrontSectionsSchema,
   storefrontSectionIdParamsSchema,
   storefrontSectionKeyParamsSchema,
+  storefrontSectionProductsQuerySchema,
 } = require("../validators/cms/storefront-section.validator");
 
 // Public
@@ -28,6 +30,19 @@ const {
 router.get(
   "/active",
   storefrontSectionController.getActiveSections
+);
+
+router.get(
+  "/active/:key/products",
+  validate(
+    storefrontSectionKeyParamsSchema,
+    "params"
+  ),
+  validate(
+    storefrontSectionProductsQuerySchema,
+    "query"
+  ),
+  storefrontSectionController.getSectionProducts
 );
 
 router.get(
@@ -44,14 +59,32 @@ router.get(
 router.get(
   "/",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   storefrontSectionController.listSections
+);
+
+router.post(
+  "/initialize-defaults",
+  authenticate,
+  requirePermissions(PERMISSIONS.CMS_CREATE),
+  storefrontSectionController.initializeDefaults
+);
+
+router.patch(
+  "/reorder",
+  authenticate,
+  requirePermissions(PERMISSIONS.CMS_EDIT),
+  validate(
+    reorderStorefrontSectionsSchema,
+    "body"
+  ),
+  storefrontSectionController.reorderSections
 );
 
 router.get(
   "/key/:key",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   validate(
     storefrontSectionKeyParamsSchema,
     "params"
@@ -62,7 +95,7 @@ router.get(
 router.get(
   "/:sectionId",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   validate(
     storefrontSectionIdParamsSchema,
     "params"
@@ -70,10 +103,25 @@ router.get(
   storefrontSectionController.getSectionById
 );
 
+router.get(
+  "/:sectionId/products",
+  authenticate,
+  requirePermissions(PERMISSIONS.CMS_VIEW),
+  validate(
+    storefrontSectionIdParamsSchema,
+    "params"
+  ),
+  validate(
+    storefrontSectionProductsQuerySchema,
+    "query"
+  ),
+  storefrontSectionController.getSectionProducts
+);
+
 router.post(
   "/",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_CREATE),
   validate(
     createStorefrontSectionSchema,
     "body"
@@ -84,7 +132,7 @@ router.post(
 router.patch(
   "/:sectionId",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_EDIT),
   validate(
     storefrontSectionIdParamsSchema,
     "params"
@@ -99,7 +147,7 @@ router.patch(
 router.delete(
   "/:sectionId",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_DELETE),
   validate(
     storefrontSectionIdParamsSchema,
     "params"

@@ -14,7 +14,8 @@ import {
   Plus,
   Minus,
 } from "lucide-react";
-import apiClient from "@/lib/api/axios.js";
+import apiClient from "@/lib/api/admin-axios.js";
+import { toast } from "sonner";
 import { adminInventoryService } from "@/services/admin/admin.service.js";
 
 export default function AdminInventoryStockPage() {
@@ -50,9 +51,9 @@ export default function AdminInventoryStockPage() {
       if (lowStockFilter) params.isLowStock = "true";
 
       const res = await apiClient.get("/inventory", { params });
-      const data = res?.data?.data || res?.data || [];
-      const meta = res?.data?.meta || {};
-      setItems(Array.isArray(data) ? data : []);
+      const data = Array.isArray(res?.data) ? res.data : (Array.isArray(res?.data?.data) ? res.data.data : (Array.isArray(res) ? res : []));
+      const meta = res?.meta || res?.data?.meta || {};
+      setItems(data);
       setPagination({
         page: meta?.page || page,
         total: meta?.total || 0,
@@ -88,7 +89,7 @@ export default function AdminInventoryStockPage() {
     try {
       const qtyNum = parseInt(adjustQty, 10);
       if (isNaN(qtyNum) || qtyNum <= 0) {
-        alert("Please enter a valid positive quantity");
+        toast.error("Please enter a valid positive quantity");
         setAdjusting(false);
         return;
       }
@@ -99,11 +100,11 @@ export default function AdminInventoryStockPage() {
         adjustReason.trim() || "Manual adjustment"
       );
 
-      setSuccess(
-        `Successfully ${adjustType === "add" ? "added" : "deducted"} ${qtyNum} units for SKU ${
-          selectedItem.productVariant?.sku || ""
-        }`
-      );
+      const msg = `Successfully ${adjustType === "add" ? "added" : "deducted"} ${qtyNum} units for SKU ${
+        selectedItem.productVariant?.sku || ""
+      }`;
+      toast.success(msg);
+      setSuccess(msg);
       setTimeout(() => setSuccess(null), 4500);
       setShowAdjustModal(false);
       setSelectedItem(null);
@@ -111,6 +112,7 @@ export default function AdminInventoryStockPage() {
       setAdjustReason("");
       fetchInventory(pagination.page);
     } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || "Failed to adjust stock");
       setError(err?.response?.data?.message || err?.message || "Failed to adjust stock");
     } finally {
       setAdjusting(false);
@@ -125,7 +127,7 @@ export default function AdminInventoryStockPage() {
     try {
       const qtyNum = parseInt(transferQty, 10);
       if (isNaN(qtyNum) || qtyNum <= 0) {
-        alert("Please enter a valid positive quantity");
+        toast.error("Please enter a valid positive quantity");
         setTransferring(false);
         return;
       }

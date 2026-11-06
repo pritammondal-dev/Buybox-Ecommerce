@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Menu,
   Bell,
@@ -13,6 +13,7 @@ import {
   Clock,
   User,
   ExternalLink,
+  Search,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth.store";
 
@@ -22,9 +23,25 @@ export function VendorHeader({
   title,
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { user } = useAuthStore();
+  const [globalSearch, setGlobalSearch] = useState("");
 
-  const businessName = vendorProfile?.businessName || user?.firstName ? `${user?.firstName}'s Store` : "My Store";
+  const handleGlobalSearchSubmit = (e) => {
+    e.preventDefault();
+    const query = globalSearch.trim();
+    if (!query) return;
+
+    // Smart routing: if starts with ORD- or digits, search orders; otherwise search products
+    if (/^ORD/i.test(query) || /^\d{5,}/.test(query)) {
+      router.push(`/vendor/orders?search=${encodeURIComponent(query)}`);
+    } else {
+      router.push(`/vendor/products?search=${encodeURIComponent(query)}`);
+    }
+    setGlobalSearch("");
+  };
+
+  const businessName = vendorProfile?.businessName || (user?.firstName ? `${user?.firstName}'s Store` : "My Store");
   const onboardingStatus = vendorProfile?.onboardingStatus || "pending";
   const isApproved = onboardingStatus === "approved" && vendorProfile?.isActive;
 
@@ -82,6 +99,33 @@ export function VendorHeader({
         </div>
       </div>
 
+      {/* Global Center Search Bar (Seller Central Style) */}
+      <form
+        onSubmit={handleGlobalSearchSubmit}
+        className="hidden md:flex items-center flex-1 max-w-md mx-6"
+      >
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+          <input
+            type="text"
+            value={globalSearch}
+            onChange={(e) => setGlobalSearch(e.target.value)}
+            placeholder="Search orders, catalog SKUs, tracking..."
+            className="w-full pl-9 pr-8 py-1.5 rounded-xl border border-slate-200 bg-slate-50/70 text-xs text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-600 transition-all"
+            aria-label="Global merchant search"
+          />
+          {globalSearch && (
+            <button
+              type="button"
+              onClick={() => setGlobalSearch("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 hover:text-slate-600"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      </form>
+
       <div className="flex items-center gap-2 sm:gap-3">
         {/* Quick Add Product CTA */}
         <Link
@@ -92,7 +136,7 @@ export function VendorHeader({
           <span className="hidden sm:inline">Add Product</span>
         </Link>
 
-        {/* Notifications Icon */}
+        {/* Notifications Icon with Badge */}
         <Link
           href="/vendor/notifications"
           className="relative p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
@@ -100,6 +144,7 @@ export function VendorHeader({
           aria-label="View notifications"
         >
           <Bell className="size-4" />
+          <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-emerald-600 ring-2 ring-white" />
         </Link>
 
         {/* Support Help */}

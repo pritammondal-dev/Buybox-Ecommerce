@@ -1,0 +1,1138 @@
+{
+  "audit": {
+    "timestamp": "2026-10-28T06:21:50.478Z",
+    "database": "buybox",
+    "modelsAudited": 82,
+    "collectionsInDb": 84,
+    "summary": {
+      "declaredCount": 516,
+      "liveCount": 610,
+      "matchingCount": 512,
+      "missingCount": 1,
+      "conflictsCount": 3,
+      "extraCount": 12,
+      "duplicateRisksCount": 0
+    },
+    "collections": {
+      "addresses": {
+        "modelName": "Address",
+        "collectionExists": true,
+        "declaredCount": 5,
+        "liveCount": 6,
+        "matchingCount": 5,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "analyticsevents": {
+        "modelName": "AnalyticsEvent",
+        "collectionExists": true,
+        "declaredCount": 12,
+        "liveCount": 13,
+        "matchingCount": 12,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "attributes": {
+        "modelName": "Attribute",
+        "collectionExists": true,
+        "declaredCount": 8,
+        "liveCount": 9,
+        "matchingCount": 8,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "auditlogs": {
+        "modelName": "AuditLog",
+        "collectionExists": true,
+        "declaredCount": 9,
+        "liveCount": 10,
+        "matchingCount": 9,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "authentication_policies": {
+        "modelName": "AuthenticationPolicy",
+        "collectionExists": true,
+        "declaredCount": 0,
+        "liveCount": 1,
+        "matchingCount": 0,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "brands": {
+        "modelName": "Brand",
+        "collectionExists": true,
+        "declaredCount": 4,
+        "liveCount": 5,
+        "matchingCount": 4,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "campaigns": {
+        "modelName": "Campaign",
+        "collectionExists": true,
+        "declaredCount": 9,
+        "liveCount": 10,
+        "matchingCount": 9,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "campaignperformances": {
+        "modelName": "CampaignPerformance",
+        "collectionExists": true,
+        "declaredCount": 4,
+        "liveCount": 5,
+        "matchingCount": 4,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "carts": {
+        "modelName": "Cart",
+        "collectionExists": true,
+        "declaredCount": 9,
+        "liveCount": 10,
+        "matchingCount": 9,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "categories": {
+        "modelName": "Category",
+        "collectionExists": true,
+        "declaredCount": 6,
+        "liveCount": 7,
+        "matchingCount": 6,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "cmspages": {
+        "modelName": "CmsPage",
+        "collectionExists": true,
+        "declaredCount": 6,
+        "liveCount": 7,
+        "matchingCount": 6,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "coupons": {
+        "modelName": "Coupon",
+        "collectionExists": true,
+        "declaredCount": 5,
+        "liveCount": 7,
+        "matchingCount": 5,
+        "missing": [],
+        "extra": [
+          {
+            "v": 2,
+            "key": {
+              "status": 1,
+              "isActive": 1,
+              "startsAt": 1,
+              "expiresAt": 1
+            },
+            "name": "status_1_isActive_1_startsAt_1_expiresAt_1"
+          }
+        ],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "couponredemptions": {
+        "modelName": "CouponRedemption",
+        "collectionExists": true,
+        "declaredCount": 4,
+        "liveCount": 5,
+        "matchingCount": 4,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "customers": {
+        "modelName": "Customer",
+        "collectionExists": true,
+        "declaredCount": 3,
+        "liveCount": 4,
+        "matchingCount": 3,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "customernotifications": {
+        "modelName": "CustomerNotification",
+        "collectionExists": true,
+        "declaredCount": 5,
+        "liveCount": 6,
+        "matchingCount": 5,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "digitalentitlements": {
+        "modelName": "DigitalEntitlement",
+        "collectionExists": true,
+        "declaredCount": 11,
+        "liveCount": 13,
+        "matchingCount": 11,
+        "missing": [],
+        "extra": [
+          {
+            "v": 2,
+            "key": {
+              "asset.fileKey": 1
+            },
+            "name": "asset.fileKey_1"
+          }
+        ],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "emaillogs": {
+        "modelName": "EmailLog",
+        "collectionExists": true,
+        "declaredCount": 4,
+        "liveCount": 5,
+        "matchingCount": 4,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "emailverificationtokens": {
+        "modelName": "EmailVerificationToken",
+        "collectionExists": true,
+        "declaredCount": 3,
+        "liveCount": 4,
+        "matchingCount": 2,
+        "missing": [],
+        "extra": [],
+        "conflicting": [
+          {
+            "declared": {
+              "key": {
+                "expiresAt": 1
+              },
+              "options": {
+                "expireAfterSeconds": 0
+              },
+              "serializedKey": "expiresAt:1",
+              "source": "schema.index()"
+            },
+            "live": {
+              "v": 2,
+              "key": {
+                "expiresAt": 1
+              },
+              "name": "expiresAt_1"
+            },
+            "reasons": [
+              "expireAfterSeconds: declared=0, live=undefined"
+            ]
+          }
+        ],
+        "duplicateRisks": []
+      },
+      "employees": {
+        "modelName": "Employee",
+        "collectionExists": true,
+        "declaredCount": 4,
+        "liveCount": 5,
+        "matchingCount": 4,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "employeepermissiongrants": {
+        "modelName": "EmployeePermissionGrant",
+        "collectionExists": true,
+        "declaredCount": 5,
+        "liveCount": 6,
+        "matchingCount": 5,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "employeepermissionrestrictions": {
+        "modelName": "EmployeePermissionRestriction",
+        "collectionExists": true,
+        "declaredCount": 5,
+        "liveCount": 6,
+        "matchingCount": 5,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "employeeroles": {
+        "modelName": "EmployeeRole",
+        "collectionExists": true,
+        "declaredCount": 5,
+        "liveCount": 6,
+        "matchingCount": 5,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "financialledgerentries": {
+        "modelName": "FinancialLedgerEntry",
+        "collectionExists": true,
+        "declaredCount": 11,
+        "liveCount": 12,
+        "matchingCount": 11,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "fulfillmentexceptions": {
+        "modelName": "FulfillmentException",
+        "collectionExists": true,
+        "declaredCount": 10,
+        "liveCount": 11,
+        "matchingCount": 10,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "giftcards": {
+        "modelName": "GiftCard",
+        "collectionExists": true,
+        "declaredCount": 3,
+        "liveCount": 4,
+        "matchingCount": 3,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "giftcardtransactions": {
+        "modelName": "GiftCardTransaction",
+        "collectionExists": true,
+        "declaredCount": 3,
+        "liveCount": 4,
+        "matchingCount": 3,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "importexportjobs": {
+        "modelName": "ImportExportJob",
+        "collectionExists": true,
+        "declaredCount": 8,
+        "liveCount": 9,
+        "matchingCount": 8,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "inventories": {
+        "modelName": "Inventory",
+        "collectionExists": true,
+        "declaredCount": 3,
+        "liveCount": 4,
+        "matchingCount": 3,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "inventorytransactions": {
+        "modelName": "InventoryTransaction",
+        "collectionExists": true,
+        "declaredCount": 8,
+        "liveCount": 9,
+        "matchingCount": 8,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "jobroles": {
+        "modelName": "JobRole",
+        "collectionExists": true,
+        "declaredCount": 6,
+        "liveCount": 8,
+        "matchingCount": 6,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "notificationoutboxes": {
+        "modelName": "NotificationOutbox",
+        "collectionExists": true,
+        "declaredCount": 4,
+        "liveCount": 7,
+        "matchingCount": 4,
+        "missing": [],
+        "extra": [
+          {
+            "v": 2,
+            "key": {
+              "status": 1
+            },
+            "name": "status_1"
+          },
+          {
+            "v": 2,
+            "key": {
+              "status": 1,
+              "availableAt": 1
+            },
+            "name": "status_1_availableAt_1"
+          }
+        ],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "orders": {
+        "modelName": "Order",
+        "collectionExists": true,
+        "declaredCount": 23,
+        "liveCount": 24,
+        "matchingCount": 23,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "otps": {
+        "modelName": "Otp",
+        "collectionExists": true,
+        "declaredCount": 8,
+        "liveCount": 9,
+        "matchingCount": 8,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "passwordresettokens": {
+        "modelName": "PasswordResetToken",
+        "collectionExists": true,
+        "declaredCount": 3,
+        "liveCount": 4,
+        "matchingCount": 3,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "payments": {
+        "modelName": "Payment",
+        "collectionExists": true,
+        "declaredCount": 13,
+        "liveCount": 16,
+        "matchingCount": 13,
+        "missing": [],
+        "extra": [
+          {
+            "v": 2,
+            "key": {
+              "idempotencyKey": 1
+            },
+            "name": "idempotencyKey_1"
+          },
+          {
+            "v": 2,
+            "key": {
+              "gateway": 1,
+              "idempotencyKey": 1
+            },
+            "name": "gateway_1_idempotencyKey_1",
+            "unique": true,
+            "partialFilterExpression": {
+              "idempotencyKey": {
+                "$type": "string"
+              }
+            }
+          }
+        ],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "paymentmethods": {
+        "modelName": "PaymentMethod",
+        "collectionExists": true,
+        "declaredCount": 9,
+        "liveCount": 10,
+        "matchingCount": 9,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "paymentwebhookevents": {
+        "modelName": "PaymentWebhookEvent",
+        "collectionExists": true,
+        "declaredCount": 5,
+        "liveCount": 6,
+        "matchingCount": 5,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "permissions": {
+        "modelName": "Permission",
+        "collectionExists": true,
+        "declaredCount": 4,
+        "liveCount": 5,
+        "matchingCount": 4,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "platformcredentials": {
+        "modelName": "PlatformCredential",
+        "collectionExists": true,
+        "declaredCount": 3,
+        "liveCount": 4,
+        "matchingCount": 3,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "products": {
+        "modelName": "Product",
+        "collectionExists": true,
+        "declaredCount": 16,
+        "liveCount": 20,
+        "matchingCount": 15,
+        "missing": [
+          {
+            "key": {
+              "name": "text",
+              "description": "text",
+              "shortDescription": "text",
+              "tags": "text"
+            },
+            "options": {},
+            "serializedKey": "name:text_description:text_shortDescription:text_tags:text",
+            "source": "schema.index()"
+          }
+        ],
+        "extra": [
+          {
+            "v": 2,
+            "key": {
+              "categoryId": 1
+            },
+            "name": "categoryId_1"
+          },
+          {
+            "v": 2,
+            "key": {
+              "brandId": 1
+            },
+            "name": "brandId_1"
+          },
+          {
+            "v": 2,
+            "key": {
+              "vendorId": 1
+            },
+            "name": "vendorId_1"
+          },
+          {
+            "v": 2,
+            "key": {
+              "_fts": "text",
+              "_ftsx": 1
+            },
+            "name": "name_text_description_text_shortDescription_text_tags_text",
+            "weights": {
+              "description": 1,
+              "name": 1,
+              "shortDescription": 1,
+              "tags": 1
+            },
+            "default_language": "english",
+            "language_override": "language",
+            "textIndexVersion": 3
+          }
+        ],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "productdiscounts": {
+        "modelName": "ProductDiscount",
+        "collectionExists": true,
+        "declaredCount": 13,
+        "liveCount": 14,
+        "matchingCount": 13,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "productquestions": {
+        "modelName": "ProductQuestion",
+        "collectionExists": true,
+        "declaredCount": 5,
+        "liveCount": 6,
+        "matchingCount": 5,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "productvariants": {
+        "modelName": "ProductVariant",
+        "collectionExists": true,
+        "declaredCount": 10,
+        "liveCount": 12,
+        "matchingCount": 10,
+        "missing": [],
+        "extra": [
+          {
+            "v": 2,
+            "key": {
+              "productId": 1
+            },
+            "name": "productId_1"
+          }
+        ],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "refreshtokens": {
+        "modelName": "RefreshToken",
+        "collectionExists": true,
+        "declaredCount": 4,
+        "liveCount": 5,
+        "matchingCount": 3,
+        "missing": [],
+        "extra": [],
+        "conflicting": [
+          {
+            "declared": {
+              "key": {
+                "expiresAt": 1
+              },
+              "options": {
+                "expireAfterSeconds": 0
+              },
+              "serializedKey": "expiresAt:1",
+              "source": "schema.index()"
+            },
+            "live": {
+              "v": 2,
+              "key": {
+                "expiresAt": 1
+              },
+              "name": "expiresAt_1"
+            },
+            "reasons": [
+              "expireAfterSeconds: declared=0, live=undefined"
+            ]
+          }
+        ],
+        "duplicateRisks": []
+      },
+      "refunds": {
+        "modelName": "Refund",
+        "collectionExists": true,
+        "declaredCount": 10,
+        "liveCount": 12,
+        "matchingCount": 10,
+        "missing": [],
+        "extra": [
+          {
+            "v": 2,
+            "key": {
+              "status": 1,
+              "createdAt": -1
+            },
+            "name": "status_1_createdAt_-1"
+          }
+        ],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "returnrequests": {
+        "modelName": "ReturnRequest",
+        "collectionExists": true,
+        "declaredCount": 9,
+        "liveCount": 10,
+        "matchingCount": 9,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "reviews": {
+        "modelName": "Review",
+        "collectionExists": true,
+        "declaredCount": 8,
+        "liveCount": 9,
+        "matchingCount": 8,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "rewardaccounts": {
+        "modelName": "RewardAccount",
+        "collectionExists": true,
+        "declaredCount": 2,
+        "liveCount": 3,
+        "matchingCount": 2,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "rewardtransactions": {
+        "modelName": "RewardTransaction",
+        "collectionExists": true,
+        "declaredCount": 3,
+        "liveCount": 4,
+        "matchingCount": 3,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "roles": {
+        "modelName": "Role",
+        "collectionExists": true,
+        "declaredCount": 4,
+        "liveCount": 5,
+        "matchingCount": 4,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "rolepermissions": {
+        "modelName": "RolePermission",
+        "collectionExists": true,
+        "declaredCount": 3,
+        "liveCount": 4,
+        "matchingCount": 3,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "savedviews": {
+        "modelName": "SavedView",
+        "collectionExists": true,
+        "declaredCount": 3,
+        "liveCount": 4,
+        "matchingCount": 3,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "shipments": {
+        "modelName": "Shipment",
+        "collectionExists": true,
+        "declaredCount": 11,
+        "liveCount": 12,
+        "matchingCount": 11,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "shipmentwebhookevents": {
+        "modelName": "ShipmentWebhookEvent",
+        "collectionExists": true,
+        "declaredCount": 4,
+        "liveCount": 5,
+        "matchingCount": 4,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "skuregistries": {
+        "modelName": "SkuRegistry",
+        "collectionExists": true,
+        "declaredCount": 5,
+        "liveCount": 6,
+        "matchingCount": 5,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "specialeventpages": {
+        "modelName": "SpecialEventPage",
+        "collectionExists": true,
+        "declaredCount": 8,
+        "liveCount": 9,
+        "matchingCount": 8,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "stockcounts": {
+        "modelName": "StockCount",
+        "collectionExists": true,
+        "declaredCount": 5,
+        "liveCount": 6,
+        "matchingCount": 5,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "stockreceivings": {
+        "modelName": "StockReceiving",
+        "collectionExists": true,
+        "declaredCount": 6,
+        "liveCount": 7,
+        "matchingCount": 6,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "stocktransfers": {
+        "modelName": "StockTransfer",
+        "collectionExists": true,
+        "declaredCount": 9,
+        "liveCount": 10,
+        "matchingCount": 9,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "storefrontannouncementbars": {
+        "modelName": "StorefrontAnnouncementBar",
+        "collectionExists": true,
+        "declaredCount": 7,
+        "liveCount": 8,
+        "matchingCount": 7,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "storefrontbanners": {
+        "modelName": "StorefrontBanner",
+        "collectionExists": true,
+        "declaredCount": 11,
+        "liveCount": 12,
+        "matchingCount": 11,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "storefrontcontentblocks": {
+        "modelName": "StorefrontContentBlock",
+        "collectionExists": true,
+        "declaredCount": 9,
+        "liveCount": 10,
+        "matchingCount": 9,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "storefronthomepages": {
+        "modelName": "StorefrontHomepage",
+        "collectionExists": true,
+        "declaredCount": 4,
+        "liveCount": 5,
+        "matchingCount": 4,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "storefrontmedias": {
+        "modelName": "StorefrontMedia",
+        "collectionExists": true,
+        "declaredCount": 6,
+        "liveCount": 7,
+        "matchingCount": 6,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "storefrontmenus": {
+        "modelName": "StorefrontMenu",
+        "collectionExists": true,
+        "declaredCount": 5,
+        "liveCount": 6,
+        "matchingCount": 5,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "storefrontpublications": {
+        "modelName": "StorefrontPublication",
+        "collectionExists": true,
+        "declaredCount": 9,
+        "liveCount": 10,
+        "matchingCount": 9,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "storefrontredirects": {
+        "modelName": "StorefrontRedirect",
+        "collectionExists": true,
+        "declaredCount": 4,
+        "liveCount": 5,
+        "matchingCount": 4,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "storefrontsections": {
+        "modelName": "StorefrontSection",
+        "collectionExists": true,
+        "declaredCount": 7,
+        "liveCount": 8,
+        "matchingCount": 7,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "storefrontseos": {
+        "modelName": "StorefrontSeo",
+        "collectionExists": true,
+        "declaredCount": 2,
+        "liveCount": 3,
+        "matchingCount": 2,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "storefrontsettings": {
+        "modelName": "StorefrontSettings",
+        "collectionExists": true,
+        "declaredCount": 1,
+        "liveCount": 2,
+        "matchingCount": 1,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "supporttickets": {
+        "modelName": "SupportTicket",
+        "collectionExists": true,
+        "declaredCount": 11,
+        "liveCount": 12,
+        "matchingCount": 11,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "supporttickethistories": {
+        "modelName": "SupportTicketHistory",
+        "collectionExists": true,
+        "declaredCount": 4,
+        "liveCount": 5,
+        "matchingCount": 4,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "supportticketmessages": {
+        "modelName": "SupportTicketMessage",
+        "collectionExists": true,
+        "declaredCount": 4,
+        "liveCount": 5,
+        "matchingCount": 4,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "tasks": {
+        "modelName": "Task",
+        "collectionExists": true,
+        "declaredCount": 6,
+        "liveCount": 7,
+        "matchingCount": 6,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "taxrules": {
+        "modelName": "TaxRule",
+        "collectionExists": true,
+        "declaredCount": 3,
+        "liveCount": 4,
+        "matchingCount": 3,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "users": {
+        "modelName": "User",
+        "collectionExists": true,
+        "declaredCount": 8,
+        "liveCount": 9,
+        "matchingCount": 8,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "vendors": {
+        "modelName": "Vendor",
+        "collectionExists": true,
+        "declaredCount": 7,
+        "liveCount": 8,
+        "matchingCount": 7,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "vendorpayouts": {
+        "modelName": "VendorPayout",
+        "collectionExists": true,
+        "declaredCount": 5,
+        "liveCount": 6,
+        "matchingCount": 4,
+        "missing": [],
+        "extra": [],
+        "conflicting": [
+          {
+            "declared": {
+              "key": {
+                "settlementId": 1
+              },
+              "options": {
+                "unique": true
+              },
+              "serializedKey": "settlementId:1",
+              "source": "schema.index()"
+            },
+            "live": {
+              "v": 2,
+              "key": {
+                "settlementId": 1
+              },
+              "name": "settlementId_1"
+            },
+            "reasons": [
+              "unique: declared=true, live=false"
+            ]
+          }
+        ],
+        "duplicateRisks": []
+      },
+      "warehouses": {
+        "modelName": "Warehouse",
+        "collectionExists": true,
+        "declaredCount": 5,
+        "liveCount": 6,
+        "matchingCount": 5,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "warehouselocations": {
+        "modelName": "WarehouseLocation",
+        "collectionExists": true,
+        "declaredCount": 4,
+        "liveCount": 5,
+        "matchingCount": 4,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "wishlists": {
+        "modelName": "Wishlist",
+        "collectionExists": true,
+        "declaredCount": 1,
+        "liveCount": 2,
+        "matchingCount": 1,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      },
+      "workassignments": {
+        "modelName": "WorkAssignment",
+        "collectionExists": true,
+        "declaredCount": 5,
+        "liveCount": 6,
+        "matchingCount": 5,
+        "missing": [],
+        "extra": [],
+        "conflicting": [],
+        "duplicateRisks": []
+      }
+    }
+  },
+  "deployResult": {
+    "timestamp": "2026-10-28T06:21:50.718Z",
+    "database": "buybox",
+    "status": "COMPLETED",
+    "indexesAttempted": 1,
+    "indexesCreated": 1,
+    "indexesSkipped": 0,
+    "indexesFailed": 0,
+    "results": [
+      {
+        "collection": "products",
+        "key": {
+          "name": "text",
+          "description": "text",
+          "shortDescription": "text",
+          "tags": "text"
+        },
+        "name": "name_text_description_text_shortDescription_text_tags_text",
+        "status": "CREATED",
+        "durationMs": 3
+      }
+    ]
+  }
+}

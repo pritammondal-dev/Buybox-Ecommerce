@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { staffService } from "@/services/admin/admin.service.js";
 import { useAuth } from "@/hooks/useAuth.js";
+import { ConfirmDialog } from "@/components/admin/ConfirmDialog.jsx";
 
 export default function StaffManagementPage() {
   const { user: currentUser } = useAuth();
@@ -33,6 +34,8 @@ export default function StaffManagementPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState(null);
+  const [staffToToggle, setStaffToToggle] = useState(null);
+  const [toggleLoading, setToggleLoading] = useState(false);
 
   // Form states
   const [createForm, setCreateForm] = useState({
@@ -109,36 +112,37 @@ export default function StaffManagementPage() {
     }
   };
 
-  const handleToggleSuspend = async (member) => {
+  const handleToggleSuspend = (member) => {
     if (!isSuperadmin) return;
+    setStaffToToggle(member);
+  };
+
+  const handleConfirmToggleSuspend = async () => {
+    if (!isSuperadmin || !staffToToggle) return;
     const isCurrentlySuspended =
-      member.employee?.status === "suspended" || !member.isActive;
+      staffToToggle.employee?.status === "suspended" || !staffToToggle.isActive;
     const action = isCurrentlySuspended ? "reactivate" : "suspend";
 
-    if (
-      !confirm(
-        `Are you sure you want to ${action} ${member.firstName} ${member.lastName}?`
-      )
-    ) {
-      return;
-    }
-
+    setToggleLoading(true);
     try {
       if (isCurrentlySuspended) {
-        await staffService.reactivate(member.id);
+        await staffService.reactivate(staffToToggle.id);
         setActionSuccess("Staff account reactivated");
       } else {
-        await staffService.suspend(member.id);
+        await staffService.suspend(staffToToggle.id);
         setActionSuccess("Staff account suspended");
       }
       setTimeout(() => setActionSuccess(null), 4000);
       fetchStaff();
+      setStaffToToggle(null);
     } catch (err) {
       setError(
         err?.response?.data?.message ||
           err?.message ||
           `Failed to ${action} staff`
       );
+    } finally {
+      setToggleLoading(false);
     }
   };
 
@@ -579,6 +583,34 @@ export default function StaffManagementPage() {
           </div>
         </div>
       )}
+
+      {/* Confirm Toggle Suspend Dialog */}
+      <ConfirmDialog
+        isOpen={Boolean(staffToToggle)}
+        onClose={() => setStaffToToggle(null)}
+        onConfirm={handleConfirmToggleSuspend}
+        title={
+          staffToToggle?.employee?.status === "suspended" || !staffToToggle?.isActive
+            ? "Reactivate Staff Account"
+            : "Suspend Staff Account"
+        }
+        description={`Are you sure you want to ${
+          staffToToggle?.employee?.status === "suspended" || !staffToToggle?.isActive
+            ? "reactivate"
+            : "suspend"
+        } ${staffToToggle?.firstName || ""} ${staffToToggle?.lastName || ""}?`}
+        confirmLabel={
+          staffToToggle?.employee?.status === "suspended" || !staffToToggle?.isActive
+            ? "Reactivate"
+            : "Suspend"
+        }
+        variant={
+          staffToToggle?.employee?.status === "suspended" || !staffToToggle?.isActive
+            ? "default"
+            : "destructive"
+        }
+        isLoading={toggleLoading}
+      />
     </div>
   );
 }

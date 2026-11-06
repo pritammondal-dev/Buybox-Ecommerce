@@ -53,9 +53,30 @@ const userSchema = new mongoose.Schema(
       index: true,
     },
 
+    roles: {
+      type: [String],
+      enum: [
+        "customer",
+        "vendor",
+        "support",
+        "manager",
+        "editor",
+        "admin",
+        "super_admin",
+      ],
+      default: ["customer"],
+      index: true,
+    },
+
     isActive: {
       type: Boolean,
       default: true,
+      index: true,
+    },
+
+    deletedAt: {
+      type: Date,
+      default: null,
       index: true,
     },
 
@@ -82,6 +103,12 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
+    adminLastActiveAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
     authVersion: {
       type: Number,
       default: 1,
@@ -97,13 +124,24 @@ const userSchema = new mongoose.Schema(
   {
     timestamps: true,
     versionKey: false,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   }
 );
 
-// Require at least email or phone on validation
+userSchema.virtual("name").get(function () {
+  return `${this.firstName || ""} ${this.lastName || ""}`.trim();
+});
+
+// Require at least email or phone on validation and sync roles array
 userSchema.pre("validate", function () {
   if (!this.email && !this.phone) {
     throw new Error("User identity requires at least an email address or a phone number.");
+  }
+  if (!this.roles || this.roles.length === 0) {
+    this.roles = [this.role || "customer"];
+  } else if (this.role && !this.roles.includes(this.role)) {
+    this.roles.push(this.role);
   }
 });
 

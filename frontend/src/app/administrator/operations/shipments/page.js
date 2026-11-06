@@ -12,7 +12,14 @@ import {
   Package,
   MapPin,
   Clock,
+  Download,
+  ChevronDown,
+  Printer,
 } from "lucide-react";
+import { toast } from "sonner";
+import PackingSlipModal from "@/components/fulfillment/PackingSlipModal";
+import AdminShipmentStatusModal from "@/components/admin/orders/AdminShipmentStatusModal";
+import { triggerBlobDownload } from "@/utils/fileDownload";
 import { adminOperationsService } from "@/services/admin/admin.service.js";
 
 export default function AdminShipmentsPage() {
@@ -21,6 +28,10 @@ export default function AdminShipmentsPage() {
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [isExporting, setIsExporting] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [activePackingSlipShipmentId, setActivePackingSlipShipmentId] = useState(null);
+  const [statusModalShipment, setStatusModalShipment] = useState(null);
 
   const fetchShipments = async () => {
     setLoading(true);
@@ -41,6 +52,24 @@ export default function AdminShipmentsPage() {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExportShipments = async (format = "csv") => {
+    setIsExporting(true);
+    setShowExportMenu(false);
+    try {
+      const params = {};
+      if (statusFilter !== "all") params.status = statusFilter;
+      const res = await adminOperationsService.exportShipments(params, format);
+      triggerBlobDownload(res, `buybox_shipments_${new Date().toISOString().slice(0, 10)}.${format}`);
+      toast.success(`Shipments exported successfully (${format.toUpperCase()})`);
+    } catch (err) {
+      toast.error("Failed to export shipments", {
+        description: err.response?.data?.message || err.message,
+      });
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -67,13 +96,47 @@ export default function AdminShipmentsPage() {
           </p>
         </div>
 
-        <button
-          onClick={fetchShipments}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
-        >
-          <RefreshCw className="size-3.5" />
-          <span>Refresh</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Export Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              disabled={isExporting}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+            >
+              <Download className="size-3.5" />
+              <span>{isExporting ? "Exporting..." : "Export"}</span>
+              <ChevronDown className="size-3 text-slate-400" />
+            </button>
+
+            {showExportMenu && (
+              <div className="absolute right-0 mt-1.5 w-48 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-20 text-xs font-medium text-slate-700">
+                <button
+                  onClick={() => handleExportShipments("csv")}
+                  className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center justify-between cursor-pointer"
+                >
+                  <span>Export Manifest</span>
+                  <span className="font-mono text-[10px] text-slate-400 font-bold uppercase">CSV</span>
+                </button>
+                <button
+                  onClick={() => handleExportShipments("xlsx")}
+                  className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center justify-between cursor-pointer"
+                >
+                  <span>Export Manifest</span>
+                  <span className="font-mono text-[10px] text-emerald-600 font-bold uppercase">XLSX</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={fetchShipments}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
+          >
+            <RefreshCw className="size-3.5" />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -144,6 +207,7 @@ export default function AdminShipmentsPage() {
                   <th className="py-3.5 px-4">Warehouse</th>
                   <th className="py-3.5 px-4">Status</th>
                   <th className="py-3.5 px-4">Created Date</th>
+                  <th className="py-3.5 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
@@ -186,6 +250,24 @@ export default function AdminShipmentsPage() {
                         year: "numeric",
                       })}
                     </td>
+                    <td className="py-3.5 px-4 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => setStatusModalShipment(ship)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-white bg-[#004D38] hover:bg-[#003828] rounded-xl transition-colors cursor-pointer shadow-2xs"
+                        >
+                          <Truck className="size-3" />
+                          <span>Status</span>
+                        </button>
+                        <button
+                          onClick={() => setActivePackingSlipShipmentId(ship._id || ship.secureId || ship.id)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-colors cursor-pointer"
+                        >
+                          <Printer className="size-3" />
+                          <span>Packing Slip</span>
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -193,6 +275,28 @@ export default function AdminShipmentsPage() {
           </div>
         )}
       </div>
+
+      {/* Shipment Packing Slip Modal */}
+      <PackingSlipModal
+        isOpen={Boolean(activePackingSlipShipmentId)}
+        onClose={() => setActivePackingSlipShipmentId(null)}
+        shipmentId={activePackingSlipShipmentId}
+        fetchPackingSlipFn={async ({ shipmentId }) => {
+          return adminOperationsService.getShipmentPackingSlip(shipmentId);
+        }}
+      />
+
+      {/* Admin Shipment Status Management Modal */}
+      {statusModalShipment && (
+        <AdminShipmentStatusModal
+          isOpen={Boolean(statusModalShipment)}
+          onClose={() => setStatusModalShipment(null)}
+          shipment={statusModalShipment}
+          onUpdated={async () => {
+            fetchShipments();
+          }}
+        />
+      )}
     </div>
   );
 }

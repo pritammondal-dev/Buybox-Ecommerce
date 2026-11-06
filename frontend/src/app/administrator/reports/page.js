@@ -36,9 +36,10 @@ export default function ReportsAndAnalyticsPage() {
         adminAnalyticsService.getSalesTrend(params),
       ]);
 
-      setOverview(resOverview?.metrics || resOverview || null);
-      setTopProducts(resTop?.items || resTop || []);
-      setSalesTrend(resTrend?.trend || resTrend || []);
+      setOverview(resOverview?.metrics || resOverview?.data?.metrics || resOverview?.data || resOverview || null);
+      setTopProducts(resTop?.items || resTop?.data?.items || (Array.isArray(resTop?.data) ? resTop.data : (Array.isArray(resTop) ? resTop : [])));
+      const rawTrend = resTrend?.intervals || resTrend?.trend || resTrend?.data?.intervals || resTrend?.data?.trend || (Array.isArray(resTrend?.data) ? resTrend.data : (Array.isArray(resTrend) ? resTrend : []));
+      setSalesTrend(Array.isArray(rawTrend) ? rawTrend : []);
     } catch (err) {
       console.error("Failed to load reports/analytics:", err);
       setError(err?.response?.data?.message || err?.message || "Failed to load reports data");
@@ -58,12 +59,12 @@ export default function ReportsAndAnalyticsPage() {
     const headers = ["Date", "Orders", "Units Sold", "Gross Sales (INR)", "Discounts (INR)", "Tax (INR)", "Net Merchandise Sales (INR)"];
     const rows = salesTrend.map((t) => [
       t.date || t._id,
-      t.orderCount || 0,
-      t.unitsSold || 0,
-      t.grossSales || "0.00",
-      t.discounts || "0.00",
-      t.tax || "0.00",
-      t.merchandiseSales || "0.00",
+      t.orderCount ?? t.orders ?? 0,
+      t.unitsSold ?? t.units ?? 0,
+      t.grossSales ?? t.sales ?? "0.00",
+      t.discounts ?? "0.00",
+      t.tax ?? "0.00",
+      t.merchandiseSales ?? t.sales ?? "0.00",
     ]);
 
     const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
@@ -231,13 +232,13 @@ export default function ReportsAndAnalyticsPage() {
                         <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-900">
                           {row.date || row._id}
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">{row.orderCount || 0}</td>
-                        <td className="px-4 py-3 whitespace-nowrap">{row.unitsSold || 0}</td>
-                        <td className="px-4 py-3 whitespace-nowrap">₹{row.grossSales || "0.00"}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">{row.orderCount ?? row.orders ?? 0}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">{row.unitsSold ?? row.units ?? 0}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">₹{row.grossSales ?? row.sales ?? "0.00"}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-red-600">-₹{row.discounts || "0.00"}</td>
                         <td className="px-4 py-3 whitespace-nowrap">₹{row.tax || "0.00"}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-right font-bold text-[#004D38]">
-                          ₹{row.merchandiseSales || "0.00"}
+                          ₹{row.merchandiseSales ?? row.sales ?? "0.00"}
                         </td>
                       </tr>
                     ))}

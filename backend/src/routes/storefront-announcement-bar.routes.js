@@ -34,14 +34,14 @@ router.get(
 router.get(
   "/",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   storefrontAnnouncementBarController.listAnnouncementBars
 );
 
 router.get(
   "/:barId",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   validate(
     storefrontAnnouncementBarIdParamsSchema,
     "params"
@@ -52,7 +52,7 @@ router.get(
 router.post(
   "/",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_CREATE),
   validate(
     createStorefrontAnnouncementBarSchema,
     "body"
@@ -63,7 +63,7 @@ router.post(
 router.patch(
   "/:barId",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_EDIT),
   validate(
     storefrontAnnouncementBarIdParamsSchema,
     "params"
@@ -78,7 +78,7 @@ router.patch(
 router.delete(
   "/:barId",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_DELETE),
   validate(
     storefrontAnnouncementBarIdParamsSchema,
     "params"

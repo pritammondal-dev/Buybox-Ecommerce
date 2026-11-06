@@ -1,0 +1,38 @@
+[
+  {
+    "v": 2,
+    "key": {
+      "_id": 1
+    },
+    "name": "_id_"
+  },
+  {
+    "v": 2,
+    "key": {
+      "ticketId": 1
+    },
+    "name": "ticketId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "actorId": 1
+    },
+    "name": "actorId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "action": 1
+    },
+    "name": "action_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "ticketId": 1,
+      "createdAt": 1
+    },
+    "name": "ticketId_1_createdAt_1"
+  }
+]

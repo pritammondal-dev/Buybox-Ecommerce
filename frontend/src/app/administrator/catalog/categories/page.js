@@ -19,6 +19,8 @@ import {
   Loader2,
 } from "lucide-react";
 import { adminCatalogService, adminMediaService } from "@/services/admin/admin.service.js";
+import NextImage from "next/image";
+import { ConfirmDialog } from "@/components/admin/ConfirmDialog.jsx";
 
 export default function AdminCategoriesPage() {
   const [categories, setCategories] = useState([]);
@@ -86,7 +88,7 @@ export default function AdminCategoriesPage() {
       setForm((prev) => ({
         ...prev,
         imageUrl: url,
-        imageAlt: prev.imageAlt || prev.name || file.name,
+        imageAlt: prev.imageAlt || prev.name || "",
       }));
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || "Failed to upload image");
@@ -161,17 +163,29 @@ export default function AdminCategoriesPage() {
     }
   };
 
-  const handleDelete = async (cat) => {
-    if (!confirm(`Are you sure you want to delete category "${cat.name}"?`)) return;
+  // Delete Confirmation Dialog State
+  const [catToDelete, setCatToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = (cat) => {
+    setCatToDelete(cat);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!catToDelete) return;
+    setDeleting(true);
     try {
-      await adminCatalogService.deleteCategory(cat._id);
+      await adminCatalogService.deleteCategory(catToDelete._id);
       setSuccess("Category deleted successfully");
       setTimeout(() => setSuccess(null), 4000);
+      setCatToDelete(null);
       fetchCategories();
     } catch (err) {
       setError(
         err?.response?.data?.message || err?.message || "Failed to delete category"
       );
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -284,10 +298,13 @@ export default function AdminCategoriesPage() {
                       <td className="py-3.5 px-4 font-bold text-slate-900">
                         <div className="flex items-center gap-3">
                           {cat.image?.url ? (
-                            <img
+                            <NextImage
                               src={cat.image.url}
                               alt={cat.name}
+                              width={36}
+                              height={36}
                               className="size-9 rounded-xl object-cover border border-slate-200 shadow-2xs"
+                              unoptimized
                             />
                           ) : (
                             <div className="size-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 border border-slate-200">
@@ -429,10 +446,13 @@ export default function AdminCategoriesPage() {
 
                 {form.imageUrl ? (
                   <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200">
-                    <img
+                    <NextImage
                       src={form.imageUrl}
                       alt={form.imageAlt || "Category Preview"}
+                      width={56}
+                      height={56}
                       className="size-14 rounded-xl object-cover border border-slate-200 shadow-2xs"
+                      unoptimized
                     />
                     <div className="flex-1 min-w-0">
                       <div className="text-[11px] font-medium text-slate-700 truncate">
@@ -534,6 +554,18 @@ export default function AdminCategoriesPage() {
           </div>
         </div>
       )}
+
+      {/* Delete Category Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={Boolean(catToDelete)}
+        onClose={() => setCatToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        isLoading={deleting}
+        title={`Delete Category "${catToDelete?.name || ""}"?`}
+        description="Are you sure you want to delete this category? Subcategories and products linked to this category may require reclassification. This action cannot be undone."
+        confirmLabel="Delete Category"
+        variant="destructive"
+      />
     </div>
   );
 }

@@ -1,0 +1,41 @@
+[
+  {
+    "v": 2,
+    "key": {
+      "_id": 1
+    },
+    "name": "_id_"
+  },
+  {
+    "v": 2,
+    "key": {
+      "campaignId": 1
+    },
+    "name": "campaignId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "couponId": 1
+    },
+    "name": "couponId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "date": 1
+    },
+    "name": "date_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "campaignId": 1,
+      "couponId": 1,
+      "date": 1,
+      "currency": 1
+    },
+    "name": "campaignId_1_couponId_1_date_1_currency_1",
+    "unique": true
+  }
+]

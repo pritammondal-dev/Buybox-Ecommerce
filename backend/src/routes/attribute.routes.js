@@ -24,7 +24,7 @@ router.post(
   "/",
   authenticate,
   requireRoles("admin", "super_admin", "manager"),
-  requirePermissions(PERMISSIONS.PRODUCTS_CREATE),
+  requirePermissions(PERMISSIONS.ATTRIBUTES_CREATE),
   validate(createAttributeSchema),
   attributeController.createAttribute
 );
@@ -34,7 +34,7 @@ router.patch(
   authenticate,
   validateObjectId("id"),
   requireRoles("admin", "super_admin", "manager"),
-  requirePermissions(PERMISSIONS.PRODUCTS_UPDATE),
+  requirePermissions(PERMISSIONS.ATTRIBUTES_EDIT),
   validate(updateAttributeSchema),
   attributeController.updateAttribute
 );
@@ -44,7 +44,7 @@ router.delete(
   authenticate,
   validateObjectId("id"),
   requireRoles("admin", "super_admin", "manager"),
-  requirePermissions(PERMISSIONS.PRODUCTS_DELETE),
+  requirePermissions(PERMISSIONS.ATTRIBUTES_DELETE),
   attributeController.deleteAttribute
 );
 

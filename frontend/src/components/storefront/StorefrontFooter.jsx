@@ -3,10 +3,18 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { ShoppingBag } from "lucide-react";
+import { useStorefrontSettings } from "../../hooks/useStorefrontSettings.js";
 import { categoryService } from "../../services/category.service.js";
+import { getCategoryHref } from "../../utils/category.util.js";
 
 export function StorefrontFooter({ categories: propCategories }) {
+  const { logoUrl, storeName, tagline, logoDimensions } = useStorefrontSettings();
   const [internalCategories, setInternalCategories] = useState([]);
+  const [logoError, setLogoError] = useState(false);
+
+  useEffect(() => {
+    setLogoError(false);
+  }, [logoUrl]);
 
   const categories = propCategories && propCategories.length > 0 ? propCategories : internalCategories;
 
@@ -36,16 +44,31 @@ export function StorefrontFooter({ categories: propCategories }) {
           {/* Column 1: Brand Info & Socials */}
           <div className="lg:col-span-2 space-y-4">
             <Link href="/" className="flex items-center gap-2.5">
-              <div className="flex size-9 items-center justify-center rounded-xl bg-[#007A55] text-white shadow-xs">
-                <ShoppingBag className="size-5 stroke-[2.2]" />
-              </div>
-              <span className="text-2xl font-black tracking-tight text-white">
-                Buybox
-              </span>
+              {logoUrl && !logoError ? (
+                <img
+                  src={logoUrl}
+                  alt={storeName || "Buybox"}
+                  style={{
+                    maxWidth: `${logoDimensions?.desktopWidth || 160}px`,
+                    maxHeight: `${logoDimensions?.footerMaxHeight || 40}px`,
+                  }}
+                  className="w-auto h-auto object-contain"
+                  onError={() => setLogoError(true)}
+                />
+              ) : (
+                <>
+                  <div className="flex size-9 items-center justify-center rounded-xl bg-[#007A55] text-white shadow-xs">
+                    <ShoppingBag className="size-5 stroke-[2.2]" />
+                  </div>
+                  <span className="text-2xl font-black tracking-tight text-white">
+                    {storeName || "Buybox"}
+                  </span>
+                </>
+              )}
             </Link>
 
             <p className="text-xs text-slate-400 leading-relaxed max-w-sm">
-              Your one-stop destination for electronics, accessories and more. Shop smart. Shop Buybox.
+              {tagline || "Your one-stop destination for electronics, accessories and more. Shop smart. Shop Buybox."}
             </p>
 
             {/* Social Icons */}
@@ -107,7 +130,7 @@ export function StorefrontFooter({ categories: propCategories }) {
                 categories.slice(0, 5).map((cat) => (
                   <li key={cat._id || cat.id || cat.slug}>
                     <Link
-                      href={`/category/${cat.slug || cat.id}`}
+                      href={getCategoryHref(cat)}
                       className="hover:text-emerald-300 transition-colors capitalize"
                     >
                       {cat.name}

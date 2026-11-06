@@ -1,0 +1,70 @@
+[
+  {
+    "v": 2,
+    "key": {
+      "_id": 1
+    },
+    "name": "_id_"
+  },
+  {
+    "v": 2,
+    "key": {
+      "email": 1
+    },
+    "name": "email_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "userId": 1
+    },
+    "name": "userId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "purpose": 1
+    },
+    "name": "purpose_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "isUsed": 1
+    },
+    "name": "isUsed_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "email": 1,
+      "purpose": 1,
+      "isUsed": 1
+    },
+    "name": "email_1_purpose_1_isUsed_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "expiresAt": 1
+    },
+    "name": "expiresAt_1",
+    "expireAfterSeconds": 0
+  },
+  {
+    "v": 2,
+    "key": {
+      "phone": 1
+    },
+    "name": "phone_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "phone": 1,
+      "purpose": 1,
+      "isUsed": 1
+    },
+    "name": "phone_1_purpose_1_isUsed_1"
+  }
+]

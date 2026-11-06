@@ -28,6 +28,12 @@ const checkPermissionsMatch = (effectivePermissions, requiredPermissions) => {
   });
 };
 
+const isSuperAdmin = (role) => {
+  if (!role) return false;
+  const normalized = String(role).toLowerCase().replace(/[-_]/g, "");
+  return normalized === "superadmin";
+};
+
 const requirePermissions = (...requiredPermissions) => {
   return async (req, res, next) => {
     if (!req.user) {
@@ -37,9 +43,9 @@ const requirePermissions = (...requiredPermissions) => {
     }
 
     // Superadmin has platform-level authority and bypasses operational permission checks
-    if (req.user.role === "super_admin") {
+    if (isSuperAdmin(req.user.role)) {
       req.auth = {
-        effectivePermissions: ["*"],
+        effectivePermissions: ["*", ...(ROLE_PERMISSIONS[req.user.role] || [])],
         isPlatformActor: true,
       };
       return next();
@@ -111,7 +117,21 @@ const requirePermissions = (...requiredPermissions) => {
 
     // 3. Backward Compatibility Fallback:
     // For customers, vendors, or mock/legacy callers without an Employee record
-    const userPermissions = ROLE_PERMISSIONS[req.user.role] || [];
+    let userPermissions = [
+      ...(Array.isArray(req.user.permissions) ? req.user.permissions : []),
+      ...(Array.isArray(req.user.effectivePermissions) ? req.user.effectivePermissions : []),
+      ...(ROLE_PERMISSIONS[req.user.role] || []),
+    ];
+    // Legitimate role aggregation only within the same security domain (never across customer/vendor boundaries)
+    if (!["customer", "vendor"].includes(req.user.role) && Array.isArray(req.user.roles) && req.user.roles.length > 0) {
+      const allPerms = new Set(userPermissions);
+      req.user.roles.forEach((r) => {
+        if (!["customer", "vendor"].includes(r)) {
+          (ROLE_PERMISSIONS[r] || []).forEach((p) => allPerms.add(p));
+        }
+      });
+      userPermissions = Array.from(allPerms);
+    }
 
     const hasAllPermissions = checkPermissionsMatch(
       userPermissions,
@@ -146,11 +166,19 @@ const requireRoles = (...allowedRoles) => {
     }
 
     // Superadmin bypasses role requirements
-    if (req.user.role === "super_admin") {
+    if (isSuperAdmin(req.user.role)) {
       return next();
     }
 
-    if (!allowedRoles.includes(req.user.role)) {
+    // Authorize based on validated active session role (never grant privileges across customer/vendor boundary)
+    const flatRoles = allowedRoles.flat();
+    const hasRole =
+      flatRoles.includes(req.user.role) ||
+      (!["customer", "vendor"].includes(req.user.role) &&
+        Array.isArray(req.user.roles) &&
+        req.user.roles.some((r) => flatRoles.includes(r)));
+
+    if (!hasRole) {
       return next(
         new AppError(
           "You do not have permission to access this resource",

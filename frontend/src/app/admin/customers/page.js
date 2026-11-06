@@ -13,6 +13,7 @@ import {
   Shield,
 } from "lucide-react";
 import { adminCustomerService } from "@/services/admin/admin.service.js";
+import { ConfirmDialog } from "@/components/admin/ConfirmDialog.jsx";
 
 export default function AdminCustomersPage() {
   const [customers, setCustomers] = useState([]);
@@ -23,6 +24,8 @@ export default function AdminCustomersPage() {
   const [verifiedFilter, setVerifiedFilter] = useState("");
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 1 });
   const [actionSuccess, setActionSuccess] = useState(null);
+  const [customerToToggle, setCustomerToToggle] = useState(null);
+  const [statusLoading, setStatusLoading] = useState(false);
 
   const fetchCustomers = async (page = 1) => {
     setLoading(true);
@@ -60,18 +63,25 @@ export default function AdminCustomersPage() {
     fetchCustomers(1);
   };
 
-  const handleToggleStatus = async (customer) => {
-    const newStatus = !customer.isActive;
-    const action = newStatus ? "reactivate" : "suspend";
-    if (!confirm(`Are you sure you want to ${action} ${customer.firstName} ${customer.lastName}?`)) return;
+  const handleToggleStatus = (customer) => {
+    setCustomerToToggle(customer);
+  };
 
+  const handleConfirmToggleStatus = async () => {
+    if (!customerToToggle) return;
+    const newStatus = !customerToToggle.isActive;
+    const action = newStatus ? "reactivate" : "suspend";
+    setStatusLoading(true);
     try {
-      await adminCustomerService.updateStatus(customer.id, newStatus);
+      await adminCustomerService.updateStatus(customerToToggle.id, newStatus);
       setActionSuccess(`Customer ${action}d successfully`);
       setTimeout(() => setActionSuccess(null), 4000);
       fetchCustomers(pagination.page);
+      setCustomerToToggle(null);
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || `Failed to ${action} customer`);
+    } finally {
+      setStatusLoading(false);
     }
   };
 
@@ -282,6 +292,20 @@ export default function AdminCustomersPage() {
           </div>
         )}
       </div>
+
+      {/* Confirm Status Toggle Dialog */}
+      <ConfirmDialog
+        isOpen={Boolean(customerToToggle)}
+        onClose={() => setCustomerToToggle(null)}
+        onConfirm={handleConfirmToggleStatus}
+        title={customerToToggle?.isActive ? "Suspend Customer" : "Reactivate Customer"}
+        description={`Are you sure you want to ${
+          customerToToggle?.isActive ? "suspend" : "reactivate"
+        } ${customerToToggle?.firstName || ""} ${customerToToggle?.lastName || ""}?`}
+        confirmLabel={customerToToggle?.isActive ? "Suspend Customer" : "Reactivate Customer"}
+        variant={customerToToggle?.isActive ? "destructive" : "default"}
+        isLoading={statusLoading}
+      />
     </div>
   );
 }

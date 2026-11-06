@@ -21,6 +21,7 @@ const {
   updateStorefrontMediaSchema,
   storefrontMediaIdParamsSchema,
 } = require("../validators/cms/storefront-media.validator");
+const { uploadLimiter } = require("../middlewares/rate-limiter.middleware");
 
 // Public
 
@@ -34,14 +35,14 @@ router.get(
 router.get(
   "/",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   storefrontMediaController.listMedia
 );
 
 router.get(
   "/:mediaId",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   validate(
     storefrontMediaIdParamsSchema,
     "params"
@@ -57,8 +58,9 @@ const upload = multer({
 
 router.post(
   "/upload",
+  uploadLimiter,
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_CREATE),
   upload.single("file"),
   storefrontMediaController.uploadMedia
 );
@@ -66,7 +68,7 @@ router.post(
 router.post(
   "/",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_CREATE),
   validate(
     createStorefrontMediaSchema,
     "body"
@@ -77,7 +79,7 @@ router.post(
 router.patch(
   "/:mediaId",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_EDIT),
   validate(
     storefrontMediaIdParamsSchema,
     "params"
@@ -92,7 +94,7 @@ router.patch(
 router.delete(
   "/:mediaId",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_DELETE),
   validate(
     storefrontMediaIdParamsSchema,
     "params"

@@ -31,14 +31,35 @@ export function SectionContainer({
   className,
   containerClassName,
   ariaLabel,
+  theme,
 }) {
+  const containerStyle = {};
+  if (theme?.backgroundColor) containerStyle.backgroundColor = theme.backgroundColor;
+  if (theme?.borderColor) containerStyle.borderColor = theme.borderColor;
+
+  const headingStyle = {};
+  if (theme?.headingColor) headingStyle.color = theme.headingColor;
+
+  const subtitleStyle = {};
+  if (theme?.textColor) subtitleStyle.color = theme.textColor;
+
+  const badgeStyle = {};
+  if (theme?.badgeColor) {
+    badgeStyle.backgroundColor = theme.badgeColor;
+    badgeStyle.color = "#FFFFFF";
+  }
+
+  const linkStyle = {};
+  if (theme?.accentColor) linkStyle.color = theme.accentColor;
+
   return (
     <section aria-label={ariaLabel || title} className={cn("py-4 sm:py-6", className)}>
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div
+          style={containerStyle}
           className={cn(
             "rounded-3xl p-4 sm:p-6 md:p-7 shadow-xs border transition-all duration-300",
-            VARIANTS[variant] || VARIANTS.plain,
+            !theme?.backgroundColor && (VARIANTS[variant] || VARIANTS.plain),
             containerClassName
           )}
         >
@@ -58,14 +79,18 @@ export function SectionContainer({
                 )}
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="text-lg sm:text-xl md:text-2xl font-black tracking-tight text-slate-900">
+                    <h2
+                      style={headingStyle}
+                      className="text-lg sm:text-xl md:text-2xl font-black tracking-tight text-slate-900"
+                    >
                       {title}
                     </h2>
                     {badge && (
                       <span
+                        style={badgeStyle}
                         className={cn(
                           "rounded-md px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide shadow-2xs",
-                          badgeColor
+                          !theme?.badgeColor && badgeColor
                         )}
                       >
                         {badge}
@@ -73,7 +98,10 @@ export function SectionContainer({
                     )}
                   </div>
                   {subtitle && (
-                    <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                    <p
+                      style={subtitleStyle}
+                      className="text-xs text-slate-500 mt-0.5 font-medium"
+                    >
                       {subtitle}
                     </p>
                   )}
@@ -86,6 +114,7 @@ export function SectionContainer({
                 {viewAllHref && (
                   <Link
                     href={viewAllHref}
+                    style={linkStyle}
                     className="group inline-flex items-center gap-1 text-xs sm:text-sm font-bold text-[#007A55] hover:text-[#006346] transition-colors shrink-0"
                   >
                     <span>{viewAllText}</span>

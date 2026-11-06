@@ -72,6 +72,17 @@ export const productService = {
     return apiClient.delete(`/products/${id}`);
   },
 
+  /**
+   * Upload an image for a product
+   * @param {FormData} formData
+   * @returns {Promise<Object>}
+   */
+  async uploadProductImage(formData) {
+    return apiClient.post("/products/images/upload", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+
   // -------------------------------------------------------------
   // Product Variants
   // -------------------------------------------------------------
@@ -92,6 +103,15 @@ export const productService = {
    */
   async getVariantById(id) {
     return apiClient.get(`/product-variants/${id}`);
+  },
+
+  /**
+   * Retrieve real-time availability for a variant
+   * @param {string} variantId
+   * @returns {Promise<Object>} { data: { variantId, sku, availableQuantity, inStock, stockStatus, price } }
+   */
+  async getVariantAvailability(variantId) {
+    return apiClient.get(`/products/variants/${variantId}/availability`);
   },
 
   /**
@@ -124,6 +144,26 @@ export const productService = {
   },
 
   /**
+   * Create multiple variants in a batch
+   * @param {string} productId
+   * @param {Object} data { variants: Array }
+   * @returns {Promise<Object>} { data: { count, variants } }
+   */
+  async createBulkVariants(productId, data) {
+    return apiClient.post(`/product-variants/product/${productId}/bulk`, data);
+  },
+
+  /**
+   * Update multiple variants in a batch
+   * @param {string} productId
+   * @param {Object} data { updates: Array }
+   * @returns {Promise<Object>} { data: { updatedCount, variants } }
+   */
+  async updateBulkVariants(productId, data) {
+    return apiClient.patch(`/product-variants/product/${productId}/bulk`, data);
+  },
+
+  /**
    * Retrieve related products
    * @param {string} id
    * @param {number} [limit=6]
@@ -140,6 +180,43 @@ export const productService = {
    */
   async getRecommendations(params = {}) {
     return apiClient.get("/products/recommendations", { params });
+  },
+
+  /**
+   * Upload a digital file to secure private storage
+   * @param {File} file
+   * @param {Object} [metadata]
+   * @returns {Promise<Object>}
+   */
+  async uploadDigitalAsset(file, metadata = {}) {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (metadata.version) {
+      formData.append("version", metadata.version);
+    }
+    return apiClient.post("/products/digital-assets/upload", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+
+  /**
+   * List customer's digital product entitlements
+   * @param {Object} [params]
+   * @returns {Promise<Object>}
+   */
+  async getMyDigitalDownloads(params = {}) {
+    return apiClient.get("/digital-downloads/my", { params });
+  },
+
+  /**
+   * Download digital entitlement asset stream
+   * @param {string} entitlementId
+   * @returns {Promise<any>}
+   */
+  async downloadDigitalAsset(entitlementId) {
+    return apiClient.get(`/digital-downloads/${entitlementId}`, {
+      responseType: "blob",
+    });
   },
 };
 

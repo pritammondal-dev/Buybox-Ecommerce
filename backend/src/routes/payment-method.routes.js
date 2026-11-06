@@ -27,45 +27,51 @@ router.post("/my", authenticate, paymentMethodController.saveCustomerPaymentMeth
 router.patch("/my/:id/default", authenticate, paymentMethodController.setDefaultPaymentMethod);
 router.delete("/my/:id", authenticate, paymentMethodController.deleteCustomerPaymentMethod);
 
-// Admin endpoints strictly require authentication and PAYMENTS_MANAGE permission
+// Admin endpoints strictly require authentication
 router.use(authenticate);
-router.use(requirePermissions(PERMISSIONS.PAYMENTS_MANAGE));
 
 router.get(
   "/",
+  requirePermissions(PERMISSIONS.PAYMENTS_READ),
   paymentMethodController.listAllPaymentMethods
 );
 
 router.post(
   "/",
+  requirePermissions(PERMISSIONS.PAYMENTS_MANAGE),
   validate(createPaymentMethodSchema),
   paymentMethodController.createPaymentMethod
 );
 
 router.post(
   "/reorder",
+  requirePermissions(PERMISSIONS.PAYMENTS_MANAGE),
   validate(reorderPaymentMethodsSchema),
   paymentMethodController.reorderPaymentMethods
 );
 
 router.get(
   "/:id",
+  requirePermissions(PERMISSIONS.PAYMENTS_READ),
   paymentMethodController.getPaymentMethodById
 );
 
 router.patch(
   "/:id",
+  requirePermissions(PERMISSIONS.PAYMENTS_MANAGE),
   validate(updatePaymentMethodSchema),
   paymentMethodController.updatePaymentMethod
 );
 
 router.patch(
   "/:id/toggle",
+  requirePermissions(PERMISSIONS.PAYMENTS_MANAGE),
   paymentMethodController.togglePaymentMethod
 );
 
 router.delete(
   "/:id",
+  requirePermissions(PERMISSIONS.PAYMENTS_MANAGE),
   paymentMethodController.deletePaymentMethod
 );
 

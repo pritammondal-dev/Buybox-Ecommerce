@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { useCategoryStore } from "../../../stores/category.store.js";
+import { getCategoryHref } from "../../../utils/category.util.js";
 
 export function BentoPromoGrid({ categories = [] }) {
   const storeCategories = useCategoryStore((state) => state.categories);
@@ -22,9 +23,9 @@ export function BentoPromoGrid({ categories = [] }) {
     (c.slug || "").includes("keyboard")
   );
 
-  const audioHref = audioCategory ? `/category/${audioCategory.slug || audioCategory._id}` : "/shop";
-  const displayHref = displayCategory ? `/category/${displayCategory.slug || displayCategory._id}` : "/shop";
-  const techHref = techCategory ? `/category/${techCategory.slug || techCategory._id}` : "/shop";
+  const audioHref = audioCategory ? getCategoryHref(audioCategory) : "/shop";
+  const displayHref = displayCategory ? getCategoryHref(displayCategory) : "/shop";
+  const techHref = techCategory ? getCategoryHref(techCategory) : "/shop";
 
   return (
     <section aria-label="Promotional Highlights" className="py-4 sm:py-6">

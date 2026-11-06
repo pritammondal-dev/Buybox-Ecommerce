@@ -26,6 +26,8 @@ const inventoryTransactionSchema = new mongoose.Schema(
         "sale",
         "return",
         "transfer",
+        "count_reconciliation",
+        "condition_change",
       ],
       required: true,
       index: true,

@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 
 const paymentRepository = require("../repositories/payment.repository");
 const orderRepository = require("../repositories/order.repository");
+const refundRepository = require("../repositories/refund.repository");
 const paymentWebhookEventRepository = require("../repositories/payment-webhook-event.repository");
 const AppError = require("../errors/AppError");
 
@@ -22,6 +23,11 @@ const PAYMENT_EVENT_MAP = Object.freeze({
   "payment.captured": "captured",
   "payment.failed": "failed",
   "order.paid": "captured",
+  "PAYMENT.CAPTURE.COMPLETED": "captured",
+  "PAYMENT.CAPTURE.DENIED": "failed",
+  "PAYMENT.CAPTURE.DECLINED": "failed",
+  "CHECKOUT.ORDER.APPROVED": "authorized",
+  "CHECKOUT.ORDER.COMPLETED": "captured",
 });
 
 const REFUND_EVENTS = new Set([
@@ -281,6 +287,285 @@ const reconcileOrphanPayment = async ({
   return null;
 };
 
+const processPayPalWebhook = async ({
+  webhookEvent,
+  session,
+  eventId,
+  eventType,
+  nextStatus,
+}) => {
+  const resource = webhookEvent.payload?.resource;
+  if (!resource) {
+    throw new AppError(
+      "Invalid PayPal webhook payload",
+      400,
+      "INVALID_PAYMENT_WEBHOOK_PAYLOAD"
+    );
+  }
+
+  // Handle PayPal refund event
+  if (eventType === "PAYMENT.CAPTURE.REFUNDED") {
+    const captureLink = resource.links?.find((l) => l.rel === "up")?.href;
+    const captureId = captureLink ? captureLink.split("/").pop() : null;
+    let payment = null;
+    if (captureId) {
+      payment = await paymentRepository.findByGatewayPaymentId("paypal", captureId, { session });
+    }
+    if (!payment && resource.custom_id && mongoose.Types.ObjectId.isValid(resource.custom_id)) {
+      payment = await paymentRepository.findLatestByOrderId(resource.custom_id, { session });
+    }
+    if (!payment) {
+      throw new AppError("Local payment record not found for PayPal refund", 404, "PAYMENT_NOT_FOUND");
+    }
+
+    const order = await orderRepository.findById(payment.orderId, { session });
+    if (!order) {
+      throw new AppError("Local order record not found for PayPal refund", 404, "ORDER_NOT_FOUND");
+    }
+
+    const refundAmountDecimal = resource.amount?.value
+      ? Number(resource.amount.value).toFixed(2)
+      : "0.00";
+
+    let refund = await refundRepository.findByGatewayRefundId("paypal", resource.id, { session });
+    if (!refund) {
+      try {
+        refund = await refundRepository.create(
+          {
+            paymentId: payment._id,
+            orderId: order._id,
+            customerId: order.customerId,
+            gateway: "paypal",
+            gatewayRefundId: resource.id,
+            amount: refundAmountDecimal,
+            currency: String(resource.amount?.currency_code || payment.currency).toUpperCase(),
+            status: "processed",
+            reason: "PayPal webhook refund",
+            processedAt: new Date(resource.create_time || Date.now()),
+          },
+          { session }
+        );
+      } catch (err) {
+        if (err?.code === 11000) {
+          refund = await refundRepository.findByGatewayRefundId("paypal", resource.id, { session });
+        } else {
+          throw err;
+        }
+      }
+    } else if (refund.status !== "processed") {
+      refund = await refundRepository.updateById(
+        refund._id,
+        {
+          status: "processed",
+          processedAt: new Date(resource.create_time || Date.now()),
+          failureReason: null,
+        },
+        { session }
+      );
+    }
+
+    const { synchronizePaymentRefundState } = require("./refund-webhook.service");
+    const syncResult = await synchronizePaymentRefundState({
+      payment,
+      order,
+      options: { session },
+    });
+
+    return await markEventProcessed({
+      eventId,
+      session,
+      result: {
+        processed: true,
+        eventId,
+        eventType,
+        refundId: refund?._id,
+        paymentId: payment._id,
+        orderId: order._id,
+        refundedAmount: syncResult.refundedAmount,
+      },
+    });
+  }
+
+  /*
+   * Ignore events that are not part of the payment state machine.
+   */
+  if (!nextStatus) {
+    return await markEventProcessed({
+      eventId,
+      session,
+      result: {
+        processed: true,
+        ignored: true,
+        eventId,
+        eventType,
+        reason: "UNSUPPORTED_EVENT",
+      },
+    });
+  }
+
+  // Handle capture or failure events
+  const captureId = resource.id;
+  const gatewayOrderId =
+    resource.supplementary_data?.related_ids?.order_id ||
+    (eventType.startsWith("CHECKOUT.ORDER.") ? resource.id : null);
+
+  let payment = null;
+  if (gatewayOrderId) {
+    payment = await paymentRepository.findByGatewayOrderId("paypal", gatewayOrderId, { session });
+  }
+  if (!payment && captureId) {
+    payment = await paymentRepository.findByGatewayPaymentId("paypal", captureId, { session });
+  }
+  if (!payment && resource.custom_id && mongoose.Types.ObjectId.isValid(resource.custom_id)) {
+    payment = await paymentRepository.findLatestByOrderId(resource.custom_id, { session });
+  }
+
+  if (!payment) {
+    throw new AppError("Local payment record not found", 404, "PAYMENT_NOT_FOUND");
+  }
+
+  const order = await orderRepository.findById(payment.orderId, { session });
+  if (!order) {
+    throw new AppError("Local order record not found", 404, "ORDER_NOT_FOUND");
+  }
+
+  if (payment.gateway !== "paypal") {
+    throw new AppError("Unsupported payment gateway", 409, "UNSUPPORTED_PAYMENT_GATEWAY");
+  }
+
+  // Amount & currency validation
+  if (resource.amount?.value !== undefined && resource.amount?.value !== null) {
+    const eventAmount = Number(resource.amount.value);
+    const localAmount = Number(payment.amount.toString());
+    if (Math.abs(eventAmount - localAmount) > 0.01) {
+      throw new AppError("PayPal payment amount does not match local payment", 409, "PAYPAL_AMOUNT_MISMATCH");
+    }
+  }
+
+  if (resource.amount?.currency_code) {
+    const eventCurrency = String(resource.amount.currency_code).toUpperCase();
+    const localCurrency = String(payment.currency).toUpperCase();
+    if (eventCurrency !== localCurrency) {
+      throw new AppError("PayPal payment currency does not match local payment", 409, "PAYPAL_CURRENCY_MISMATCH");
+    }
+  }
+
+  if (nextStatus === "captured" && payment.status === "captured") {
+    await synchronizeCapturedOrder({ orderId: payment.orderId, session });
+    return await markEventProcessed({
+      eventId,
+      session,
+      result: {
+        processed: true,
+        ignored: true,
+        reason: "PAYMENT_ALREADY_CAPTURED_ORDER_SYNCHRONIZED",
+        eventId,
+        eventType,
+        paymentId: payment._id,
+        paymentStatus: payment.status,
+        orderStatus: "confirmed",
+        orderPaymentStatus: "paid",
+      },
+    });
+  }
+
+  if (payment.status === nextStatus) {
+    return await markEventProcessed({
+      eventId,
+      session,
+      result: {
+        processed: true,
+        ignored: true,
+        reason: "PAYMENT_ALREADY_IN_TARGET_STATE",
+        eventId,
+        eventType,
+        paymentId: payment._id,
+        paymentStatus: payment.status,
+      },
+    });
+  }
+
+  if (!canTransitionPaymentStatus(payment.status, nextStatus)) {
+    return await markEventProcessed({
+      eventId,
+      session,
+      result: {
+        processed: true,
+        ignored: true,
+        reason: "INVALID_OR_STALE_PAYMENT_TRANSITION",
+        eventId,
+        eventType,
+        paymentId: payment._id,
+        paymentStatus: payment.status,
+        ignoredStatus: nextStatus,
+      },
+    });
+  }
+
+  const update = {
+    status: nextStatus,
+    gatewayPaymentId: captureId,
+    method: "paypal",
+  };
+
+  if (nextStatus === "failed") {
+    update.failureReason = resource.status_details?.reason || "PayPal payment failed";
+  }
+
+  if (nextStatus === "captured") {
+    update.capturedAt = resource.create_time ? new Date(resource.create_time) : new Date();
+    update.failureReason = null;
+  }
+
+  const updatedPayment = await paymentRepository.updateById(payment._id, update, { session });
+  if (!updatedPayment) {
+    throw new AppError("Unable to update payment", 500, "PAYMENT_UPDATE_FAILED");
+  }
+
+  if (nextStatus === "captured") {
+    const updatedOrder = await synchronizeCapturedOrder({ orderId: payment.orderId, session });
+    return await markEventProcessed({
+      eventId,
+      session,
+      result: {
+        processed: true,
+        eventId,
+        eventType,
+        paymentId: updatedPayment._id,
+        paymentStatus: updatedPayment.status,
+        orderId: updatedOrder._id,
+        orderStatus: updatedOrder.status,
+        orderPaymentStatus: updatedOrder.paymentStatus,
+      },
+    });
+  }
+
+  let updatedOrder = order;
+  if (order.paymentStatus !== "paid" && order.status !== "confirmed") {
+    const orderPaymentStatus = nextStatus === "authorized" ? "authorized" : "failed";
+    updatedOrder = await orderRepository.updateById(
+      payment.orderId,
+      { paymentStatus: orderPaymentStatus },
+      { session }
+    );
+  }
+
+  return await markEventProcessed({
+    eventId,
+    session,
+    result: {
+      processed: true,
+      eventId,
+      eventType,
+      paymentId: updatedPayment._id,
+      paymentStatus: updatedPayment.status,
+      orderId: updatedOrder._id,
+      orderStatus: updatedOrder.status,
+      orderPaymentStatus: updatedOrder.paymentStatus,
+    },
+  });
+};
+
 const processPaymentWebhookEvent = async (eventId) => {
   const session = await mongoose.startSession();
 
@@ -315,6 +600,17 @@ const processPaymentWebhookEvent = async (eventId) => {
     const eventType = webhookEvent.eventType;
 
     const nextStatus = PAYMENT_EVENT_MAP[eventType];
+
+    const gateway = webhookEvent.gateway || "razorpay";
+    if (gateway === "paypal") {
+      return await processPayPalWebhook({
+        webhookEvent,
+        session,
+        eventId,
+        eventType,
+        nextStatus,
+      });
+    }
 
     /*
      * Refund webhooks are handled by the
@@ -590,25 +886,28 @@ const processPaymentWebhookEvent = async (eventId) => {
 
     /*
      * Authorized / failed payment states do not confirm
-     * the order.
+     * the order, but must never downgrade an already paid or confirmed order.
      */
-    const orderPaymentStatus =
-      nextStatus === "authorized" ? "authorized" : "failed";
+    let updatedOrder = order;
+    if (order.paymentStatus !== "paid" && order.status !== "confirmed") {
+      const orderPaymentStatus =
+        nextStatus === "authorized" ? "authorized" : "failed";
 
-    const updatedOrder = await orderRepository.updateById(
-      payment.orderId,
-      {
-        paymentStatus: orderPaymentStatus,
-      },
-      { session },
-    );
-
-    if (!updatedOrder) {
-      throw new AppError(
-        "Unable to update order payment status",
-        500,
-        "ORDER_PAYMENT_STATUS_UPDATE_FAILED",
+      updatedOrder = await orderRepository.updateById(
+        payment.orderId,
+        {
+          paymentStatus: orderPaymentStatus,
+        },
+        { session },
       );
+
+      if (!updatedOrder) {
+        throw new AppError(
+          "Unable to update order payment status",
+          500,
+          "ORDER_PAYMENT_STATUS_UPDATE_FAILED",
+        );
+      }
     }
 
     return await markEventProcessed({

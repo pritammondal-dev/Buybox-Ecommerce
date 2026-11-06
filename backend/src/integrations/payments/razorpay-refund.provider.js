@@ -26,6 +26,27 @@ const getRazorpayErrorDetails = (error) => {
   };
 };
 
+const isTimeoutOrNetworkError = (error) => {
+  const code = error?.code || error?.error?.code;
+  const status =
+    error?.statusCode ??
+    error?.error?.statusCode ??
+    error?.status;
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    code === "ECONNABORTED" ||
+    code === "ETIMEDOUT" ||
+    code === "ECONNRESET" ||
+    code === "ENOTFOUND" ||
+    status === 504 ||
+    status === 503 ||
+    status === 502 ||
+    message.includes("timeout") ||
+    message.includes("timed out") ||
+    message.includes("network")
+  );
+};
+
 const createRefund = async ({
   paymentId,
   amount,
@@ -49,6 +70,16 @@ const createRefund = async ({
       },
       "Razorpay refund creation failed"
     );
+
+    if (isTimeoutOrNetworkError(error)) {
+      const timeoutError = new AppError(
+        "Razorpay refund request timed out or experienced network uncertainty",
+        504,
+        "GATEWAY_TIMEOUT"
+      );
+      timeoutError.isTimeout = true;
+      throw timeoutError;
+    }
 
     throw new AppError(
       "Unable to create Razorpay refund",

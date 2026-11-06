@@ -7,6 +7,7 @@ import { categoryService } from "../../services/category.service.js";
 import { storefrontService } from "../../services/storefront.service.js";
 import { productService } from "../../services/product.service.js";
 import { brandService } from "../../services/brand.service.js";
+import { campaignService } from "../../services/campaign.service.js";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -32,6 +33,9 @@ export const metadata = {
   },
 };
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function StorefrontHomePage() {
   // Fetch initial storefront data server-side across all domains
   const [
@@ -40,12 +44,14 @@ export default async function StorefrontHomePage() {
     sectionsResult,
     productsResult,
     brandsResult,
+    campaignsResult,
   ] = await Promise.allSettled([
     categoryService.getCategories({ limit: 16 }),
     storefrontService.getBanners(),
     storefrontService.getSections(),
     productService.getProducts({ limit: 24, status: "active" }),
     brandService.getBrands({ limit: 16 }),
+    campaignService.getActiveCampaigns(),
   ]);
 
   const categories =
@@ -59,8 +65,33 @@ export default async function StorefrontHomePage() {
     bannersResult.status === "fulfilled"
       ? Array.isArray(bannersResult.value?.data)
         ? bannersResult.value.data
-        : []
+        : bannersResult.value?.data?.data || []
       : [];
+
+  const inactiveSlots =
+    bannersResult.status === "fulfilled"
+      ? bannersResult.value?.meta?.inactiveSlots ||
+        bannersResult.value?.data?.meta?.inactiveSlots ||
+        []
+      : [];
+
+  // Ensure inactive slots are included as explicit deactivated objects inside the array
+  // Arrays survive React Server Component (RSC) JSON serialization, whereas custom properties on arrays do not.
+  if (Array.isArray(inactiveSlots)) {
+    for (const slotKey of inactiveSlots) {
+      if (!banners.some((b) => b && (b.slotKey === slotKey || b.placement === slotKey))) {
+        banners.push({
+          slotKey,
+          placement: slotKey,
+          isActive: false,
+          imageUrl: null,
+          title: `Inactive ${slotKey}`,
+        });
+      }
+    }
+  }
+
+  banners.inactiveSlots = inactiveSlots;
 
   const sections =
     sectionsResult.status === "fulfilled"
@@ -81,6 +112,13 @@ export default async function StorefrontHomePage() {
       ? Array.isArray(brandsResult.value?.data)
         ? brandsResult.value.data
         : brandsResult.value?.data?.brands || []
+      : [];
+
+  const activeCampaigns =
+    campaignsResult.status === "fulfilled"
+      ? Array.isArray(campaignsResult.value?.data)
+        ? campaignsResult.value.data
+        : campaignsResult.value?.data?.campaigns || []
       : [];
 
   // 1. Featured products from CMS section or fallback to isFeatured products
@@ -141,7 +179,7 @@ export default async function StorefrontHomePage() {
   return (
     <div className="flex flex-col">
       {/* 5. Hero Showcase (2/3 width Big Summer Sale + 1/3 width 3 Stacked Cards) */}
-      <HeroSection initialBanners={banners} />
+      <HeroSection initialBanners={banners} inactiveSlots={inactiveSlots} />
 
       {/* 6. Marketplace Trust Bar (4 Guarantees in rounded container) */}
       <TrustSection />
@@ -152,6 +190,9 @@ export default async function StorefrontHomePage() {
       {/* 8-18. Complete Marketplace Merchandising Journey */}
       <HomeClientWrapper
         initialBanners={banners}
+        inactiveSlots={inactiveSlots}
+        initialActiveCampaigns={activeCampaigns}
+        initialSections={sections}
         initialFeaturedProducts={initialFeaturedProducts}
         initialNewArrivals={initialNewArrivals}
         initialBestSellers={initialBestSellers}

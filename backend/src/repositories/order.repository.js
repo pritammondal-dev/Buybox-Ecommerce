@@ -49,6 +49,30 @@ const findByCustomerIdAndIdempotencyKey = async (
   }).session(options.session || null);
 };
 
+const findByGuestIdAndIdempotencyKey = async (
+  guestId,
+  idempotencyKey,
+  options = {}
+) => {
+  if (!idempotencyKey || !guestId) {
+    return null;
+  }
+
+  return Order.findOne({
+    guestId,
+    idempotencyKey,
+  }).session(options.session || null);
+};
+
+const findByGuest = async (guestId, options = {}) => {
+  if (!guestId) return [];
+  return Order.find({
+    guestId,
+  })
+    .session(options.session || null)
+    .sort({ createdAt: -1 });
+};
+
 const findEligibleForExpiration = async (
   { cutoffDate, limit = 50 } = {},
   options = {}
@@ -73,20 +97,70 @@ const transitionStatusIfCurrent = async (
   updateData,
   options = {}
 ) => {
+  const query = { _id: orderId };
+  if (expectedStatus !== undefined && expectedStatus !== null) {
+    if (Array.isArray(expectedStatus)) {
+      query.status = { $in: expectedStatus };
+    } else {
+      query.status = expectedStatus;
+    }
+  }
+
+  if (typeof options.expectedVersion === "number") {
+    if (options.expectedVersion === 1) {
+      // Legacy unversioned orders lack the 'version' field in BSON or have null/1
+      query.$or = [{ version: 1 }, { version: { $exists: false } }, { version: null }];
+    } else {
+      query.version = options.expectedVersion;
+    }
+  }
+
+  const setOps = { ...updateData };
+  const pushOps = setOps.$push;
+  const incOps = { ...(setOps.$inc || {}) };
+  delete setOps.$push;
+  delete setOps.$inc;
+
+  if (typeof options.expectedVersion === "number") {
+    // Explicitly set next version to ensure atomic bump even on unversioned documents
+    setOps.version = options.expectedVersion + 1;
+    delete incOps.version;
+  }
+
+  const updateOp = {
+    $set: setOps,
+  };
+
+  if (Object.keys(incOps).length > 0) {
+    updateOp.$inc = incOps;
+  }
+
+  if (pushOps) {
+    updateOp.$push = pushOps;
+  }
+
   return Order.findOneAndUpdate(
-    {
-      _id: orderId,
-      status: expectedStatus,
-    },
-    {
-      $set: updateData,
-    },
+    query,
+    updateOp,
     {
       new: true,
       runValidators: true,
       session: options.session,
     }
   );
+};
+
+const transitionOrderAtomic = async ({
+  orderId,
+  expectedStatus,
+  expectedVersion,
+  updateData = {},
+  session = null,
+} = {}) => {
+  return transitionStatusIfCurrent(orderId, expectedStatus, updateData, {
+    expectedVersion,
+    session,
+  });
 };
 
 const appendPaymentAttempt = async (
@@ -173,12 +247,15 @@ module.exports = {
   findById,
   findByOrderNumber,
   findByCustomer,
+  findByGuest,
   findByVendor,
   findByIdAndVendor,
   findAll,
   findByCustomerIdAndIdempotencyKey,
+  findByGuestIdAndIdempotencyKey,
   findEligibleForExpiration,
   transitionStatusIfCurrent,
+  transitionOrderAtomic,
   updateById,
   appendPaymentAttempt,
 };

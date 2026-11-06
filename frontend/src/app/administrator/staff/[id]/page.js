@@ -22,16 +22,19 @@ import {
   UserCheck,
 } from "lucide-react";
 import { staffService, jobRoleService } from "@/services/admin/admin.service.js";
-import { useAuth } from "@/hooks/useAuth.js";
+import { toast } from "sonner";
+import { useAdminAuth } from "@/hooks/useAdminAuth.js";
+import { ConfirmDialog } from "@/components/admin/ConfirmDialog.jsx";
 
 export default function StaffDetailPage() {
   const params = useParams();
   const router = useRouter();
   const staffId = params?.id;
 
-  const { user: currentUser } = useAuth();
+  const { user: currentUser } = useAdminAuth();
   const isSuperadmin =
-    currentUser?.role === "super_admin" || currentUser?.role === "SUPERADMIN";
+    ["super_admin", "SUPER_ADMIN", "superadmin"].includes(currentUser?.role) ||
+    currentUser?.isSuperadmin;
 
   const [staffMember, setStaffMember] = useState(null);
   const [sessions, setSessions] = useState([]);
@@ -42,6 +45,8 @@ export default function StaffDetailPage() {
   // Modals & Action Loaders
   const [revoking, setRevoking] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
+  const [showStatusConfirm, setShowStatusConfirm] = useState(false);
+  const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [passwordLoading, setPasswordLoading] = useState(false);
@@ -79,10 +84,12 @@ export default function StaffDetailPage() {
     fetchStaffDetails();
   }, [staffId]);
 
-  const handleToggleStatus = async () => {
-    const action = staffMember.isActive ? "suspend" : "reactivate";
-    if (!confirm(`Are you sure you want to ${action} this staff member?`)) return;
+  const handleToggleStatus = () => {
+    setShowStatusConfirm(true);
+  };
 
+  const handleConfirmToggleStatus = async () => {
+    const action = staffMember.isActive ? "suspend" : "reactivate";
     setStatusLoading(true);
     setError(null);
     try {
@@ -95,6 +102,7 @@ export default function StaffDetailPage() {
       }
       setTimeout(() => setSuccess(null), 4000);
       fetchStaffDetails();
+      setShowStatusConfirm(false);
     } catch (err) {
       setError(err?.response?.data?.message || `Failed to ${action} staff member`);
     } finally {
@@ -102,15 +110,11 @@ export default function StaffDetailPage() {
     }
   };
 
-  const handleRevokeSessions = async () => {
-    if (
-      !confirm(
-        "Are you sure you want to revoke all active sessions for this staff member? Their access tokens will be immediately invalidated."
-      )
-    ) {
-      return;
-    }
+  const handleRevokeSessions = () => {
+    setShowRevokeConfirm(true);
+  };
 
+  const handleConfirmRevokeSessions = async () => {
     setRevoking(true);
     setError(null);
     try {
@@ -118,6 +122,7 @@ export default function StaffDetailPage() {
       setSuccess("All active sessions revoked. The user must authenticate again.");
       setTimeout(() => setSuccess(null), 4500);
       fetchStaffDetails();
+      setShowRevokeConfirm(false);
     } catch (err) {
       setError(err?.response?.data?.message || "Failed to revoke active sessions");
     } finally {
@@ -128,7 +133,7 @@ export default function StaffDetailPage() {
   const handleResetPassword = async (e) => {
     e.preventDefault();
     if (!newPassword || newPassword.length < 8) {
-      alert("Password must be at least 8 characters");
+      toast.error("Password must be at least 8 characters");
       return;
     }
 
@@ -136,12 +141,14 @@ export default function StaffDetailPage() {
     setError(null);
     try {
       await staffService.resetPassword(staffId, newPassword);
+      toast.success("Staff password has been reset securely");
       setSuccess("Staff password has been reset securely");
       setShowPasswordModal(false);
       setNewPassword("");
       setTimeout(() => setSuccess(null), 4000);
       fetchStaffDetails();
     } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to reset password");
       setError(err?.response?.data?.message || "Failed to reset password");
     } finally {
       setPasswordLoading(false);
@@ -206,7 +213,15 @@ export default function StaffDetailPage() {
                 {staffMember.isActive ? "Active" : "Suspended"}
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-1">{staffMember.email}</p>
+            <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
+              <span>{staffMember.email}</span>
+              {staffMember.phone && (
+                <>
+                  <span>•</span>
+                  <span>{staffMember.phone}</span>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -483,6 +498,32 @@ export default function StaffDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Confirm Status Toggle Dialog */}
+      <ConfirmDialog
+        isOpen={showStatusConfirm}
+        onClose={() => setShowStatusConfirm(false)}
+        onConfirm={handleConfirmToggleStatus}
+        title={staffMember?.isActive ? "Suspend Staff Member" : "Reactivate Staff Member"}
+        description={`Are you sure you want to ${
+          staffMember?.isActive ? "suspend" : "reactivate"
+        } ${staffMember?.firstName || ""} ${staffMember?.lastName || ""}?`}
+        confirmLabel={staffMember?.isActive ? "Suspend" : "Reactivate"}
+        variant={staffMember?.isActive ? "destructive" : "default"}
+        isLoading={statusLoading}
+      />
+
+      {/* Confirm Revoke Sessions Dialog */}
+      <ConfirmDialog
+        isOpen={showRevokeConfirm}
+        onClose={() => setShowRevokeConfirm(false)}
+        onConfirm={handleConfirmRevokeSessions}
+        title="Revoke All Active Sessions"
+        description="Are you sure you want to revoke all active sessions for this staff member? Their access tokens will be immediately invalidated and they will be forced to authenticate again."
+        confirmLabel="Revoke Sessions"
+        variant="destructive"
+        isLoading={revoking}
+      />
     </div>
   );
 }

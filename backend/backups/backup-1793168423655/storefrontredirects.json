@@ -1,0 +1,1 @@
+[{"_id":{"$oid":"6a9e50c4de80cbbedc2cb593"},"sourcePath":"/old-products","destinationPath":"/products","statusCode":{"$numberInt":"301"},"isActive":true,"createdBy":{"$oid":"6a9925533d7694ebc6be2e4e"},"updatedBy":{"$oid":"6a9925533d7694ebc6be2e4e"},"createdAt":{"$date":{"$numberLong":"1788760260063"}},"updatedAt":{"$date":{"$numberLong":"1788760260063"}}}]

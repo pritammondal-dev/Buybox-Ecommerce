@@ -5,7 +5,16 @@ const shipmentWebhookEventSchema = new mongoose.Schema(
     provider: {
       type: String,
       required: true,
-      enum: ["delhivery", "shiprocket", "manual", "generic"],
+      enum: [
+        "delhivery",
+        "shiprocket",
+        "custom",
+        "bluedart",
+        "dtdc",
+        "indiapost",
+        "manual",
+        "generic",
+      ],
       index: true,
     },
 

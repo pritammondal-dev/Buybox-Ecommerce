@@ -1,57 +1,92 @@
 const NotificationOutbox = require("../models/NotificationOutbox");
 const notificationQueue = require("../queues/notification.queue");
+const { withDistributedLock } = require("../utils/distributed-lock");
 
 let dispatcherRunning = false;
 let dispatcherTimer = null;
 
-const dispatchPendingNotifications = async () => {
+const dispatchPendingNotifications = async (options = {}) => {
   if (dispatcherRunning) {
     return 0;
   }
 
-  dispatcherRunning = true;
+  const lockTtlMs = options.lockTtlMs || 15000;
+  const lockResult = await withDistributedLock(
+    "notification-dispatcher",
+    async () => {
+      dispatcherRunning = true;
 
-  try {
-    const notifications =
-      await NotificationOutbox.find({
-        status: "pending",
-        availableAt: {
-          $lte: new Date(),
-        },
-      })
-        .sort({
-          availableAt: 1,
-          createdAt: 1,
+      try {
+        const notifications = await NotificationOutbox.find({
+          status: "pending",
+          availableAt: {
+            $lte: new Date(),
+          },
         })
-        .limit(20);
+          .sort({
+            availableAt: 1,
+            createdAt: 1,
+          })
+          .limit(options.limit || 20);
 
-    let dispatched = 0;
+        let dispatched = 0;
 
-    for (const notification of notifications) {
-      await notificationQueue.add(
-  notification.type,
-  {
-    notificationId: notification._id.toString(),
-  },
-  {
-    jobId: `notification-${notification._id}`,
-    attempts: 3,
-    backoff: {
-      type: "exponential",
-      delay: 5000,
+        for (const notification of notifications) {
+          // Atomically claim notification so concurrent processes never re-enqueue
+          const claimed = await NotificationOutbox.findOneAndUpdate(
+            { _id: notification._id, status: "pending" },
+            { $set: { status: "queued", queuedAt: new Date() } },
+            { new: true }
+          );
+
+          if (!claimed) {
+            continue;
+          }
+
+          try {
+            await notificationQueue.add(
+              claimed.type,
+              {
+                notificationId: claimed._id.toString(),
+              },
+              {
+                jobId: `notification-${claimed._id}`,
+                attempts: 3,
+                backoff: {
+                  type: "exponential",
+                  delay: 5000,
+                },
+                removeOnComplete: true,
+                removeOnFail: false,
+              }
+            );
+
+            dispatched += 1;
+          } catch (queueErr) {
+            // Revert to pending so it can be picked up on next interval
+            await NotificationOutbox.updateOne(
+              { _id: claimed._id, status: "queued" },
+              { $set: { status: "pending", lastError: queueErr.message } }
+            ).catch(() => {});
+          }
+        }
+
+        return dispatched;
+      } finally {
+        dispatcherRunning = false;
+      }
     },
-    removeOnComplete: true,
-    removeOnFail: false,
-  }
-);
-
-      dispatched += 1;
+    {
+      ttlMs: lockTtlMs,
+      client: options.redisClient,
     }
+  );
 
-    return dispatched;
-  } finally {
-    dispatcherRunning = false;
+  if (lockResult.skipped) {
+    return 0;
   }
+
+  return lockResult.result || 0;
 };
 
 const runNotificationDispatcher = () => {

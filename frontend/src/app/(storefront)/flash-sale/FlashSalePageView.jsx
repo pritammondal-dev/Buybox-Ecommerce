@@ -54,7 +54,6 @@ export function FlashSalePageView({ products = [] }) {
           name: product.name,
           price: product.price,
           image: product.images?.[0]?.url || product.image || null,
-          sku: product.sku,
         },
       });
       toast.success("Added to cart", { description: `${product.name} added to your cart.` });

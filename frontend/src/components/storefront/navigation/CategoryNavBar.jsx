@@ -19,6 +19,7 @@ import {
   Package,
 } from "lucide-react";
 import { cn } from "../../../utils/cn.js";
+import { getCategorySlug, getCategoryHref } from "../../../utils/category.util.js";
 
 const CATEGORY_ICON_MAP = {
   mobiles: Smartphone,
@@ -37,17 +38,6 @@ const CATEGORY_ICON_MAP = {
   "minimalist-gear-edc": Package,
 };
 
-const DEFAULT_CATEGORY_ITEMS = [
-  { name: "Mobiles", slug: "mobiles", icon: Smartphone, image: "https://images.unsplash.com/photo-1598327105666-5b89351aff97?auto=format&fit=crop&w=120&q=80" },
-  { name: "Laptops", slug: "laptops", icon: Laptop, image: "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=120&q=80" },
-  { name: "Audio", slug: "audio", icon: Headphones, image: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=120&q=80" },
-  { name: "TV & Home Appliances", slug: "tv-appliances", icon: Tv, image: "https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?auto=format&fit=crop&w=120&q=80" },
-  { name: "Accessories", slug: "accessories", icon: Watch, image: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=120&q=80" },
-  { name: "Smart Home", slug: "smart-home", icon: HomeIcon, image: "https://images.unsplash.com/photo-1543512214-318c7553f230?auto=format&fit=crop&w=120&q=80" },
-  { name: "Gaming", slug: "gaming", icon: Gamepad2, image: "https://images.unsplash.com/photo-1612287233207-6f81c96a41f6?auto=format&fit=crop&w=120&q=80" },
-  { name: "Fashion", slug: "fashion", icon: Shirt, image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?auto=format&fit=crop&w=120&q=80" },
-];
-
 export function CategoryNavBar({ categories = [], onOpenDrawer, className }) {
   const pathname = usePathname();
   const scrollContainerRef = useRef(null);
@@ -57,7 +47,7 @@ export function CategoryNavBar({ categories = [], onOpenDrawer, className }) {
   // Dynamically resolve ALL backend categories without hardcoding
   const displayItems = React.useMemo(() => {
     if (!categories || categories.length === 0) {
-      return DEFAULT_CATEGORY_ITEMS;
+      return [];
     }
 
     // Prefer top-level categories if parentId hierarchy exists, otherwise use all
@@ -65,12 +55,9 @@ export function CategoryNavBar({ categories = [], onOpenDrawer, className }) {
     const sourceList = rootCategories.length > 0 ? rootCategories : categories;
 
     return sourceList.map((cat) => {
-      const slug = cat.slug || cat._id;
-      const matchedDef = DEFAULT_CATEGORY_ITEMS.find(
-        (d) => d.slug === slug || cat.name?.toLowerCase().includes(d.slug)
-      );
-      const icon = CATEGORY_ICON_MAP[slug] || matchedDef?.icon || Package;
-      const image = cat.image?.url || matchedDef?.image || null;
+      const slug = getCategorySlug(cat) || "";
+      const icon = CATEGORY_ICON_MAP[slug] || Package;
+      const image = cat.image?.url || cat.imageUrl || null;
 
       return {
         id: cat._id || cat.id,
@@ -108,6 +95,10 @@ export function CategoryNavBar({ categories = [], onOpenDrawer, className }) {
       setTimeout(updateScrollState, 350);
     }
   };
+
+  if (!displayItems || displayItems.length === 0) {
+    return null;
+  }
 
   return (
     <div
@@ -158,7 +149,7 @@ export function CategoryNavBar({ categories = [], onOpenDrawer, className }) {
             style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
           >
             {displayItems.map((cat) => {
-              const href = `/category/${cat.slug || cat.id}`;
+              const href = getCategoryHref(cat.slug || cat.id);
               const isActive = pathname === href;
               const Icon = cat.icon || Package;
 

@@ -87,6 +87,33 @@ export function OrderStatusBadge({ status, type = "order", size = "sm" }) {
 
   // Order status
   switch (normalized) {
+    case "awaiting_merchant_confirmation":
+      return (
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-full font-extrabold bg-amber-50 text-amber-800 border border-amber-200/80 ${sizeClasses}`}
+        >
+          <Clock className={iconSize} />
+          <span>Awaiting Merchant Confirmation</span>
+        </span>
+      );
+    case "merchant_accepted":
+      return (
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-full font-extrabold bg-sky-50 text-sky-700 border border-sky-200/80 ${sizeClasses}`}
+        >
+          <Package className={iconSize} />
+          <span>Merchant Accepted</span>
+        </span>
+      );
+    case "vendor_rejected":
+      return (
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-full font-extrabold bg-rose-50 text-rose-700 border border-rose-200/80 ${sizeClasses}`}
+        >
+          <AlertCircle className={iconSize} />
+          <span>Under Operations Review</span>
+        </span>
+      );
     case "confirmed":
       return (
         <span

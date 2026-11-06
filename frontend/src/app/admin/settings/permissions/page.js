@@ -1,21 +1,23 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   KeyRound,
   ShieldCheck,
   CheckCircle2,
   AlertTriangle,
   Save,
-  User,
+  RotateCcw,
   RefreshCw,
-  Info,
+  Search,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import {
   staffService,
   permissionService,
 } from "@/services/admin/admin.service.js";
-import { useAuth } from "@/hooks/useAuth.js";
+import { useAdminAuth } from "@/hooks/useAdminAuth.js";
 
 // Section 5 Master Permission Catalog Definitions
 const PERMISSION_GROUPS = [
@@ -65,52 +67,59 @@ const PERMISSION_GROUPS = [
       { slug: "brands.create", label: "Create Brands", desc: "Add new brands" },
       { slug: "brands.edit", label: "Edit Brands", desc: "Update brand details" },
       { slug: "brands.delete", label: "Delete Brands", desc: "Remove brands" },
+      { slug: "attributes.view", label: "View Attributes", desc: "View product attributes and values" },
+      { slug: "attributes.create", label: "Create Attributes", desc: "Create product attributes" },
+      { slug: "attributes.edit", label: "Edit Attributes", desc: "Update product attributes" },
+      { slug: "attributes.delete", label: "Delete Attributes", desc: "Remove product attributes" },
     ],
   },
   {
     namespace: "Inventory & Warehouses",
     permissions: [
       { slug: "inventory.view", label: "View Inventory", desc: "Inspect inventory levels across warehouses" },
+      { slug: "inventory.create", label: "Create Inventory", desc: "Add inventory stock batches" },
+      { slug: "inventory.manage", label: "Manage Inventory", desc: "Manage inventory settings and allocations" },
       { slug: "inventory.adjust", label: "Adjust Stock", desc: "Perform manual stock adjustments" },
       { slug: "inventory.transfer", label: "Transfer Stock", desc: "Initiate stock transfers" },
+      { slug: "inventory.export", label: "Export Inventory", desc: "Export inventory datasets" },
       { slug: "warehouses.view", label: "View Warehouses", desc: "View warehouse facilities" },
       { slug: "warehouses.create", label: "Create Warehouses", desc: "Add new warehouse locations" },
       { slug: "warehouses.edit", label: "Edit Warehouses", desc: "Update warehouse details" },
+      { slug: "warehouses.manage", label: "Manage Warehouses", desc: "Configure warehouse operational rules" },
       { slug: "warehouses.manage_inventory", label: "Manage Inventory", desc: "Allocate warehouse stock" },
+      { slug: "warehouses.delete", label: "Delete Warehouses", desc: "Decommission warehouse locations" },
     ],
   },
   {
-    namespace: "Orders & Returns",
+    namespace: "Orders, Returns & Refunds",
     permissions: [
       { slug: "orders.view", label: "View Orders", desc: "Inspect customer orders and details" },
       { slug: "orders.edit", label: "Edit Orders", desc: "Update delivery notes and customer details" },
+      { slug: "orders.manage", label: "Manage Orders", desc: "Manage order workflows and lifecycle" },
       { slug: "orders.cancel", label: "Cancel Orders", desc: "Cancel unfulfilled orders" },
+      { slug: "orders.export", label: "Export Orders", desc: "Export order records" },
       { slug: "returns.view", label: "View Returns", desc: "Inspect return requests queue" },
       { slug: "returns.approve", label: "Approve Returns", desc: "Authorize returns" },
       { slug: "returns.reject", label: "Reject Returns", desc: "Decline returns" },
-    ],
-  },
-  {
-    namespace: "Finance & Settlements",
-    permissions: [
       { slug: "refunds.view", label: "View Refunds", desc: "View refund records" },
       { slug: "refunds.create", label: "Create Refunds", desc: "Initiate payment gateway refunds" },
       { slug: "refunds.approve", label: "Approve Refunds", desc: "Authorize refunds" },
-      { slug: "payments.view", label: "View Payments", desc: "View payment gateway transactions" },
-      { slug: "payments.reconcile", label: "Reconcile Payments", desc: "Reconcile payment balances" },
-      { slug: "settlements.view", label: "View Settlements", desc: "View vendor settlements" },
-      { slug: "settlements.manage", label: "Manage Settlements", desc: "Process payouts and finalize settlements" },
     ],
   },
   {
-    namespace: "Shipping & Fulfillment",
+    namespace: "Payments & Shipping",
     permissions: [
+      { slug: "payments.view", label: "View Payments", desc: "View payment gateway transactions" },
+      { slug: "payments.reconcile", label: "Reconcile Payments", desc: "Reconcile payment balances" },
+      { slug: "payments.manage", label: "Manage Payments", desc: "Manage gateway payment rules" },
+      { slug: "settlements.view", label: "View Settlements", desc: "View vendor settlements" },
+      { slug: "settlements.manage", label: "Manage Settlements", desc: "Process payouts and finalize settlements" },
       { slug: "shipping.view", label: "View Shipping", desc: "View shipments and tracking" },
       { slug: "shipping.manage", label: "Manage Shipping", desc: "Dispatch or reassign courier shipments" },
     ],
   },
   {
-    namespace: "Marketing & CMS",
+    namespace: "Marketing, Promotions & CMS",
     permissions: [
       { slug: "campaigns.view", label: "View Campaigns", desc: "View campaigns" },
       { slug: "campaigns.create", label: "Create Campaigns", desc: "Create promotional campaigns" },
@@ -120,10 +129,16 @@ const PERMISSION_GROUPS = [
       { slug: "coupons.create", label: "Create Coupons", desc: "Create coupon codes" },
       { slug: "coupons.edit", label: "Edit Coupons", desc: "Update coupons" },
       { slug: "coupons.delete", label: "Delete Coupons", desc: "Deactivate coupons" },
+      { slug: "discounts.view", label: "View Discounts", desc: "View discounts and promotions" },
+      { slug: "discounts.manage", label: "Manage Discounts", desc: "Manage promotional pricing and rules" },
+      { slug: "promotions.override_floor", label: "Override Price Floor", desc: "Override minimum promotional price floors" },
       { slug: "cms.view", label: "View CMS", desc: "View CMS content and banners" },
       { slug: "cms.create", label: "Create CMS", desc: "Draft banners and pages" },
       { slug: "cms.edit", label: "Edit CMS", desc: "Modify pages and navigation" },
       { slug: "cms.publish", label: "Publish CMS", desc: "Publish CMS content live" },
+      { slug: "cms.delete", label: "Delete CMS", desc: "Remove banners or pages" },
+      { slug: "cms.events.view", label: "View Special Events", desc: "View Special Event pages" },
+      { slug: "cms.events.manage", label: "Manage Special Events", desc: "Create, schedule, and publish Special Event pages" },
     ],
   },
   {
@@ -146,17 +161,28 @@ const PERMISSION_GROUPS = [
       { slug: "tasks.assign", label: "Assign Tasks", desc: "Assign tasks to employees" },
       { slug: "tasks.edit", label: "Edit Tasks", desc: "Update tasks and notes" },
       { slug: "tasks.complete", label: "Complete Tasks", desc: "Mark tasks completed" },
+      { slug: "activity_logs.view", label: "View Activity Logs", desc: "Inspect immutable audit logs" },
+      { slug: "activity_logs.export", label: "Export Activity Logs", desc: "Export audit trails" },
     ],
   },
   {
-    namespace: "Activity Logs & Governance",
+    namespace: "Tax & Regional Settings",
     permissions: [
-      { slug: "activity_logs.view", label: "View Activity Logs", desc: "Inspect immutable audit logs" },
-      { slug: "activity_logs.export", label: "Export Activity Logs", desc: "Export audit trails" },
+      { slug: "tax.view", label: "View Tax", desc: "View tax rates and jurisdictions" },
+      { slug: "tax.manage", label: "Manage Tax", desc: "Configure tax rules, rates, and exemptions" },
+    ],
+  },
+  {
+    namespace: "Governance & Platform",
+    permissions: [
       { slug: "staff.view", label: "View Staff", desc: "View staff list" },
       { slug: "staff.create", label: "Create Staff", desc: "Provision staff members" },
       { slug: "staff.edit", label: "Edit Staff", desc: "Modify staff records" },
       { slug: "staff.suspend", label: "Suspend Staff", desc: "Suspend staff access" },
+      { slug: "job_roles.view", label: "View Job Roles", desc: "View dynamic job roles" },
+      { slug: "job_roles.create", label: "Create Job Roles", desc: "Create dynamic job roles" },
+      { slug: "job_roles.edit", label: "Edit Job Roles", desc: "Modify job role permissions" },
+      { slug: "job_roles.delete", label: "Delete Job Roles", desc: "Remove dynamic job roles" },
       { slug: "permissions.view", label: "View Permissions", desc: "View permission matrix" },
       { slug: "permissions.manage", label: "Manage Permissions", desc: "Manage employee permissions" },
       { slug: "platform_settings.view", label: "View Platform Settings", desc: "Inspect system configurations" },
@@ -168,17 +194,21 @@ const PERMISSION_GROUPS = [
 ];
 
 export default function PermissionSettingsPage() {
-  const { user: currentUser } = useAuth();
-  const isSuperadmin = currentUser?.role === "super_admin";
+  const { user: currentUser } = useAdminAuth();
+  const isSuperadmin =
+    ["super_admin", "SUPER_ADMIN", "superadmin"].includes(currentUser?.role) ||
+    currentUser?.isSuperadmin;
 
   const [staffList, setStaffList] = useState([]);
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const [selectedStaffDetails, setSelectedStaffDetails] = useState(null);
   const [selectedPermissions, setSelectedPermissions] = useState(new Set());
+  const [persistedPermissions, setPersistedPermissions] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [searchFilter, setSearchFilter] = useState("");
 
   // Load staff list
   useEffect(() => {
@@ -215,6 +245,7 @@ export default function PermissionSettingsPage() {
         setSelectedStaffDetails(details);
         const perms = new Set(details?.permissions || []);
         setSelectedPermissions(perms);
+        setPersistedPermissions(new Set(perms));
       } catch (err) {
         setError("Failed to load employee permissions");
       } finally {
@@ -224,7 +255,17 @@ export default function PermissionSettingsPage() {
     loadDetails();
   }, [selectedStaffId]);
 
+  // Compute dirty state
+  const isDirty = useMemo(() => {
+    if (selectedPermissions.size !== persistedPermissions.size) return true;
+    for (const p of selectedPermissions) {
+      if (!persistedPermissions.has(p)) return true;
+    }
+    return false;
+  }, [selectedPermissions, persistedPermissions]);
+
   const togglePermission = (slug) => {
+    if (!slug) return;
     setSelectedPermissions((prev) => {
       const next = new Set(prev);
       if (next.has(slug)) {
@@ -251,6 +292,12 @@ export default function PermissionSettingsPage() {
     });
   };
 
+  const handleResetChanges = () => {
+    setSelectedPermissions(new Set(persistedPermissions));
+    setError(null);
+    setSuccess(null);
+  };
+
   const handleSavePermissions = async () => {
     if (!selectedStaffDetails?.employee?.id) {
       setError("Selected staff member lacks an employee profile");
@@ -267,7 +314,15 @@ export default function PermissionSettingsPage() {
         selectedStaffDetails.employee.id,
         permissionArray
       );
-      setSuccess("Permissions updated atomically. Immediate session invalidation applied.");
+
+      // Reload authoritative persisted state from server to guarantee sync
+      const freshDetails = await staffService.get(selectedStaffId);
+      setSelectedStaffDetails(freshDetails);
+      const freshPerms = new Set(freshDetails?.permissions || []);
+      setSelectedPermissions(freshPerms);
+      setPersistedPermissions(new Set(freshPerms));
+
+      setSuccess("Permissions updated and verified. Immediate session invalidation applied.");
       setTimeout(() => setSuccess(null), 5000);
     } catch (err) {
       setError(
@@ -299,38 +354,52 @@ export default function PermissionSettingsPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
             <KeyRound className="size-6 text-emerald-600" />
-            <span>Permission Settings</span>
+            <span>Permission Settings &amp; Governance</span>
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Superadmin-controlled granular permission matrix with immediate session revocation
+            Superadmin-controlled granular permission catalog with immediate session revocation
           </p>
         </div>
 
-        <button
-          onClick={handleSavePermissions}
-          disabled={saving || loading || selectedStaffDetails?.role === "super_admin"}
-          className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-all shadow-xs disabled:opacity-50"
-        >
-          <Save className={`size-4 ${saving ? "animate-spin" : ""}`} />
-          <span>{saving ? "Saving Changes..." : "Save Permissions"}</span>
-        </button>
+        <div className="flex items-center gap-3">
+          {isDirty && (
+            <button
+              type="button"
+              onClick={handleResetChanges}
+              disabled={saving || loading}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all shadow-xs"
+            >
+              <RotateCcw className="size-3.5" />
+              <span>Reset</span>
+            </button>
+          )}
+
+          <button
+            onClick={handleSavePermissions}
+            disabled={saving || loading || !isDirty || selectedStaffDetails?.role === "super_admin"}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-all shadow-xs disabled:opacity-50"
+          >
+            <Save className={`size-4 ${saving ? "animate-spin" : ""}`} />
+            <span>{saving ? "Saving Changes..." : "Save Permissions"}</span>
+          </button>
+        </div>
       </div>
 
       {success && (
         <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-center gap-2.5">
-          <CheckCircle2 className="size-5 text-emerald-600" />
+          <CheckCircle2 className="size-5 text-emerald-600 shrink-0" />
           <span>{success}</span>
         </div>
       )}
 
       {error && (
         <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-center gap-2.5">
-          <AlertTriangle className="size-5 text-rose-600" />
+          <AlertTriangle className="size-5 text-rose-600 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
-      {/* Staff Member Selector */}
+      {/* Staff Selector */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-3 w-full md:w-auto">
           <label className="text-xs font-bold text-slate-700 uppercase tracking-wider whitespace-nowrap">
@@ -349,32 +418,52 @@ export default function PermissionSettingsPage() {
           </select>
         </div>
 
-        {selectedStaffDetails && (
-          <div className="flex items-center gap-3 text-xs text-slate-500">
-            <span>
-              Role: <strong className="text-slate-800 uppercase">{selectedStaffDetails.role}</strong>
-            </span>
-            <span>•</span>
-            <span>
-              Effective permissions:{" "}
-              <strong className="text-emerald-700">{selectedPermissions.size}</strong>
-            </span>
+        <div className="flex items-center gap-4 w-full md:w-auto">
+          <div className="relative flex-1 md:w-64">
+            <Search className="size-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search category..."
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            />
           </div>
-        )}
+
+          {selectedStaffDetails && (
+            <div className="flex items-center gap-3 text-xs text-slate-500 whitespace-nowrap">
+              <span>
+                Role: <strong className="text-slate-800 uppercase">{selectedStaffDetails.role}</strong>
+              </span>
+              <span>•</span>
+              <span>
+                Effective: <strong className="text-emerald-700">{selectedPermissions.size}</strong>
+              </span>
+              {isDirty && (
+                <span className="text-[11px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                  Unsaved Changes
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {selectedStaffDetails?.role === "super_admin" && (
         <div className="p-4 rounded-2xl bg-purple-50 border border-purple-200 text-purple-800 text-xs flex items-center gap-3">
           <ShieldCheck className="size-5 text-purple-600 shrink-0" />
           <span>
-            Superadmin holds platform-level authority and unconditionally possesses all permissions. Superadmin permissions cannot be modified.
+            Superadmin holds platform-level authority and unconditionally possesses all permissions. Superadmin permissions cannot be modified or restricted.
           </span>
         </div>
       )}
 
-      {/* Permission Checklists by Namespace */}
+      {/* CATEGORY CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {PERMISSION_GROUPS.map((group) => {
+        {PERMISSION_GROUPS.filter((g) =>
+          g.namespace.toLowerCase().includes(searchFilter.toLowerCase()) ||
+          g.permissions.some((p) => p.label.toLowerCase().includes(searchFilter.toLowerCase()))
+        ).map((group) => {
           const allSelected = group.permissions.every((p) =>
             selectedPermissions.has(p.slug)
           );

@@ -32,28 +32,28 @@ router.use(authenticate);
 
 router.get(
   "/",
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   validate(cmsPageListQuerySchema, "query"),
   cmsPageController.listPages
 );
 
 router.get(
   "/:pageId",
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   validate(cmsPageIdParamsSchema, "params"),
   cmsPageController.getPageById
 );
 
 router.post(
   "/",
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_CREATE),
   validate(createCmsPageSchema),
   cmsPageController.createPage
 );
 
 router.patch(
   "/:pageId",
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_EDIT),
   validate(cmsPageIdParamsSchema, "params"),
   validate(updateCmsPageSchema),
   cmsPageController.updatePage
@@ -61,28 +61,28 @@ router.patch(
 
 router.patch(
   "/:pageId/publish",
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_PUBLISH),
   validate(cmsPageIdParamsSchema, "params"),
   cmsPageController.publishPage
 );
 
 router.patch(
   "/:pageId/unpublish",
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_PUBLISH),
   validate(cmsPageIdParamsSchema, "params"),
   cmsPageController.unpublishPage
 );
 
 router.patch(
   "/:pageId/archive",
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_PUBLISH),
   validate(cmsPageIdParamsSchema, "params"),
   cmsPageController.archivePage
 );
 
 router.delete(
   "/:pageId",
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_DELETE),
   validate(cmsPageIdParamsSchema, "params"),
   cmsPageController.deletePage
 );

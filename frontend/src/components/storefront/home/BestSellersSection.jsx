@@ -11,10 +11,20 @@ export function BestSellersSection({
   wishlistVariantIds = [],
   onWishlistToggle,
   onAddToCart,
+  title: propTitle,
+  subtitle: propSubtitle,
+  theme,
+  viewAllHref: propViewAllHref,
+  viewAllText: propViewAllText,
 }) {
   const [products, setProducts] = useState(initialProducts);
-  const [title, setTitle] = useState("Best Sellers");
-  const [subtitle, setSubtitle] = useState("Most loved products, top quality.");
+  const [title, setTitle] = useState(propTitle || "Best Sellers");
+  const [subtitle, setSubtitle] = useState(propSubtitle || "Most loved products, top quality.");
+
+  useEffect(() => {
+    if (propTitle) setTitle(propTitle);
+    if (propSubtitle) setSubtitle(propSubtitle);
+  }, [propTitle, propSubtitle]);
 
   useEffect(() => {
     if (initialProducts.length > 0) return;
@@ -34,8 +44,8 @@ export function BestSellersSection({
           bestSellerSec.productIds.length > 0
         ) {
           if (!isMounted) return;
-          if (bestSellerSec.title) setTitle(bestSellerSec.title);
-          if (bestSellerSec.subtitle) setSubtitle(bestSellerSec.subtitle);
+          if (bestSellerSec.title && !propTitle) setTitle(bestSellerSec.title);
+          if (bestSellerSec.subtitle && !propSubtitle) setSubtitle(bestSellerSec.subtitle);
           setProducts(bestSellerSec.productIds);
         } else {
           if (!isMounted) return;
@@ -51,7 +61,7 @@ export function BestSellersSection({
     return () => {
       isMounted = false;
     };
-  }, [initialProducts]);
+  }, [initialProducts, propTitle, propSubtitle]);
 
   if (products.length === 0) {
     return null;
@@ -59,16 +69,17 @@ export function BestSellersSection({
 
   return (
     <SectionContainer
-      title={title}
-      subtitle={subtitle}
+      title={propTitle || title}
+      subtitle={propSubtitle || subtitle}
       badge="TOP RATED"
       badgeColor="bg-purple-600 text-white"
       icon={Award}
       iconBg="bg-purple-200 text-purple-800"
-      viewAllHref="/shop?sort=bestsellers"
-      viewAllText="View All Best Sellers"
+      viewAllHref={propViewAllHref !== undefined ? propViewAllHref : "/shop?sort=bestsellers"}
+      viewAllText={propViewAllText || "View All Best Sellers"}
       variant="trending"
       ariaLabel="Best Sellers"
+      theme={theme}
     >
       <ProductCarousel
         products={products}

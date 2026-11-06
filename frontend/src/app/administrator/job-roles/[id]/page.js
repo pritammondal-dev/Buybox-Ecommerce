@@ -19,16 +19,17 @@ import {
   History,
 } from "lucide-react";
 import { jobRoleService, permissionService } from "@/services/admin/admin.service.js";
-import { useAuth } from "@/hooks/useAuth.js";
+import { useAdminAuth } from "@/hooks/useAdminAuth.js";
 
 export default function JobRoleDetailPage() {
   const params = useParams();
   const router = useRouter();
   const roleId = params?.id;
 
-  const { user: currentUser } = useAuth();
+  const { user: currentUser } = useAdminAuth();
   const isSuperadmin =
-    currentUser?.role === "super_admin" || currentUser?.role === "SUPERADMIN";
+    ["super_admin", "SUPER_ADMIN", "superadmin"].includes(currentUser?.role) ||
+    currentUser?.isSuperadmin;
 
   const [role, setRole] = useState(null);
   const [allRoles, setAllRoles] = useState([]);
@@ -123,8 +124,8 @@ export default function JobRoleDetailPage() {
   if (loading) {
     return (
       <div className="p-8 max-w-6xl mx-auto space-y-4">
-        <div className="h-8 bg-gray-100 dark:bg-gray-800 rounded w-1/4 animate-pulse" />
-        <div className="h-64 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />
+        <div className="h-8 bg-slate-100 rounded w-1/4 animate-pulse" />
+        <div className="h-64 bg-slate-100 rounded-xl animate-pulse" />
       </div>
     );
   }
@@ -132,12 +133,12 @@ export default function JobRoleDetailPage() {
   if (error && !role) {
     return (
       <div className="p-8 max-w-xl mx-auto text-center space-y-4">
-        <AlertTriangle className="w-12 h-12 text-red-500 mx-auto" />
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white">Role Not Found</h2>
-        <p className="text-sm text-gray-500">{error}</p>
+        <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto" />
+        <h2 className="text-xl font-bold text-slate-900">Role Not Found</h2>
+        <p className="text-sm text-slate-500">{error}</p>
         <Link
           href="/administrator/job-roles"
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Job Roles
@@ -153,32 +154,32 @@ export default function JobRoleDetailPage() {
         <div className="flex items-center gap-3">
           <Link
             href="/administrator/job-roles"
-            className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+              <h1 className="text-2xl font-bold text-slate-900">
                 {role.name}
               </h1>
-              <span className="px-2.5 py-0.5 rounded text-xs font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                 Tier {role.tier}
               </span>
               {role.isSuperadminRole && (
-                <span className="px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
                   Superadmin
                 </span>
               )}
             </div>
-            <p className="text-xs text-gray-500 mt-1 font-mono">{role.slug}</p>
+            <p className="text-xs text-slate-500 mt-1 font-mono">{role.slug}</p>
           </div>
         </div>
 
         <button
           onClick={handleSaveChanges}
           disabled={saving || role.isSuperadminRole}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-all disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs transition-all disabled:opacity-50"
         >
           <Save className="w-4 h-4" />
           {saving ? "Saving..." : "Save Role Settings"}
@@ -187,14 +188,14 @@ export default function JobRoleDetailPage() {
 
       {/* Notifications */}
       {successMsg && (
-        <div className="flex items-center gap-2 p-4 text-sm text-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300 rounded-lg border border-emerald-200 dark:border-emerald-800">
+        <div className="flex items-center gap-2 p-4 text-sm text-emerald-800 bg-emerald-50 rounded-xl border border-emerald-200">
           <CheckCircle className="w-5 h-5 flex-shrink-0" />
           <span>{successMsg}</span>
         </div>
       )}
 
       {error && (
-        <div className="flex items-center gap-2 p-4 text-sm text-red-800 bg-red-50 dark:bg-red-950/40 dark:text-red-300 rounded-lg border border-red-200 dark:border-red-800">
+        <div className="flex items-center gap-2 p-4 text-sm text-rose-800 bg-rose-50 rounded-xl border border-rose-200">
           <AlertTriangle className="w-5 h-5 flex-shrink-0" />
           <span>{error}</span>
         </div>
@@ -202,40 +203,40 @@ export default function JobRoleDetailPage() {
 
       {/* Overview Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800">
-          <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">
+        <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
+          <div className="text-xs text-slate-500 uppercase tracking-wide font-semibold">
             Organizational Tier
           </div>
-          <div className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+          <div className="text-2xl font-bold text-slate-900 mt-1">
             Tier {role.tier}
           </div>
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-slate-400 mt-1">
             {role.tier === 1
               ? "Highest Authority (Platform Superadmin)"
               : `Authority position #${role.tier} in the dynamic hierarchy`}
           </p>
         </div>
 
-        <div className="p-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800">
-          <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">
+        <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
+          <div className="text-xs text-slate-500 uppercase tracking-wide font-semibold">
             Assigned Staff
           </div>
-          <div className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+          <div className="text-2xl font-bold text-slate-900 mt-1">
             {role.employeeCount || 0}
           </div>
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-slate-400 mt-1">
             Active marketplace employees possessing this Job Role
           </p>
         </div>
 
-        <div className="p-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800">
-          <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold">
+        <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
+          <div className="text-xs text-slate-500 uppercase tracking-wide font-semibold">
             Configured Permissions
           </div>
-          <div className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+          <div className="text-2xl font-bold text-slate-900 mt-1">
             {role.isSuperadminRole ? "All (*)" : selectedPermissions.size}
           </div>
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-slate-400 mt-1">
             {role.isSuperadminRole
               ? "Superadmin bypasses all operational permission checks"
               : "Granular capabilities authorized for this role"}
@@ -244,13 +245,13 @@ export default function JobRoleDetailPage() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex border-b border-gray-200 dark:border-gray-800 space-x-6 text-sm font-medium">
+      <div className="flex border-b border-slate-200 space-x-6 text-sm font-medium">
         <button
           onClick={() => setActiveTab("permissions")}
-          className={`pb-3 border-b-2 transition-colors ${
+          className={`pb-3 border-b-2 font-semibold transition-colors ${
             activeTab === "permissions"
-              ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
-              : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              ? "border-emerald-600 text-emerald-600"
+              : "border-transparent text-slate-500 hover:text-slate-700"
           }`}
         >
           Granular Permissions ({selectedPermissions.size})
@@ -258,10 +259,10 @@ export default function JobRoleDetailPage() {
 
         <button
           onClick={() => setActiveTab("scope")}
-          className={`pb-3 border-b-2 transition-colors ${
+          className={`pb-3 border-b-2 font-semibold transition-colors ${
             activeTab === "scope"
-              ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
-              : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              ? "border-emerald-600 text-emerald-600"
+              : "border-transparent text-slate-500 hover:text-slate-700"
           }`}
         >
           Management Scope ({selectedScope.size})
@@ -273,13 +274,13 @@ export default function JobRoleDetailPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-4">
             <div className="relative w-full sm:w-80">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
                 type="text"
                 placeholder="Filter permissions..."
                 value={permissionSearch}
                 onChange={(e) => setPermissionSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 text-sm border rounded-lg bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                className="w-full pl-9 pr-4 py-2 text-sm border rounded-xl bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
               />
             </div>
 
@@ -293,15 +294,15 @@ export default function JobRoleDetailPage() {
                     );
                     setSelectedPermissions(new Set(allSlugs));
                   }}
-                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                  className="text-xs font-semibold text-emerald-600 hover:underline"
                 >
                   Select All
                 </button>
-                <span className="text-gray-300 dark:text-gray-700">|</span>
+                <span className="text-slate-300">|</span>
                 <button
                   type="button"
                   onClick={() => setSelectedPermissions(new Set())}
-                  className="text-xs text-gray-500 hover:underline"
+                  className="text-xs font-semibold text-slate-500 hover:underline"
                 >
                   Deselect All
                 </button>
@@ -310,7 +311,7 @@ export default function JobRoleDetailPage() {
           </div>
 
           {role.isSuperadminRole && (
-            <div className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-900 dark:text-amber-200">
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
               Platform Superadmin possesses unrestricted authority across all operational and
               governance capabilities. Permissions for Superadmin cannot be restricted.
             </div>
@@ -331,11 +332,11 @@ export default function JobRoleDetailPage() {
               return (
                 <div
                   key={categoryName}
-                  className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4"
+                  className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs"
                 >
-                  <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center justify-between">
                     <span>{categoryName}</span>
-                    <span className="text-xs font-normal text-gray-400">
+                    <span className="text-xs font-normal text-slate-400">
                       {perms.filter((p) => selectedPermissions.has(p.slug || p)).length} /{" "}
                       {perms.length} enabled
                     </span>
@@ -349,10 +350,10 @@ export default function JobRoleDetailPage() {
                       return (
                         <label
                           key={slug}
-                          className={`flex items-start gap-2.5 p-2.5 rounded-lg border text-xs cursor-pointer transition-all ${
+                          className={`flex items-start gap-2.5 p-2.5 rounded-xl border text-xs cursor-pointer transition-all ${
                             isChecked
-                              ? "bg-indigo-50/60 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800/60 text-gray-900 dark:text-white"
-                              : "bg-gray-50/50 dark:bg-gray-800/40 border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400"
+                              ? "bg-emerald-50/70 border-emerald-300 text-slate-900 shadow-2xs"
+                              : "bg-slate-50/50 border-slate-200 text-slate-600 hover:bg-slate-50"
                           } ${role.isSuperadminRole ? "cursor-not-allowed opacity-75" : ""}`}
                         >
                           <input
@@ -360,15 +361,15 @@ export default function JobRoleDetailPage() {
                             disabled={role.isSuperadminRole}
                             checked={isChecked}
                             onChange={() => togglePermission(slug)}
-                            className="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            className="mt-0.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                           />
                           <div>
                             <div className="font-semibold">{p.name || slug}</div>
-                            <div className="text-[11px] text-gray-500 dark:text-gray-400 font-mono mt-0.5">
+                            <div className="text-[11px] text-slate-500 font-mono mt-0.5">
                               {slug}
                             </div>
                             {p.description && (
-                              <div className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+                              <div className="text-[11px] text-slate-400 mt-1">
                                 {p.description}
                               </div>
                             )}
@@ -387,15 +388,15 @@ export default function JobRoleDetailPage() {
       {/* Scope Tab */}
       {activeTab === "scope" && (
         <div className="space-y-4">
-          <div className="p-4 bg-gray-50 dark:bg-gray-800/40 rounded-xl border border-gray-200 dark:border-gray-700 text-xs text-gray-600 dark:text-gray-300">
+          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600">
             <strong>Two-Layer Hierarchy Rule:</strong> Even if an employee possesses{" "}
             <code>employee.create</code> or <code>employee.assign_role</code>, they can ONLY manage
             or assign Job Roles that are (1) at a strictly lower authority tier than themselves,
             AND (2) explicitly enabled in this management scope.
           </div>
 
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
-            <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3">
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs">
+            <h3 className="text-sm font-bold text-slate-900 mb-3">
               Subordinate Roles in Scope
             </h3>
 
@@ -409,10 +410,10 @@ export default function JobRoleDetailPage() {
                   return (
                     <label
                       key={targetRole._id}
-                      className={`flex items-start justify-between p-3 rounded-lg border text-xs cursor-pointer transition-all ${
+                      className={`flex items-start justify-between p-3 rounded-xl border text-xs cursor-pointer transition-all ${
                         isChecked
-                          ? "bg-indigo-50/60 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800/60"
-                          : "bg-gray-50/50 dark:bg-gray-800/40 border-gray-200 dark:border-gray-800"
+                          ? "bg-emerald-50/70 border-emerald-300 shadow-2xs"
+                          : "bg-slate-50/50 border-slate-200 hover:bg-slate-50"
                       } ${role.isSuperadminRole ? "cursor-not-allowed opacity-75" : ""}`}
                     >
                       <div className="flex items-center gap-3">
@@ -421,25 +422,25 @@ export default function JobRoleDetailPage() {
                           disabled={role.isSuperadminRole}
                           checked={isChecked}
                           onChange={() => toggleScope(targetRole._id)}
-                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                         />
                         <div>
-                          <div className="font-semibold text-gray-900 dark:text-white">
+                          <div className="font-semibold text-slate-900">
                             {targetRole.name}
                           </div>
-                          <div className="text-[11px] text-gray-500">
+                          <div className="text-[11px] text-slate-500">
                             {targetRole.description || targetRole.slug}
                           </div>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
                           Tier {targetRole.tier}
                         </span>
                         {!isLowerAuthority && (
                           <span
-                            className="text-[10px] text-red-500 font-semibold"
+                            className="text-[10px] text-rose-500 font-semibold"
                             title="Same or higher tier roles cannot be managed even if selected"
                           >
                             (Tier Conflict)

@@ -16,7 +16,7 @@ const srcDir = path.resolve(__dirname, "../../src");
 
 describe("Admin Vendor Onboarding Service Contract & Route Tests", () => {
   test("getAdminVendorUrl formats correct path", () => {
-    assert.equal(getAdminVendorUrl("ven_abcdef1234567890"), "/admin/vendors/ven_abcdef1234567890");
+    assert.equal(getAdminVendorUrl("ven_abcdef1234567890"), "/administrator/vendors/ven_abcdef1234567890");
   });
 
   test("vendorService.resubmitApplication issues POST /vendors/me/resubmit", async () => {

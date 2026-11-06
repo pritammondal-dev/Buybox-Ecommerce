@@ -21,6 +21,13 @@ import {
 import { toast } from "sonner";
 import { vendorService } from "@/services/vendor.service";
 import { getVendorProductUrl } from "@/utils/secure-id.util";
+import VendorTablePagination from "@/components/vendor/VendorTablePagination";
+import {
+  VendorPageHeader,
+  VendorKpiCard,
+  VendorStatusBadge,
+  VendorEmptyState,
+} from "@/components/vendor";
 
 export default function VendorInventoryPage() {
   const [inventory, setInventory] = useState([]);
@@ -28,6 +35,9 @@ export default function VendorInventoryPage() {
   const [selectedWarehouse, setSelectedWarehouse] = useState("all");
   const [filterLowStock, setFilterLowStock] = useState(false);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [meta, setMeta] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
   const [isLoading, setIsLoading] = useState(true);
 
   // Stock Adjustment Modal State
@@ -38,23 +48,42 @@ export default function VendorInventoryPage() {
   const [isAdjusting, setIsAdjusting] = useState(false);
 
   useEffect(() => {
+    vendorService
+      .getMyWarehouses()
+      .then((whRes) => {
+        const whData = whRes?.data?.data || whRes?.data?.warehouses || whRes?.data || [];
+        setWarehouses(Array.isArray(whData) ? whData : []);
+      })
+      .catch(() => setWarehouses([]));
+  }, []);
+
+  useEffect(() => {
     let isMounted = true;
-    Promise.all([
-      vendorService.getMyInventory(),
-      vendorService.getMyWarehouses(),
-    ])
-      .then(([invRes, whRes]) => {
+    setIsLoading(true);
+    const params = { page, limit };
+    if (selectedWarehouse !== "all") params.warehouseId = selectedWarehouse;
+    if (search.trim()) params.search = search.trim();
+
+    vendorService
+      .getMyInventory(params)
+      .then((invRes) => {
         if (!isMounted) return;
         const invData = invRes?.data?.data || invRes?.data?.inventory || invRes?.data || [];
-        const whData = whRes?.data?.data || whRes?.data?.warehouses || whRes?.data || [];
-        setInventory(Array.isArray(invData) ? invData : []);
-        setWarehouses(Array.isArray(whData) ? whData : []);
+        const items = Array.isArray(invData) ? invData : invData.items || [];
+        const paginationMeta = invRes?.data?.meta || {
+          page,
+          limit,
+          total: items.length,
+          totalPages: Math.ceil(items.length / limit) || 1,
+        };
+        setInventory(items);
+        setMeta(paginationMeta);
       })
       .catch((err) => {
         if (!isMounted) return;
         if (err.status === 403 || err.status === 404 || err.response?.status === 403 || err.response?.status === 404) {
           setInventory([]);
-          setWarehouses([]);
+          setMeta({ page: 1, limit: 20, total: 0, totalPages: 1 });
           return;
         }
         toast.error("Failed to fetch inventory records", {
@@ -68,23 +97,36 @@ export default function VendorInventoryPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [page, limit, selectedWarehouse, search]);
 
   const handleRefresh = async () => {
     setIsLoading(true);
     try {
+      const params = { page, limit };
+      if (selectedWarehouse !== "all") params.warehouseId = selectedWarehouse;
+      if (search.trim()) params.search = search.trim();
+
       const [invRes, whRes] = await Promise.all([
-        vendorService.getMyInventory(),
+        vendorService.getMyInventory(params),
         vendorService.getMyWarehouses(),
       ]);
       const invData = invRes?.data?.data || invRes?.data?.inventory || invRes?.data || [];
+      const items = Array.isArray(invData) ? invData : invData.items || [];
       const whData = whRes?.data?.data || whRes?.data?.warehouses || whRes?.data || [];
-      setInventory(Array.isArray(invData) ? invData : []);
+      const paginationMeta = invRes?.data?.meta || {
+        page,
+        limit,
+        total: items.length,
+        totalPages: Math.ceil(items.length / limit) || 1,
+      };
+      setInventory(items);
       setWarehouses(Array.isArray(whData) ? whData : []);
+      setMeta(paginationMeta);
     } catch (err) {
       if (err.status === 403 || err.status === 404 || err.response?.status === 403 || err.response?.status === 404) {
         setInventory([]);
         setWarehouses([]);
+        setMeta({ page: 1, limit: 20, total: 0, totalPages: 1 });
         return;
       }
       toast.error("Failed to fetch inventory records", {
@@ -157,16 +199,10 @@ export default function VendorInventoryPage() {
   const filteredItems = inventory.filter((item) => {
     if (selectedWarehouse !== "all") {
       const whId = item.warehouseId?._id || item.warehouseId;
-      if (whId?.toString() !== selectedWarehouse) return false;
+      if (whId && whId.toString() !== selectedWarehouse) return false;
     }
     if (filterLowStock && !item.isLowStock) {
       return false;
-    }
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      const skuMatch = item.sku?.toLowerCase().includes(q);
-      const titleMatch = item.productTitle?.toLowerCase().includes(q);
-      if (!skuMatch && !titleMatch) return false;
     }
     return true;
   });
@@ -176,53 +212,47 @@ export default function VendorInventoryPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-            Inventory & Stock Control
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Real-time physical inventory counts, warehouse allocations, and reorder threshold alerts.
-          </p>
-        </div>
-
-        <button
-          onClick={handleRefresh}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-xs transition-colors"
-        >
-          <RefreshCw className="size-3.5" />
-          <span>Refresh Stock</span>
-        </button>
-      </div>
+      <VendorPageHeader
+        title="Inventory & Stock Control"
+        subtitle="Real-time physical inventory counts, warehouse allocations, and reorder threshold alerts."
+        breadcrumbs={[{ label: "Inventory" }]}
+        actions={
+          <button
+            onClick={handleRefresh}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-xs transition-colors"
+          >
+            <RefreshCw className="size-3.5" />
+            <span>Refresh Stock</span>
+          </button>
+        }
+      />
 
       {/* KPI Mini-Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-            Total Allocated SKUs
-          </div>
-          <div className="text-2xl font-black text-slate-900">
-            {inventory.length}
-          </div>
-        </div>
+        <VendorKpiCard
+          title="Total Allocated SKUs"
+          value={inventory.length}
+          subtitle="Unique SKU bindings"
+          icon={Boxes}
+          variant="purple"
+        />
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-            Total Units On Hand
-          </div>
-          <div className="text-2xl font-black text-emerald-700">
-            {inventory.reduce((sum, i) => sum + (i.onHand || 0), 0)}
-          </div>
-        </div>
+        <VendorKpiCard
+          title="Total Units On Hand"
+          value={inventory.reduce((sum, i) => sum + (i.onHand || 0), 0)}
+          subtitle="Physical units across fulfillment centers"
+          icon={Package}
+          variant="emerald"
+        />
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-            Low Stock Alerts
-          </div>
-          <div className={`text-2xl font-black ${lowStockCount > 0 ? "text-amber-700" : "text-slate-900"}`}>
-            {lowStockCount}
-          </div>
-        </div>
+        <VendorKpiCard
+          title="Low Stock Alerts"
+          value={lowStockCount}
+          subtitle={lowStockCount > 0 ? "Requires restock replenishment" : "All inventories optimal"}
+          icon={AlertTriangle}
+          variant={lowStockCount > 0 ? "amber" : "emerald"}
+          alert={lowStockCount > 0}
+        />
       </div>
 
       {/* Controls Bar */}
@@ -234,7 +264,10 @@ export default function VendorInventoryPage() {
             type="text"
             placeholder="Search SKU or product title..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50/50 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-600"
           />
         </div>
@@ -243,7 +276,10 @@ export default function VendorInventoryPage() {
         <div className="flex items-center gap-3 w-full md:w-auto">
           <select
             value={selectedWarehouse}
-            onChange={(e) => setSelectedWarehouse(e.target.value)}
+            onChange={(e) => {
+              setSelectedWarehouse(e.target.value);
+              setPage(1);
+            }}
             className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-600"
           >
             <option value="all">All Warehouses ({warehouses.length})</option>
@@ -255,7 +291,10 @@ export default function VendorInventoryPage() {
           </select>
 
           <button
-            onClick={() => setFilterLowStock(!filterLowStock)}
+            onClick={() => {
+              setFilterLowStock(!filterLowStock);
+              setPage(1);
+            }}
             className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
               filterLowStock
                 ? "bg-amber-500 text-white border-amber-600 shadow-xs"
@@ -276,15 +315,32 @@ export default function VendorInventoryPage() {
             ))}
           </div>
         ) : filteredItems.length === 0 ? (
-          <div className="p-16 text-center">
-            <Boxes className="size-12 text-slate-300 mx-auto mb-3" />
-            <h4 className="text-sm font-bold text-slate-800">No Inventory Found</h4>
-            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              {search || selectedWarehouse !== "all" || filterLowStock
+          <VendorEmptyState
+            icon={Boxes}
+            title={
+              search || selectedWarehouse !== "all" || filterLowStock
+                ? "No Inventory Found"
+                : "No Inventory Records"
+            }
+            description={
+              search || selectedWarehouse !== "all" || filterLowStock
                 ? "No inventory records match your criteria. Try adjusting your filters."
-                : "No inventory has been allocated to fulfillment centers for your vendor products yet."}
-            </p>
-          </div>
+                : "No inventory has been allocated to fulfillment centers for your vendor products yet."
+            }
+            action={
+              search || selectedWarehouse !== "all" || filterLowStock
+                ? {
+                    label: "Clear Filters",
+                    onClick: () => {
+                      setSearch("");
+                      setSelectedWarehouse("all");
+                      setFilterLowStock(false);
+                      setPage(1);
+                    },
+                  }
+                : undefined
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -337,19 +393,10 @@ export default function VendorInventoryPage() {
                         {item.lowStockThreshold || 5}
                       </td>
                       <td className="px-6 py-4">
-                        {isOut ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                            Out of Stock
-                          </span>
-                        ) : isLow ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                            <AlertTriangle className="size-3" /> Low Stock
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <CheckCircle2 className="size-3" /> Healthy
-                          </span>
-                        )}
+                        <VendorStatusBadge
+                          status={isOut ? "out_of_stock" : isLow ? "low_stock" : "healthy"}
+                          entityType="inventory"
+                        />
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button
@@ -365,6 +412,21 @@ export default function VendorInventoryPage() {
                 })}
               </tbody>
             </table>
+
+            {/* Pagination */}
+            <VendorTablePagination
+              page={page}
+              limit={limit}
+              total={meta?.total ?? inventory.length}
+              totalPages={meta?.totalPages}
+              onPageChange={(newPage) => setPage(newPage)}
+              onLimitChange={(newLimit) => {
+                setLimit(newLimit);
+                setPage(1);
+              }}
+              isLoading={isLoading}
+              itemLabel="inventory items"
+            />
           </div>
         )}
       </div>

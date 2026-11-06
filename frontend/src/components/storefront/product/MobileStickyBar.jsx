@@ -8,28 +8,50 @@ import { useCart } from "../../../hooks/useCart.js";
 import { formatCurrency, parsePrice } from "../../../utils/formatCurrency.js";
 import { Button } from "../../ui/Button.jsx";
 
-export function MobileStickyBar({ product }) {
+export function MobileStickyBar({
+  product,
+  selectedVariant = null,
+  isSelectionComplete = false,
+  onStockRefresh,
+}) {
   const router = useRouter();
   const { addItem: addCartItem } = useCart();
   const [isAdding, setIsAdding] = useState(false);
 
   if (!product) return null;
 
+  const isVariable = product.productType === "variable";
   const productId = product._id || product.id;
-  const productVariantId =
-    product?.productVariantId ||
-    product?.defaultVariantId ||
-    undefined;
-  const isOutOfStock = product.stockStatus === "out_of_stock";
-  const price = parsePrice(product.price || 0);
+
+  const targetVariant = isVariable
+    ? selectedVariant
+    : (selectedVariant || product.defaultVariant || product.variants?.find((v) => v.isDefault) || product.variants?.[0] || null);
+
+  const productVariantId = targetVariant?._id || (!isVariable ? product.defaultVariantId : undefined);
+
+  const availableStock = targetVariant
+    ? (typeof targetVariant.availableQuantity === "number" ? targetVariant.availableQuantity : 0)
+    : (typeof product.availableQuantity === "number" ? product.availableQuantity : 0);
+
+  const isOutOfStock = targetVariant
+    ? (availableStock <= 0 || targetVariant.stockStatus === "out_of_stock" || targetVariant.inStock === false)
+    : (isVariable ? false : (availableStock <= 0 || product.stockStatus === "out_of_stock"));
+
+  const needsSelection = isVariable && (!isSelectionComplete || !selectedVariant);
+  const isActionDisabled = needsSelection || isOutOfStock || isAdding;
+
+  const authoritativePrice = targetVariant
+    ? parsePrice(targetVariant.price)
+    : parsePrice(product.price || 0);
 
   const primaryImage =
+    targetVariant?.image?.url ||
     product?.images?.[0]?.url ||
     product?.image ||
     null;
 
   const handleAddToCart = async () => {
-    if (isOutOfStock || isAdding) return;
+    if (isActionDisabled) return;
     setIsAdding(true);
     try {
       await addCartItem({
@@ -37,16 +59,18 @@ export function MobileStickyBar({ product }) {
         productId,
         quantity: 1,
         itemSnapshot: {
-          name: product.name,
-          price,
+          name: targetVariant?.name || product.name,
+          price: authoritativePrice,
           image: primaryImage,
-          sku: product.sku,
         },
       });
       toast.success("Added to shopping cart", {
-        description: `1 × ${product.name}`,
+        description: `1 × ${targetVariant?.name || product.name}`,
       });
     } catch (err) {
+      if (onStockRefresh && productVariantId) {
+        onStockRefresh(productVariantId);
+      }
       toast.error(err?.message || "Could not add to cart.");
     } finally {
       setIsAdding(false);
@@ -54,21 +78,23 @@ export function MobileStickyBar({ product }) {
   };
 
   const handleBuyNow = async () => {
-    if (isOutOfStock) return;
+    if (isActionDisabled) return;
     try {
       await addCartItem({
         ...(productVariantId ? { productVariantId } : {}),
         productId,
         quantity: 1,
         itemSnapshot: {
-          name: product.name,
-          price,
+          name: targetVariant?.name || product.name,
+          price: authoritativePrice,
           image: primaryImage,
-          sku: product.sku,
         },
       });
       router.push("/checkout");
     } catch (err) {
+      if (onStockRefresh && productVariantId) {
+        onStockRefresh(productVariantId);
+      }
       toast.error(err?.message || "Could not proceed to checkout.");
     }
   };
@@ -91,7 +117,7 @@ export function MobileStickyBar({ product }) {
               {product.name}
             </span>
             <span className="text-sm font-black text-[#004D38]">
-              {formatCurrency(price)}
+              {formatCurrency(authoritativePrice)}
             </span>
           </div>
         </div>

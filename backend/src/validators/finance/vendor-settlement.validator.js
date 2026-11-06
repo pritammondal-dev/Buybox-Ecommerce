@@ -22,6 +22,8 @@ const createVendorSettlementSchema = z
 
     grossSales: decimalString.optional(),
 
+    platformSubsidy: decimalString.optional(),
+
     discounts: decimalString.optional(),
 
     refunds: decimalString.optional(),

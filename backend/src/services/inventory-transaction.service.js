@@ -9,6 +9,8 @@ const TRANSACTION_TYPES = Object.freeze([
   "sale",
   "return",
   "transfer",
+  "count_reconciliation",
+  "condition_change",
 ]);
 
 const createTransaction = async ({

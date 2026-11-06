@@ -55,6 +55,34 @@ const storefrontBannerSchema = new mongoose.Schema(
       default: null,
     },
 
+    subtitle: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: 300,
+    },
+
+    ctaText: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: 50,
+    },
+
+    badge: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: 50,
+    },
+
+    campaignId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Campaign",
+      default: null,
+      index: true,
+    },
+
     displayOrder: {
       type: Number,
       default: 0,
@@ -65,6 +93,12 @@ const storefrontBannerSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true,
+      index: true,
+    },
+
+    deletedAt: {
+      type: Date,
+      default: null,
       index: true,
     },
 

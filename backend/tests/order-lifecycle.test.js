@@ -461,7 +461,9 @@ describe("Order Status Lifecycle", () => {
       paymentService.refundPaymentForOrder
     ).toHaveBeenCalledWith(
       "order-123",
-      "user-123"
+      "user-123",
+      null,
+      "order_cancel_order-123"
     );
 
     expect(
@@ -527,7 +529,9 @@ describe("Order Status Lifecycle", () => {
       paymentService.refundPaymentForOrder
     ).toHaveBeenCalledWith(
       "order-123",
-      "user-123"
+      "user-123",
+      null,
+      "order_cancel_order-123"
     );
   });
   it("should not cancel an order when the captured payment refund fails", async () => {

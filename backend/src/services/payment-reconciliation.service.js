@@ -6,6 +6,7 @@ const {
   recoverOrphanedGatewayOrderByReceipt,
 } = require("./payment-orphan-recovery.service");
 const razorpayProvider = require("../integrations/payments/razorpay.provider");
+const paypalProvider = require("../integrations/payments/paypal.provider");
 const env = require("../config/env");
 const logger = require("../config/logger");
 
@@ -13,13 +14,13 @@ const PAYMENT_GATEWAY = "razorpay";
 
 class PaymentReconciliationService {
   /**
-   * Reconcile a single active payment against authoritative Razorpay state.
+   * Reconcile a single active payment against authoritative gateway state (Razorpay or PayPal).
    *
    * Fails closed without modifying local payment status if:
-   * - Razorpay API calls fail (network/502)
+   * - Gateway API calls fail (network/502)
    * - Order identity notes do not match local order
    * - Amount or currency does not match order
-   * - Gateway order status is not 'paid'
+   * - Gateway order status is not 'paid' / 'COMPLETED'
    * - No concrete captured payment with valid non-empty ID exists
    *
    * Never marks payments failed based on age alone.
@@ -29,6 +30,10 @@ class PaymentReconciliationService {
   async reconcilePayment(payment) {
     if (!payment || !payment._id) {
       return { reconciled: false, reason: "INVALID_PAYMENT" };
+    }
+
+    if (payment.gateway === "paypal") {
+      return this.reconcilePayPalPayment(payment);
     }
 
     if (payment.gateway !== PAYMENT_GATEWAY) {
@@ -260,6 +265,133 @@ class PaymentReconciliationService {
   }
 
   /**
+   * Reconcile a single active PayPal payment against authoritative PayPal order state.
+   */
+  async reconcilePayPalPayment(payment) {
+    if (!payment.gatewayOrderId || typeof payment.gatewayOrderId !== "string" || !payment.gatewayOrderId.trim()) {
+      return { reconciled: false, reason: "MISSING_GATEWAY_ORDER_ID" };
+    }
+
+    const order = await orderRepository.findById(payment.orderId);
+    if (!order) {
+      logger.warn(
+        { paymentId: payment._id, orderId: payment.orderId },
+        "PayPal reconciliation aborted: associated order not found"
+      );
+      return { reconciled: false, reason: "ORDER_NOT_FOUND" };
+    }
+
+    let paypalOrder;
+    try {
+      paypalOrder = await paypalProvider.fetchOrder(payment.gatewayOrderId.trim());
+    } catch (err) {
+      logger.warn(
+        { paymentId: payment._id, gatewayOrderId: payment.gatewayOrderId, error: err.message },
+        "PayPal reconciliation fail-closed: unable to fetch PayPal order"
+      );
+      return { reconciled: false, reason: "GATEWAY_ORDER_FETCH_FAILED" };
+    }
+
+    if (paypalOrder.status === "VOIDED") {
+      const freshPayment = await paymentRepository.findById(payment._id);
+      if (freshPayment && ["created", "pending", "authorized"].includes(freshPayment.status)) {
+        await paymentRepository.updateById(payment._id, {
+          status: "failed",
+          failureReason: "PayPal order was voided",
+        });
+        return { reconciled: true, status: "failed", paymentId: payment._id };
+      }
+    }
+
+    if (paypalOrder.status !== "COMPLETED") {
+      return {
+        reconciled: false,
+        reason: "GATEWAY_ORDER_NOT_PAID",
+        gatewayStatus: paypalOrder.status,
+      };
+    }
+
+    const capture = paypalOrder.purchase_units?.[0]?.payments?.captures?.[0];
+    if (!capture || capture.status !== "COMPLETED") {
+      return { reconciled: false, reason: "NO_CAPTURED_PAYMENT_FOUND" };
+    }
+
+    // Amount & currency validation
+    const expectedAmount = Number(order.grandTotal.toString());
+    const actualAmount = Number(capture.amount?.value);
+    const expectedCurrency = String(order.currency || "INR").toUpperCase();
+    const actualCurrency = String(capture.amount?.currency_code).toUpperCase();
+
+    if (Math.abs(actualAmount - expectedAmount) > 0.01 || actualCurrency !== expectedCurrency) {
+      logger.warn(
+        {
+          paymentId: payment._id,
+          gatewayOrderId: payment.gatewayOrderId,
+          actualAmount,
+          expectedAmount,
+          actualCurrency,
+          expectedCurrency,
+        },
+        "PayPal reconciliation fail-closed: amount or currency mismatch"
+      );
+      return { reconciled: false, reason: "AMOUNT_OR_CURRENCY_MISMATCH" };
+    }
+
+    // Idempotency check before update
+    const freshPayment = await paymentRepository.findById(payment._id);
+    if (freshPayment?.status === "captured") {
+      await orderService.markOrderPaymentCaptured(order._id);
+      return {
+        reconciled: true,
+        alreadyCaptured: true,
+        paymentId: freshPayment._id,
+        orderId: order._id,
+      };
+    }
+
+    if (!freshPayment || !["created", "pending", "authorized"].includes(freshPayment.status)) {
+      return { reconciled: false, reason: "PAYMENT_NOT_ACTIVE" };
+    }
+
+    const captureId = capture.id || payment.gatewayOrderId;
+    const updateData = {
+      status: "captured",
+      gatewayPaymentId: captureId,
+      method: "paypal",
+      capturedAt: capture.create_time ? new Date(capture.create_time) : new Date(),
+      failureReason: null,
+    };
+
+    const updatedPayment = await paymentRepository.reconcileActivePayment(
+      payment._id,
+      updateData
+    );
+
+    if (!updatedPayment) {
+      const latestPayment = await paymentRepository.findById(payment._id);
+      if (latestPayment?.status === "captured") {
+        await orderService.markOrderPaymentCaptured(order._id);
+        return {
+          reconciled: true,
+          alreadyCaptured: true,
+          paymentId: latestPayment._id,
+          orderId: order._id,
+        };
+      }
+      return { reconciled: false, reason: "CONCURRENT_STATUS_CHANGE" };
+    }
+
+    await orderService.markOrderPaymentCaptured(order._id);
+
+    return {
+      reconciled: true,
+      paymentId: updatedPayment._id,
+      orderId: order._id,
+      gatewayPaymentId: captureId,
+    };
+  }
+
+  /**
    * Scan and reconcile a bounded batch of active payments.
    */
   async reconcileActivePaymentsBatch(options = {}) {
@@ -269,7 +401,7 @@ class PaymentReconciliationService {
     const eligiblePayments =
       await paymentRepository.findEligibleForReconciliation({
         limit: batchSize,
-        gateway: options.gateway || PAYMENT_GATEWAY,
+        gateway: options.gateway,
       });
 
     let scanned = eligiblePayments.length;
@@ -303,6 +435,150 @@ class PaymentReconciliationService {
       reconciled,
       skipped,
       failed,
+    };
+  }
+
+  /**
+   * Distributed Transaction Reconciliation:
+   * Scans and reconciles pending refunds, gateway timeouts, and interrupted order cancellations.
+   * Discovers and repairs state drift between Razorpay gateway and local MongoDB state.
+   */
+  async reconcilePendingRefundsAndCancellations(options = {}) {
+    const Refund = require("../models/Refund");
+    const financialLedgerService = require("./financial-ledger.service");
+    const shipmentRepository = require("../repositories/shipment.repository");
+    const inventoryRepository = require("../repositories/inventory.repository");
+    const inventoryService = require("./inventory.service");
+
+    const batchSize = options.batchSize || 25;
+    const query = Refund.find({
+      status: { $in: ["pending", "pending_reconciliation"] },
+    });
+    const pendingRefunds = (typeof query?.limit === "function" ? await query.limit(batchSize) : await query) || [];
+
+    let scanned = pendingRefunds.length;
+    let autoRecovered = 0;
+    let gatewayConfirmedFailed = 0;
+    let pendingReview = 0;
+
+    for (const refund of pendingRefunds) {
+      try {
+        const payment = await paymentRepository.findById(refund.paymentId);
+        const order = await orderRepository.findById(refund.orderId);
+
+        if (!payment || !order) {
+          pendingReview += 1;
+          continue;
+        }
+
+        let isGatewayProcessed = false;
+        let isGatewayFailed = false;
+
+        if (payment.gateway === "razorpay" || !payment.gateway) {
+          if (refund.gatewayRefundId) {
+            try {
+              const gwRefund = await razorpayProvider.fetchRefund(refund.gatewayRefundId);
+              if (gwRefund?.status === "processed") isGatewayProcessed = true;
+              else if (gwRefund?.status === "failed") isGatewayFailed = true;
+            } catch (fetchErr) {
+              logger.warn({ refundId: refund._id, error: fetchErr.message }, "Reconciliation: failed to fetch Razorpay refund");
+            }
+          }
+        }
+
+        if (isGatewayProcessed) {
+          // 1. Mark Refund document as processed
+          await Refund.findByIdAndUpdate(refund._id, {
+            status: "processed",
+            processedAt: new Date(),
+            failureReason: null,
+          });
+
+          // 2. Synchronize Payment document
+          const totalAmount = Number(payment.amount.toString());
+          const currentRefunded = Number(payment.refundedAmount?.toString() || "0");
+          const addAmount = Number(refund.amount.toString());
+          const newRefunded = Math.min(totalAmount, Number((currentRefunded + addAmount).toFixed(2)));
+          const isFullyRefunded = newRefunded >= totalAmount;
+
+          await paymentRepository.updateById(payment._id, {
+            refundedAmount: newRefunded.toFixed(2),
+            refundReservedAmount: "0.00",
+            status: isFullyRefunded ? "refunded" : "partially_refunded",
+          });
+
+          // 3. Finalize order cancellation if stuck in pending
+          if (order.cancellationStatus === "pending" || order.status !== "cancelled") {
+            const shipments = await shipmentRepository.findByOrderId(order._id);
+            for (const s of shipments || []) {
+              if (["created", "ready_to_ship", "cancellation_pending"].includes(s.status)) {
+                await shipmentRepository.updateById(s._id, {
+                  status: "cancelled",
+                  cancelledAt: new Date(),
+                  inventoryStatus: "released",
+                  inventoryReleasedAt: new Date(),
+                  dispatchBlocked: true,
+                });
+              }
+            }
+
+            // Release inventory for items
+            for (const it of order.items || []) {
+              if (it.inventoryStatus === "reserved" && it.warehouseId) {
+                const inv = await inventoryRepository.findByVariantAndWarehouse(it.productVariantId, it.warehouseId);
+                if (inv) {
+                  await inventoryService.adjustStock(inv._id, it.quantity, {
+                    reason: "cancellation_release",
+                    referenceType: "order",
+                    referenceId: order.orderNumber,
+                    idempotencyKey: `recon-cancel-release-${order._id}-${it.productVariantId}-${it.warehouseId}`,
+                    notes: "Inventory released via distributed transaction reconciliation",
+                  });
+                }
+                it.inventoryStatus = "released";
+              }
+              it.fulfillmentStatus = "cancelled";
+            }
+
+            await orderRepository.updateById(order._id, {
+              status: "cancelled",
+              paymentStatus: isFullyRefunded ? "refunded" : "partially_refunded",
+              cancellationStatus: "completed",
+              items: order.items,
+            });
+          }
+
+          // 4. Post double-entry ledger reversal if missing
+          try {
+            await financialLedgerService.postRefundReversalJournal(refund, { orderDoc: order });
+          } catch (ledgerErr) {
+            logger.warn({ refundId: refund._id, error: ledgerErr.message }, "Non-fatal ledger post during reconciliation");
+          }
+
+          autoRecovered += 1;
+        } else if (isGatewayFailed) {
+          await Refund.findByIdAndUpdate(refund._id, {
+            status: "failed",
+            failureReason: "Gateway confirmed refund failed",
+          });
+          await paymentRepository.updateById(payment._id, {
+            refundReservedAmount: "0.00",
+          });
+          gatewayConfirmedFailed += 1;
+        } else {
+          pendingReview += 1;
+        }
+      } catch (err) {
+        pendingReview += 1;
+        logger.error({ refundId: refund._id, error: err.message }, "Error during refund reconciliation");
+      }
+    }
+
+    return {
+      scanned,
+      autoRecovered,
+      gatewayConfirmedFailed,
+      pendingReview,
     };
   }
 }

@@ -10,6 +10,7 @@ const customerRoutes = require("./customer.routes");
 const addressRoutes = require("./address.routes");
 const vendorRoutes = require("./vendor.routes");
 const warehouseRoutes = require("./warehouse.routes");
+const warehouseOperationsRoutes = require("./warehouse-operations.routes");
 const inventoryRoutes = require("./inventory.routes");
 const cartRoutes = require("./cart.routes");
 const orderRoutes = require("./order.routes");
@@ -18,6 +19,11 @@ const paymentMethodRoutes = require("./payment-method.routes");
 const financialLedgerRoutes = require("./financial-ledger.routes");
 const vendorSettlementRoutes = require("./vendor-settlement.routes");
 const vendorPayoutRoutes = require("./vendor-payout.routes");
+const commissionPolicyRoutes = require("./commission-policy.routes");
+const vendorWalletRoutes = require("./vendor-wallet.routes");
+const withdrawalRequestRoutes = require("./withdrawal-request.routes");
+const financialOverviewRoutes = require("./financial-overview.routes");
+const financialReconciliationRoutes = require("./financial-reconciliation.routes");
 const couponRoutes = require("./coupon.routes");
 const storefrontCouponRoutes = require("./storefront-coupon.routes");
 const couponRedemptionRoutes = require("./coupon-redemption.routes");
@@ -29,6 +35,8 @@ const reviewRoutes = require("./review.routes");
 const supportTicketRoutes = require("./support-ticket.routes");
 const supportTicketMessageRoutes = require("./support-ticket-message.routes");
 const cmsPageRoutes = require("./cms-page.routes");
+const cmsEventRoutes = require("./cms-event.routes");
+const storefrontEventRoutes = require("./storefront-event.routes");
 const storefrontBannerRoutes = require("./storefront-banner.routes");
 const storefrontMenuRoutes = require("./storefront-menu.routes");
 const storefrontSettingsRoutes = require("./storefront-settings.routes");
@@ -49,6 +57,8 @@ const notificationRoutes = require("./notification.routes");
 const returnRequestRoutes = require("./return-request.routes");
 const rewardRoutes = require("./reward.routes");
 const giftCardRoutes = require("./gift-card.routes");
+const digitalDownloadRoutes = require("./digital-download.routes");
+const fulfillmentExceptionRoutes = require("./fulfillment-exception.routes");
 const administratorAuthRoutes = require("./administrator-auth.routes");
 const vendorAuthRoutes = require("./vendor-auth.routes");
 const { authenticateAdministrator } = require("../middlewares/authentication.middleware");
@@ -60,6 +70,15 @@ router.get("/", (req, res) => {
   res.status(200).json({
     success: true,
     message: "Buybox API v1",
+  });
+});
+
+router.get("/health", (req, res) => {
+  res.status(200).json({
+    success: true,
+    status: "healthy",
+    message: "Buybox API is operational",
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -93,6 +112,7 @@ router.use("/customers", customerRoutes);
 router.use("/addresses", addressRoutes);
 router.use("/vendors", vendorRoutes);
 router.use("/warehouses", warehouseRoutes);
+router.use("/warehouse-operations", warehouseOperationsRoutes);
 router.use("/inventory", inventoryRoutes);
 router.use("/cart", cartRoutes);
 router.use("/wishlist", wishlistRoutes);
@@ -101,6 +121,7 @@ router.use("/shipments", shipmentRoutes);
 router.use("/questions", questionRoutes);
 router.use("/notifications", notificationRoutes);
 router.use("/returns", returnRequestRoutes);
+router.use("/return-requests", returnRequestRoutes);
 router.use("/rewards", rewardRoutes);
 router.use("/gift-cards", giftCardRoutes);
 router.use("/payments", paymentRoutes);
@@ -109,6 +130,11 @@ router.use("/finance/ledger", financialLedgerRoutes);
 router.use("/finance/settlements", vendorSettlementRoutes);
 router.use("/vendor-settlements", vendorSettlementRoutes);
 router.use("/finance/payouts", vendorPayoutRoutes);
+router.use("/finance/commission-policies", commissionPolicyRoutes);
+router.use("/finance/wallets", vendorWalletRoutes);
+router.use("/finance/withdrawals", withdrawalRequestRoutes);
+router.use("/finance/overview", financialOverviewRoutes);
+router.use("/finance/reconciliation", financialReconciliationRoutes);
 router.use("/coupons", storefrontCouponRoutes);
 router.use("/coupons", couponRoutes);
 router.use("/coupon-redemptions", couponRedemptionRoutes);
@@ -120,6 +146,8 @@ router.use("/reviews", reviewRoutes);
 router.use("/support-tickets", supportTicketRoutes);
 router.use("/support-tickets", supportTicketMessageRoutes);
 router.use("/cms/pages", cmsPageRoutes);
+router.use("/cms/events", cmsEventRoutes);
+router.use("/storefront/events", storefrontEventRoutes);
 router.use("/storefront/banners", storefrontBannerRoutes);
 router.use("/storefront/menus", storefrontMenuRoutes);
 router.use("/storefront/settings", storefrontSettingsRoutes);
@@ -131,7 +159,10 @@ router.use("/storefront/sections", storefrontSectionRoutes);
 router.use("/storefront/announcement-bars", storefrontAnnouncementBarRoutes);
 router.use("/storefront/media", storefrontMediaRoutes);
 router.use("/storefront/publications", storefrontPublicationRoutes);
+router.use("/digital-downloads", digitalDownloadRoutes);
+router.use("/fulfillment-exceptions", fulfillmentExceptionRoutes);
 router.use("/analytics", analyticsRoutes);
+router.use("/partner-banks", require("./partner-bank.routes"));
 router.use("/shipping/webhooks", require("./courier-webhook.routes"));
 
 // ----------------------------------------------------
@@ -139,6 +170,7 @@ router.use("/shipping/webhooks", require("./courier-webhook.routes"));
 // ----------------------------------------------------
 router.use("/admin", authenticateAdministrator);
 router.use("/admin/vendors", vendorRoutes);
+router.use("/admin/partner-banks", require("./admin-partner-bank.routes"));
 router.use("/admin/governance", governanceRoutes);
 router.use("/admin/job-roles", require("./job-role.routes"));
 router.use("/admin/staff", require("./staff.routes"));
@@ -149,11 +181,30 @@ router.use("/administrator/dashboard", require("./admin-dashboard.routes"));
 router.use("/admin/customers", require("./admin-customer.routes"));
 router.use("/admin/security", require("./security.routes"));
 router.use("/admin/settings/credentials", require("./credential.routes"));
+router.use("/admin/settings/general", require("./admin-settings.routes"));
+router.use("/admin/settings/store", require("./admin-settings.routes"));
+router.use("/admin/settings/taxes", taxRoutes);
+router.use("/admin/tax", taxRoutes);
 router.use("/admin/authentication", require("./admin-authentication-policy.routes"));
 router.use("/admin/settings/authentication", require("./admin-authentication-policy.routes"));
 router.use("/admin/search", require("./admin-search.routes"));
 router.use("/admin/attributes", attributeRoutes);
+router.use("/admin/inventory", inventoryRoutes);
+router.use("/admin/payments", paymentRoutes);
+router.use("/admin/payment-methods", paymentMethodRoutes);
+router.use("/admin/products", productRoutes);
+router.use("/admin/categories", categoryRoutes);
+router.use("/admin/brands", brandRoutes);
+router.use("/admin/coupons", require("./admin-coupon.routes"));
+router.use("/admin/discounts", require("./admin-discount.routes"));
+router.use("/admin/promotions", require("./admin-discount.routes"));
+router.use("/admin/campaigns", campaignRoutes);
+router.use("/admin/cms/pages", cmsPageRoutes);
+router.use("/admin/cms/events", cmsEventRoutes);
 router.use("/admin/saved-views", require("./saved-view.routes"));
+router.use("/admin/fulfillment-exceptions", fulfillmentExceptionRoutes);
+router.use("/discounts", require("./admin-discount.routes"));
+router.use("/promotions", require("./admin-discount.routes"));
 
 module.exports = router;
 

@@ -3,8 +3,21 @@ const GiftCardTransaction = require("../models/GiftCardTransaction");
 const Customer = require("../models/Customer");
 const apiResponse = require("../utils/apiResponse");
 const AppError = require("../errors/AppError");
+const storefrontSettingsService = require("../services/storefront-settings.service");
+
+const ensureGiftCardsEnabled = async () => {
+  const enabled = await storefrontSettingsService.isFeatureEnabled("giftCards");
+  if (!enabled) {
+    throw new AppError(
+      "Gift cards are currently disabled by platform administration",
+      403,
+      "GIFTCARDS_DISABLED"
+    );
+  }
+};
 
 const checkBalance = async (req, res) => {
+  await ensureGiftCardsEnabled();
   const { code } = req.body;
   if (!code || !code.trim()) {
     throw new AppError("Gift card code is required", 400, "INVALID_CODE");
@@ -36,6 +49,7 @@ const checkBalance = async (req, res) => {
 };
 
 const claimGiftCard = async (req, res) => {
+  await ensureGiftCardsEnabled();
   const { code } = req.body;
   const userId = req.user.id;
 
@@ -134,6 +148,7 @@ const claimGiftCard = async (req, res) => {
 };
 
 const getMyGiftCards = async (req, res) => {
+  await ensureGiftCardsEnabled();
   const userId = req.user.id;
   const customer = await Customer.findOne({ userId });
 

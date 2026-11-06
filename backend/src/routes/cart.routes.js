@@ -1,7 +1,10 @@
 const express = require("express");
 
 const cartController = require("../controllers/cart.controller");
-const authenticate = require("../middlewares/authentication.middleware");
+const {
+  authenticate,
+  authenticateGuestOrCustomer,
+} = require("../middlewares/authentication.middleware");
 const validate = require("../middlewares/validate.middleware");
 
 const {
@@ -18,11 +21,14 @@ const {
 
 const router = express.Router();
 
-router.use(authenticate);
+// Cart routes support both authenticated customers and guest sessions
+router.use(authenticateGuestOrCustomer);
 
 router.get("/", cartController.getCart);
 
 router.post("/recover", cartController.recoverCart);
+
+router.post("/merge", authenticate, cartController.mergeCart);
 
 router.post(
   "/items",

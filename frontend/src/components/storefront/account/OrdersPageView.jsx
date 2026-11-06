@@ -11,6 +11,8 @@ import {
   XCircle,
   ChevronRight,
   Star,
+  FileText,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { orderService } from "../../../services/order.service.js";
@@ -236,13 +238,15 @@ export function OrdersPageView() {
                   const id = order._id || order.id;
                   const orderNumber = order.orderNumber || `BB-${id?.slice(-8)?.toUpperCase()}`;
                   const grandTotal = parsePrice(order.grandTotal || order.totalAmount || 0);
+                  const status = (order.status || "").toLowerCase();
+                  const paymentStatus = (order.paymentStatus || "").toLowerCase();
                   const isPendingPayment =
-                    (order.status || "").toLowerCase() === "pending" &&
-                    (order.paymentStatus || "").toLowerCase() !== "paid";
+                    status === "pending" && paymentStatus !== "paid";
                   const isCancellable =
-                    ["pending", "confirmed", "processing"].includes(
-                      (order.status || "").toLowerCase()
-                    );
+                    ["pending", "confirmed", "processing"].includes(status);
+                  const hasInvoice =
+                    paymentStatus === "paid" ||
+                    ["confirmed", "processing", "shipped", "delivered", "completed"].includes(status);
 
                   return (
                     <div
@@ -285,7 +289,7 @@ export function OrdersPageView() {
                         </div>
 
                         <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                          <OrderStatusBadge status={order.status} type="order" />
+                          <OrderStatusBadge status={order.customerDisplayStatus || order.status} type="order" />
                           <OrderStatusBadge status={order.paymentStatus} type="payment" />
                         </div>
                       </div>
@@ -360,7 +364,7 @@ export function OrdersPageView() {
 
                       {/* Action Triggers */}
                       <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           {isPendingPayment && (
                             <Link
                               href={`/account/orders/${id}`}
@@ -379,6 +383,28 @@ export function OrdersPageView() {
                             >
                               Cancel Order
                             </button>
+                          )}
+
+                          {hasInvoice && (
+                            <Link
+                              href={`/orders/${id}/invoice`}
+                              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs px-3.5 py-2 transition-colors cursor-pointer shadow-2xs"
+                              title="View and print tax invoice"
+                            >
+                              <FileText className="size-3.5 text-slate-500" />
+                              <span>Invoice</span>
+                            </Link>
+                          )}
+
+                          {(status === "delivered" || status === "completed") && (
+                            <Link
+                              href={`/orders/${id}/return`}
+                              className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-[#007A55] font-bold text-xs px-3.5 py-2 transition-colors cursor-pointer shadow-2xs"
+                              title="Return or Exchange Delivered Items"
+                            >
+                              <RotateCcw className="size-3.5" />
+                              <span>Return / Exchange</span>
+                            </Link>
                           )}
                         </div>
 

@@ -459,7 +459,7 @@ describe("Payment Service", () => {
 
     await expect(
       refundPaymentForOrder("order-123", "user-123", 500)
-    ).rejects.toThrow("Network timeout");
+    ).rejects.toThrow("Gateway refund timed out with uncertain outcome. Retain reservation for reconciliation.");
 
     const attempt1Key = razorpayProvider.refundPayment.mock.calls[0][0].idempotencyKey;
 

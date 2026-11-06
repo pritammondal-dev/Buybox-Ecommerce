@@ -17,13 +17,26 @@ const vendorPayoutSchema = new mongoose.Schema(
     settlementId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "VendorSettlement",
-      required: true,
+      default: null,
+    },
+
+    withdrawalRequestId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "WithdrawalRequest",
+      default: null,
     },
 
     vendorId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Vendor",
       required: true,
+      index: true,
+    },
+
+    bankAccountId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "VendorBankAccount",
+      default: null,
       index: true,
     },
 
@@ -128,11 +141,29 @@ vendorPayoutSchema.index(
   }
 );
 
-// One payout is allowed per settlement.
+// One payout is allowed per settlement (sparse partial index)
 vendorPayoutSchema.index(
   { settlementId: 1 },
   {
     unique: true,
+    partialFilterExpression: {
+      settlementId: {
+        $type: "objectId",
+      },
+    },
+  }
+);
+
+// One payout is allowed per withdrawal request (sparse partial index)
+vendorPayoutSchema.index(
+  { withdrawalRequestId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      withdrawalRequestId: {
+        $type: "objectId",
+      },
+    },
   }
 );
 
@@ -147,6 +178,10 @@ vendorPayoutSchema.pre("validate", function validatePayout() {
 
   if (!/^[A-Z]{3}$/.test(this.currency)) {
     throw new Error("Currency must be a valid 3-letter uppercase code");
+  }
+
+  if (!this.settlementId && !this.withdrawalRequestId) {
+    throw new Error("Payout must be linked to either a settlement or a withdrawal request");
   }
 });
 

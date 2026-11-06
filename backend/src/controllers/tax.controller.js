@@ -7,6 +7,7 @@ const Product = require("../models/Product");
 const Customer = require("../models/Customer");
 const AppError = require("../errors/AppError");
 const { sendSuccess } = require("../utils/apiResponse");
+const { serializeDecimals } = require("../utils/decimal.util");
 const {
   DEFAULT_TAX_PRICING_MODE,
   DEFAULT_TAX_CATEGORY,
@@ -18,7 +19,7 @@ const createRule = async (req, res, next) => {
     return sendSuccess(res, {
       statusCode: 201,
       message: "Tax rule created successfully",
-      data: rule,
+      data: serializeDecimals(rule),
     });
   } catch (error) {
     next(error);
@@ -43,7 +44,7 @@ const getRules = async (req, res, next) => {
 
     const rules = await taxService.getTaxRules(filter);
     return sendSuccess(res, {
-      data: rules,
+      data: serializeDecimals(rules),
     });
   } catch (error) {
     next(error);
@@ -54,7 +55,7 @@ const getRuleById = async (req, res, next) => {
   try {
     const rule = await taxService.getTaxRuleById(req.params.id);
     return sendSuccess(res, {
-      data: rule,
+      data: serializeDecimals(rule),
     });
   } catch (error) {
     next(error);
@@ -66,7 +67,7 @@ const updateRule = async (req, res, next) => {
     const rule = await taxService.updateTaxRule(req.params.id, req.body);
     return sendSuccess(res, {
       message: "Tax rule updated successfully",
-      data: rule,
+      data: serializeDecimals(rule),
     });
   } catch (error) {
     next(error);
@@ -244,7 +245,7 @@ const previewTax = async (req, res, next) => {
 
     return sendSuccess(res, {
       message: "Tax preview generated",
-      data: {
+      data: serializeDecimals({
         isPreview: true,
         isAuthoritative: false,
         pricingMode: totals.pricingMode,
@@ -255,7 +256,7 @@ const previewTax = async (req, res, next) => {
         shippingTotal: totals.shippingTotal,
         grandTotal: totals.grandTotal,
         items: taxResult.items,
-      },
+      }),
     });
   } catch (error) {
     next(error);

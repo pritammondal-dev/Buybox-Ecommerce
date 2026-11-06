@@ -12,8 +12,20 @@ export function NewArrivalsSection({
   wishlistVariantIds = [],
   onWishlistToggle,
   onAddToCart,
+  title: propTitle,
+  subtitle: propSubtitle,
+  theme,
+  viewAllHref: propViewAllHref,
+  viewAllText: propViewAllText,
 }) {
   const [products, setProducts] = useState(initialProducts);
+  const [title, setTitle] = useState(propTitle || "New Arrivals");
+  const [subtitle, setSubtitle] = useState(propSubtitle || "Latest products, just for you.");
+
+  useEffect(() => {
+    if (propTitle) setTitle(propTitle);
+    if (propSubtitle) setSubtitle(propSubtitle);
+  }, [propTitle, propSubtitle]);
 
   useEffect(() => {
     if (initialProducts.length > 0) return;
@@ -34,6 +46,8 @@ export function NewArrivalsSection({
           newArrivalsSec.productIds.length > 0
         ) {
           if (!isMounted) return;
+          if (newArrivalsSec.title && !propTitle) setTitle(newArrivalsSec.title);
+          if (newArrivalsSec.subtitle && !propSubtitle) setSubtitle(newArrivalsSec.subtitle);
           setProducts(newArrivalsSec.productIds);
           return;
         }
@@ -58,7 +72,7 @@ export function NewArrivalsSection({
     return () => {
       isMounted = false;
     };
-  }, [initialProducts]);
+  }, [initialProducts, propTitle, propSubtitle]);
 
   if (products.length === 0) {
     return null;
@@ -66,16 +80,17 @@ export function NewArrivalsSection({
 
   return (
     <SectionContainer
-      title="New Arrivals"
-      subtitle="Latest products, just for you."
+      title={propTitle || title}
+      subtitle={propSubtitle || subtitle}
       badge="JUST IN"
       badgeColor="bg-emerald-600 text-white"
       icon={Sparkles}
       iconBg="bg-emerald-100 text-emerald-600"
-      viewAllHref="/shop?sort=newest"
-      viewAllText="View All New Arrivals"
+      viewAllHref={propViewAllHref !== undefined ? propViewAllHref : "/shop?sort=newest"}
+      viewAllText={propViewAllText || "View All New Arrivals"}
       variant="new"
       ariaLabel="New Arrivals"
+      theme={theme}
     >
       <ProductCarousel
         products={products}

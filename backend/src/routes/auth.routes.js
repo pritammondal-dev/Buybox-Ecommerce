@@ -44,6 +44,7 @@ const {
 const {
   authRegistrationLimiter,
   authLoginLimiter,
+  tokenRefreshLimiter,
   otpRequestLimiter,
   otpVerificationLimiter,
   otpResendLimiter,
@@ -142,6 +143,7 @@ router.post(
 // Refresh Access Token
 router.post(
   "/refresh",
+  tokenRefreshLimiter,
   validateRefreshToken,
   authController.refresh
 );
@@ -249,6 +251,19 @@ router.post(
   accountSecurityLimiter,
   validate(changePhoneVerifySchema),
   authController.changePhoneVerify
+);
+
+/* ==========================================================================
+   GUEST CHECKOUT & IDENTITY ENDPOINTS
+   ========================================================================== */
+router.post(
+  "/guest-session",
+  authController.createGuestSession
+);
+
+router.get(
+  "/guest-session",
+  authController.getGuestSession
 );
 
 module.exports = router;

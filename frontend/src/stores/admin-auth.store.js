@@ -51,10 +51,18 @@ export const useAdminAuthStore = create((set, get) => {
 
           // Retrieve fresh server-authoritative employee identity and permissions
           const meResponse = await adminAuthService.getMe();
-          const meData = meResponse?.data?.user || meResponse?.data?.data?.user || meResponse?.data;
+          const payload =
+            meResponse?.data?.data || meResponse?.data || meResponse;
+          const user = payload?.user || (payload?.email ? payload : null);
+          const permissions = Array.isArray(payload?.permissions)
+            ? payload.permissions
+            : Array.isArray(user?.permissions)
+            ? user.permissions
+            : [];
 
-          const user = meData || null;
-          const permissions = user?.permissions || [];
+          if (user) {
+            user.permissions = permissions;
+          }
 
           set({
             isAuthenticated: true,
@@ -96,15 +104,24 @@ export const useAdminAuthStore = create((set, get) => {
 
       try {
         const response = await adminAuthService.login({ email, password });
-        const data = response?.data || response;
-        const user = data?.user || null;
-        const accessToken = data?.accessToken || null;
+        const payload =
+          response?.data?.data || response?.data || response;
+        const user = payload?.user || null;
+        const accessToken = payload?.accessToken || null;
 
         if (accessToken) {
           adminTokenManager.setAccessToken(accessToken);
         }
 
-        const permissions = user?.permissions || [];
+        const permissions = Array.isArray(payload?.permissions)
+          ? payload.permissions
+          : Array.isArray(user?.permissions)
+          ? user.permissions
+          : [];
+
+        if (user) {
+          user.permissions = permissions;
+        }
 
         set({
           user,
@@ -164,7 +181,102 @@ export const useAdminAuthStore = create((set, get) => {
       if (!user) return false;
       const role = (user.role || "").toUpperCase();
       if (role === "SUPERADMIN" || role === "SUPER_ADMIN") return true;
-      return permissions.includes(permission);
+      if (!permission) return true;
+      if (permissions.includes(permission)) return true;
+
+      const ALIASES = {
+        "dashboard.view": ["analytics:read"],
+        "analytics:read": ["dashboard.view", "analytics.view"],
+        "analytics.view": ["analytics:read"],
+        "tasks.view": ["work_assignments:read"],
+        "work_assignments:read": ["tasks.view"],
+        "vendors.view": ["vendors:read"],
+        "vendors:read": ["vendors.view"],
+        "customers.view": ["users:read"],
+        "users:read": ["customers.view"],
+        "customers.edit": ["users:manage"],
+        "customers.suspend": ["users:manage"],
+        "customers.reset_password": ["users:manage"],
+        "customers.delete": ["users:manage"],
+        "users:manage": [
+          "customers.edit",
+          "customers.suspend",
+          "customers.reset_password",
+          "customers.delete",
+          "customers.export",
+        ],
+        "vendors.edit": ["vendors:manage"],
+        "vendors.suspend": ["vendors:manage"],
+        "vendors.approve": ["vendors:manage"],
+        "vendors.reset_password": ["vendors:manage"],
+        "vendors.delete": ["vendors:manage"],
+        "vendors.bank_accounts.view": ["vendors:manage", "vendors:read", "finance:read", "finance:manage"],
+        "vendors.bank_accounts.review": ["vendors:manage", "finance:manage"],
+        "vendors.bank_accounts.approve": ["vendors:manage", "finance:manage"],
+        "vendors.bank_accounts.reject": ["vendors:manage", "finance:manage"],
+        "vendors.bank_accounts.manage": ["vendors:manage", "finance:manage"],
+        "vendors.bank_accounts.view_unmasked": ["vendors:manage"],
+        "vendors:manage": [
+          "vendors.edit",
+          "vendors.approve",
+          "vendors.reject",
+          "vendors.request_changes",
+          "vendors.suspend",
+          "vendors.reset_password",
+          "vendors.delete",
+          "vendors.export",
+          "vendors.bank_accounts.view",
+          "vendors.bank_accounts.review",
+          "vendors.bank_accounts.approve",
+          "vendors.bank_accounts.reject",
+          "vendors.bank_accounts.manage",
+          "vendors.bank_accounts.view_unmasked",
+        ],
+        "products.view": ["products:read"],
+        "products:read": ["products.view", "attributes.view", "categories.view", "brands.view"],
+        "attributes.view": ["products:read", "products.view"],
+        "categories.view": ["products:read", "products.view"],
+        "brands.view": ["products:read", "products.view"],
+        "inventory.view": ["inventory:read"],
+        "inventory:read": ["inventory.view"],
+        "warehouses.view": ["warehouses:read"],
+        "warehouses:read": ["warehouses.view"],
+        "orders.view": ["orders:read"],
+        "orders:read": ["orders.view", "orders.manage"],
+        "returns.view": ["orders:read"],
+        "refunds.view": ["finance:read"],
+        "finance:read": ["refunds.view", "settlements.view"],
+        "shipping.view": ["shipments:read"],
+        "shipments:read": ["shipping.view"],
+        "payments.view": ["payments:read"],
+        "payments:read": ["payments.view"],
+        "settlements.view": ["finance:read"],
+        "campaigns.view": ["campaigns:read"],
+        "campaigns:read": ["campaigns.view"],
+        "coupons.view": ["coupons:read"],
+        "coupons:read": ["coupons.view"],
+        "discounts.view": ["coupons:read", "coupons.view"],
+        "cms.view": ["settings:read"],
+        "cms.events.view": ["settings:read", "cms.view"],
+        "reviews.view": ["reviews:read"],
+        "reviews:read": ["reviews.view"],
+        "support.view": ["support_tickets:read"],
+        "support_tickets:read": ["support.view"],
+        "staff.view": ["employees:read"],
+        "employees:read": ["staff.view", "job_roles.view"],
+        "activity_logs.view": ["audit_logs:read"],
+        "audit_logs:read": ["activity_logs.view"],
+        "settings:read": ["platform_settings.view", "platform_credentials.view", "cms.view"],
+        "settings:manage": ["platform_settings.manage", "platform_credentials.manage"],
+        "tax.view": ["tax:read"],
+        "tax:read": ["tax.view"],
+        "permissions.view": ["permissions:read"],
+        "permissions:read": ["permissions.view"],
+        "job_roles.view": ["employees:read"],
+      };
+
+      const mapped = ALIASES[permission] || [];
+      return mapped.some((alias) => permissions.includes(alias));
     },
   };
 });

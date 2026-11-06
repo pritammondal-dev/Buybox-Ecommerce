@@ -1,6 +1,7 @@
 const orderExpirationService = require("../services/order-expiration.service");
 const env = require("../config/env");
 const logger = require("../config/logger");
+const { withDistributedLock } = require("../utils/distributed-lock");
 
 let isProcessing = false;
 let schedulerTimer = null;
@@ -10,15 +11,30 @@ const processOrderExpirationBatch = async (options = {}) => {
     return { skipped: true, reason: "ALREADY_PROCESSING" };
   }
 
-  isProcessing = true;
+  const lockTtlMs = options.lockTtlMs || 60000;
+  const lockResult = await withDistributedLock(
+    "order-expiration",
+    async () => {
+      isProcessing = true;
+      try {
+        const result =
+          await orderExpirationService.reconcileAndExpirePendingOrders(options);
+        return result;
+      } finally {
+        isProcessing = false;
+      }
+    },
+    {
+      ttlMs: lockTtlMs,
+      client: options.redisClient,
+    }
+  );
 
-  try {
-    const result =
-      await orderExpirationService.reconcileAndExpirePendingOrders(options);
-    return result;
-  } finally {
-    isProcessing = false;
+  if (lockResult.skipped) {
+    return { skipped: true, reason: lockResult.reason || "LOCKED_BY_ANOTHER_INSTANCE" };
   }
+
+  return lockResult.result;
 };
 
 const runOrderExpirationScheduler = () => {

@@ -1,0 +1,50 @@
+[
+  {
+    "v": 2,
+    "key": {
+      "_id": 1
+    },
+    "name": "_id_"
+  },
+  {
+    "v": 2,
+    "key": {
+      "productId": 1
+    },
+    "name": "productId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "variantId": 1
+    },
+    "name": "variantId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "deletedAt": 1
+    },
+    "name": "deletedAt_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "sku": 1
+    },
+    "name": "sku_1",
+    "unique": true,
+    "partialFilterExpression": {
+      "deletedAt": null
+    }
+  },
+  {
+    "v": 2,
+    "key": {
+      "productId": 1,
+      "variantId": 1,
+      "deletedAt": 1
+    },
+    "name": "productId_1_variantId_1_deletedAt_1"
+  }
+]

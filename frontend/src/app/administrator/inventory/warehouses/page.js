@@ -12,6 +12,7 @@ import {
   Phone,
   CheckCircle,
   AlertTriangle,
+  ClipboardList,
 } from "lucide-react";
 import { adminInventoryService } from "@/services/admin/admin.service.js";
 
@@ -48,8 +49,16 @@ export default function AdminWarehousesPage() {
     setError(null);
     try {
       const res = await adminInventoryService.listWarehouses();
-      const items = res?.items || res || [];
-      setWarehouses(Array.isArray(items) ? items : []);
+      const items = Array.isArray(res?.warehouses)
+        ? res.warehouses
+        : Array.isArray(res?.data?.warehouses)
+        ? res.data.warehouses
+        : Array.isArray(res?.items)
+        ? res.items
+        : Array.isArray(res)
+        ? res
+        : [];
+      setWarehouses(items);
     } catch (err) {
       setError(
         err?.response?.data?.message ||
@@ -159,23 +168,33 @@ export default function AdminWarehousesPage() {
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setForm({
-              name: "",
-              code: "",
-              address: { street: "", city: "", state: "", country: "India", postalCode: "" },
-              contactPhone: "",
-              contactEmail: "",
-              capacity: 10000,
-            });
-            setShowCreateModal(true);
-          }}
-          className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-[#004D38] hover:bg-[#003829] rounded-xl shadow-xs transition-colors"
-        >
-          <Plus className="size-4" />
-          <span>New Warehouse</span>
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            href="/administrator/inventory/pick-lists"
+            className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl shadow-xs transition-colors cursor-pointer"
+          >
+            <ClipboardList className="size-4 text-indigo-600" />
+            <span>Warehouse Pick Lists</span>
+          </Link>
+
+          <button
+            onClick={() => {
+              setForm({
+                name: "",
+                code: "",
+                address: { street: "", city: "", state: "", country: "India", postalCode: "" },
+                contactPhone: "",
+                contactEmail: "",
+                capacity: 10000,
+              });
+              setShowCreateModal(true);
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-[#004D38] hover:bg-[#003829] rounded-xl shadow-xs transition-colors cursor-pointer"
+          >
+            <Plus className="size-4" />
+            <span>New Warehouse</span>
+          </button>
+        </div>
       </div>
 
       {success && (

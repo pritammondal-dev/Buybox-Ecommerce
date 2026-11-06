@@ -27,15 +27,18 @@ export function SearchBar({
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
-  const [recentSearches, setRecentSearches] = useState(() => {
-    if (typeof window === "undefined") return [];
+  const [recentSearches, setRecentSearches] = useState([]);
+
+  useEffect(() => {
     try {
       const stored = localStorage.getItem(RECENT_SEARCHES_KEY);
-      return stored ? JSON.parse(stored).slice(0, MAX_RECENT_SEARCHES) : [];
+      if (stored) {
+        setRecentSearches(JSON.parse(stored).slice(0, MAX_RECENT_SEARCHES));
+      }
     } catch {
-      return [];
+      // Ignore localStorage errors
     }
-  });
+  }, []);
 
   const containerRef = useRef(null);
   const inputRef = useRef(null);

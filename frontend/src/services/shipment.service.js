@@ -40,6 +40,42 @@ export const shipmentService = {
   async getMyShipmentsByOrderId(orderId) {
     return apiClient.get(`/shipments/my/order/${orderId}`);
   },
+
+  /**
+   * Check courier serviceability between pincodes
+   */
+  async checkServiceability(params = {}) {
+    return apiClient.get("/shipments/serviceability", { params });
+  },
+
+  /**
+   * Admin schedule shipment pickup
+   */
+  async schedulePickup(shipmentId, data = {}) {
+    return apiClient.post(`/shipments/${shipmentId}/pickup`, data);
+  },
+
+  async scheduleShipmentPickup(shipmentId, data = {}) {
+    return apiClient.post(`/shipments/${shipmentId}/pickup`, data);
+  },
+
+  /**
+   * Admin get shipment label
+   */
+  async getLabel(shipmentId) {
+    return apiClient.get(`/shipments/${shipmentId}/label`);
+  },
+
+  async getShipmentLabel(shipmentId) {
+    return apiClient.get(`/shipments/${shipmentId}/label`);
+  },
+
+  /**
+   * Admin cancel shipment
+   */
+  async cancelShipment(shipmentId, data = {}) {
+    return apiClient.post(`/shipments/${shipmentId}/cancel`, data);
+  },
 };
 
 export default shipmentService;

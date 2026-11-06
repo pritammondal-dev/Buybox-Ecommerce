@@ -1,0 +1,39 @@
+[
+  {
+    "v": 2,
+    "key": {
+      "_id": 1
+    },
+    "name": "_id_"
+  },
+  {
+    "v": 2,
+    "key": {
+      "provider": 1
+    },
+    "name": "provider_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "eventId": 1
+    },
+    "name": "eventId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "trackingNumber": 1
+    },
+    "name": "trackingNumber_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "provider": 1,
+      "eventId": 1
+    },
+    "name": "provider_1_eventId_1",
+    "unique": true
+  }
+]

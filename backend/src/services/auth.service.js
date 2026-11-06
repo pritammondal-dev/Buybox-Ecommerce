@@ -30,7 +30,7 @@ const smsService = require("./sms.service");
 const googleAuthService = require("./google-auth.service");
 const AuthAuditService = require("./auth-audit.service");
 const authenticationPolicyService = require("./authentication-policy.service");
-const { OTP_PURPOSES, AUDIT_ACTIONS } = require("../constants/auth.constants");
+const { ROLES, OTP_PURPOSES, AUDIT_ACTIONS } = require("../constants/auth.constants");
 const { normalizePhoneNumber, isValidPhoneNumber, maskPhoneNumber } = require("../utils/phone.util");
 const EmailService = require("./email.service");
 const emailService = new EmailService();
@@ -47,6 +47,16 @@ const registerUser = async ({
   firstName,
   lastName,
 }) => {
+  const { isFeatureEnabled } = require("./storefront-settings.service");
+  const registrationEnabled = await isFeatureEnabled("customerRegistration");
+  if (!registrationEnabled) {
+    throw new AppError(
+      "Customer registration is currently disabled by platform administration",
+      403,
+      "REGISTRATION_DISABLED"
+    );
+  }
+
   const normalizedEmail = String(email || "").toLowerCase().trim();
 
   // 1. Check for existing user account
@@ -589,11 +599,11 @@ const changePassword = async ({
  * audience, and database-tracked refresh-token session.
  */
 const createCustomerSession = async ({ user, ipAddress = null, userAgent = null }) => {
-  if (!user.isActive) {
-    throw new AppError("User account is inactive", 403, "ACCOUNT_INACTIVE");
+  if (!user.isActive || user.deletedAt) {
+    throw new AppError("User account is inactive or deactivated", 403, "ACCOUNT_INACTIVE");
   }
 
-  // Enforce customer authentication boundary: Reject internal staff and vendors
+  // Enforce customer authentication boundary: Reject internal staff
   if (["super_admin", "admin", "editor", "manager", "support"].includes(user.role)) {
     throw new AppError(
       "Access restricted. Privileged staff accounts must sign in through the administrator portal.",
@@ -602,28 +612,13 @@ const createCustomerSession = async ({ user, ipAddress = null, userAgent = null 
     );
   }
 
-  if (user.role === "vendor") {
-    throw new AppError(
-      "Access restricted. Vendor accounts must sign in through the merchant center portal.",
-      403,
-      "VENDOR_PORTAL_REQUIRED"
-    );
-  }
-
-  if (user.role !== "customer") {
-    throw new AppError(
-      "Access restricted. Customer accounts only.",
-      403,
-      "CUSTOMER_AUTH_REQUIRED"
-    );
-  }
-
   const { TOKEN_CONTEXTS, TOKEN_AUDIENCES } = require("./token.service");
 
   const accessToken = generateAccessToken(
     {
       sub: user._id.toString(),
-      role: user.role,
+      role: ROLES.CUSTOMER,
+      roles: user.roles || [ROLES.CUSTOMER],
       authVersion: user.authVersion || 1,
       permissionVersion: user.permissionVersion || 1,
     },
@@ -709,8 +704,8 @@ const loginUser = async ({
     );
   }
 
-  if (!user.isActive) {
-    throw new AppError("User account is inactive", 403, "ACCOUNT_INACTIVE");
+  if (!user.isActive || user.deletedAt) {
+    throw new AppError("User account is inactive or deactivated", 403, "ACCOUNT_INACTIVE");
   }
 
   // Enforce customer authentication boundary: Reject internal staff and vendors
@@ -722,7 +717,8 @@ const loginUser = async ({
     );
   }
 
-  if (user.role === "vendor") {
+  const hasCustomerRole = user.role === "customer" || (Array.isArray(user.roles) && user.roles.includes("customer"));
+  if (user.role === "vendor" && !hasCustomerRole) {
     throw new AppError(
       "Access restricted. Vendor accounts must sign in through the merchant center portal.",
       403,
@@ -814,8 +810,8 @@ const requestEmailLoginOtp = async ({ email, ipAddress = null }) => {
     };
   }
 
-  if (!user.isActive) {
-    throw new AppError("Account is inactive. Please contact customer support.", 403, "ACCOUNT_INACTIVE");
+  if (!user.isActive || user.deletedAt) {
+    throw new AppError("Account is inactive or deactivated. Please contact customer support.", 403, "ACCOUNT_INACTIVE");
   }
 
   if (["super_admin", "admin", "editor", "manager", "support"].includes(user.role)) {
@@ -923,8 +919,8 @@ const requestPhoneLoginOtp = async ({ phone, ipAddress = null }) => {
     };
   }
 
-  if (!user.isActive) {
-    throw new AppError("Account is inactive. Please contact customer support.", 403, "ACCOUNT_INACTIVE");
+  if (!user.isActive || user.deletedAt) {
+    throw new AppError("Account is inactive or deactivated. Please contact customer support.", 403, "ACCOUNT_INACTIVE");
   }
 
   if (["super_admin", "admin", "editor", "manager", "support"].includes(user.role)) {

@@ -9,6 +9,8 @@ const {
   COUPON_STATUSES,
   COUPON_SCOPE_TYPES,
 } = require("../constants/coupon.constants");
+const { recordAuditLog, sanitizeAuditState } = require("./governance.service");
+const { isFeatureEnabled } = require("./storefront-settings.service");
 
 const toDecimalString = (value) => {
   if (value === undefined || value === null) {
@@ -79,6 +81,17 @@ const createCoupon = async (data) => {
         data.minOrderAmount || 0
       ),
     });
+
+  if (data.actorId) {
+    await recordAuditLog({
+      actorId: data.actorId,
+      targetId: coupon._id,
+      action: "CREATE_COUPON",
+      entityType: "Coupon",
+      beforeState: null,
+      afterState: sanitizeAuditState(coupon),
+    }).catch(() => {});
+  }
 
   return coupon;
 };
@@ -186,28 +199,110 @@ const updateCoupon = async (
       );
   }
 
-  return couponRepository.updateById(
+  const updated = await couponRepository.updateById(
     couponId,
     update
   );
+
+  if (data.actorId) {
+    await recordAuditLog({
+      actorId: data.actorId,
+      targetId: couponId,
+      action: "UPDATE_COUPON",
+      entityType: "Coupon",
+      beforeState: sanitizeAuditState(coupon),
+      afterState: sanitizeAuditState(updated),
+    }).catch(() => {});
+  }
+
+  return updated;
 };
 
 const deactivateCoupon = async (
-  couponId
+  couponId,
+  actorId = null
 ) => {
-  return updateCoupon(couponId, {
+  const current = await couponRepository.findById(couponId);
+  const updated = await updateCoupon(couponId, {
     status: COUPON_STATUSES.INACTIVE,
     isActive: false,
+    actorId,
   });
+
+  if (actorId) {
+    await recordAuditLog({
+      actorId,
+      targetId: couponId,
+      action: "DEACTIVATE_COUPON",
+      entityType: "Coupon",
+      beforeState: sanitizeAuditState(current),
+      afterState: sanitizeAuditState(updated),
+    }).catch(() => {});
+  }
+
+  return updated;
 };
 
 const activateCoupon = async (
-  couponId
+  couponId,
+  actorId = null
 ) => {
-  return updateCoupon(couponId, {
+  const current = await couponRepository.findById(couponId);
+  const updated = await updateCoupon(couponId, {
     status: COUPON_STATUSES.ACTIVE,
     isActive: true,
+    actorId,
   });
+
+  if (actorId) {
+    await recordAuditLog({
+      actorId,
+      targetId: couponId,
+      action: "ACTIVATE_COUPON",
+      entityType: "Coupon",
+      beforeState: sanitizeAuditState(current),
+      afterState: sanitizeAuditState(updated),
+    }).catch(() => {});
+  }
+
+  return updated;
+};
+
+const deleteCoupon = async (
+  couponId,
+  actorId = null
+) => {
+  if (!mongoose.isValidObjectId(couponId)) {
+    throw new AppError(
+      "Invalid coupon ID",
+      400,
+      "INVALID_COUPON_ID"
+    );
+  }
+
+  const current = await couponRepository.findById(couponId);
+  if (!current) {
+    throw new AppError(
+      "Coupon not found",
+      404,
+      "COUPON_NOT_FOUND"
+    );
+  }
+
+  const archived = await couponRepository.archiveById(couponId);
+
+  if (actorId) {
+    await recordAuditLog({
+      actorId,
+      targetId: couponId,
+      action: "ARCHIVE_COUPON",
+      entityType: "Coupon",
+      beforeState: sanitizeAuditState(current),
+      afterState: sanitizeAuditState(archived),
+    }).catch(() => {});
+  }
+
+  return archived;
 };
 
 /**
@@ -223,6 +318,15 @@ const validateCoupon = async ({
   items = [],
   isFirstOrder = false,
 }) => {
+  const couponsEnabled = await isFeatureEnabled("coupons");
+  if (!couponsEnabled) {
+    throw new AppError(
+      "Coupons and promotional discounts are currently disabled",
+      403,
+      "FEATURE_DISABLED"
+    );
+  }
+
   const normalizedCode =
     normalizeCode(code);
 
@@ -353,6 +457,10 @@ const validateCoupon = async ({
 
   const eligibleItems =
     items.filter((item) => {
+      if (item.allowCoupons === false) {
+        return false;
+      }
+
       if (
         coupon.scope ===
         COUPON_SCOPE_TYPES.ALL
@@ -541,6 +649,7 @@ module.exports = {
   updateCoupon,
   activateCoupon,
   deactivateCoupon,
+  deleteCoupon,
   validateCoupon,
   redeemCoupon,
   generateCouponCode,

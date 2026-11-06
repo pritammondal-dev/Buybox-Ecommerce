@@ -12,8 +12,11 @@ import { cn } from "../../../utils/cn.js";
 
 export function ProductActions({
   product,
+  selectedVariant = null,
+  isSelectionComplete = false,
   isWishlisted = false,
   onWishlistToggle,
+  onStockRefresh,
 }) {
   const router = useRouter();
   const { addItem: addCartItem } = useCart();
@@ -21,23 +24,41 @@ export function ProductActions({
   const [isAdding, setIsAdding] = useState(false);
   const [isBuyingNow, setIsBuyingNow] = useState(false);
 
+  const isVariable = product?.productType === "variable";
   const productId = product?._id || product?.id;
-  const productVariantId =
-    product?.productVariantId ||
-    product?.defaultVariantId ||
-    undefined;
-  const isOutOfStock = product?.stockStatus === "out_of_stock";
-  const stockQuantity = typeof product?.stockQuantity === "number" ? product.stockQuantity : 99;
-  const maxAllowedQty = Math.max(1, Math.min(10, stockQuantity > 0 ? stockQuantity : 10));
-  const price = parsePrice(product?.price || 0);
+
+  // Resolve target purchasable variant
+  const targetVariant = isVariable
+    ? selectedVariant
+    : (selectedVariant || product?.defaultVariant || product?.variants?.find((v) => v.isDefault) || product?.variants?.[0] || null);
+
+  const productVariantId = targetVariant?._id || (!isVariable ? product?.defaultVariantId : undefined);
+
+  // Authoritative stock resolution from warehouse inventory data
+  const availableStock = targetVariant
+    ? (typeof targetVariant.availableQuantity === "number" ? targetVariant.availableQuantity : 0)
+    : (typeof product?.availableQuantity === "number" ? product.availableQuantity : 0);
+
+  const isOutOfStock = targetVariant
+    ? (availableStock <= 0 || targetVariant.stockStatus === "out_of_stock" || targetVariant.inStock === false)
+    : (isVariable ? false : (availableStock <= 0 || product?.stockStatus === "out_of_stock"));
+
+  const needsSelection = isVariable && (!isSelectionComplete || !selectedVariant);
+  const isActionDisabled = needsSelection || isOutOfStock || isAdding || isBuyingNow;
+
+  const maxAllowedQty = Math.max(1, Math.min(10, availableStock > 0 ? availableStock : 1));
+  const authoritativePrice = targetVariant
+    ? parsePrice(targetVariant.price)
+    : parsePrice(product?.price || 0);
 
   const primaryImage =
+    targetVariant?.image?.url ||
     product?.images?.[0]?.url ||
     product?.image ||
     null;
 
   const handleAddToCart = async () => {
-    if (isOutOfStock || isAdding) return;
+    if (isActionDisabled) return;
     setIsAdding(true);
 
     try {
@@ -46,25 +67,28 @@ export function ProductActions({
         productId,
         quantity,
         itemSnapshot: {
-          name: product.name,
-          price,
+          name: targetVariant?.name || product?.name,
+          price: authoritativePrice,
           image: primaryImage,
-          sku: product.sku,
         },
       });
 
       toast.success("Added to shopping cart", {
-        description: `${quantity} × ${product.name}`,
+        description: `${quantity} × ${targetVariant?.name || product?.name}`,
       });
     } catch (err) {
-      toast.error(err?.message || "Could not add item to cart. Please try again.");
+      // Re-query live inventory on rejection
+      if (onStockRefresh && productVariantId) {
+        onStockRefresh(productVariantId);
+      }
+      toast.error(err?.message || "Could not add item to cart. Please review availability.");
     } finally {
       setIsAdding(false);
     }
   };
 
   const handleBuyNow = async () => {
-    if (isOutOfStock || isBuyingNow) return;
+    if (isActionDisabled) return;
     setIsBuyingNow(true);
 
     try {
@@ -73,15 +97,17 @@ export function ProductActions({
         productId,
         quantity,
         itemSnapshot: {
-          name: product.name,
-          price,
+          name: targetVariant?.name || product?.name,
+          price: authoritativePrice,
           image: primaryImage,
-          sku: product.sku,
         },
       });
 
       router.push("/checkout");
     } catch (err) {
+      if (onStockRefresh && productVariantId) {
+        onStockRefresh(productVariantId);
+      }
       toast.error(err?.message || "Could not proceed to checkout.");
       setIsBuyingNow(false);
     }
@@ -96,7 +122,7 @@ export function ProductActions({
           onChange={setQuantity}
           min={1}
           max={maxAllowedQty}
-          disabled={isOutOfStock}
+          disabled={needsSelection || isOutOfStock}
           size="lg"
           className="rounded-full px-2 shadow-2xs"
         />
@@ -104,7 +130,7 @@ export function ProductActions({
         {/* Add to Cart Pill Button */}
         <Button
           type="button"
-          disabled={isOutOfStock || isAdding}
+          disabled={isActionDisabled}
           onClick={handleAddToCart}
           className="flex-1 rounded-full bg-[#004D38] hover:bg-[#003D2C] text-white font-bold text-sm py-3.5 px-6 shadow-md active:scale-95 transition-all gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -116,7 +142,13 @@ export function ProductActions({
           ) : (
             <>
               <ShoppingBag className="size-4" />
-              <span>{isOutOfStock ? "Currently Unavailable" : "Add to Cart"}</span>
+              <span>
+                {needsSelection
+                  ? "Select Options"
+                  : isOutOfStock
+                  ? "Currently Unavailable"
+                  : "Add to Cart"}
+              </span>
             </>
           )}
         </Button>
@@ -124,7 +156,7 @@ export function ProductActions({
         {/* Buy Now Pill Button */}
         <Button
           type="button"
-          disabled={isOutOfStock || isBuyingNow}
+          disabled={isActionDisabled}
           onClick={handleBuyNow}
           className="rounded-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm py-3.5 px-6 shadow-md active:scale-95 transition-all gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -155,7 +187,13 @@ export function ProductActions({
         </button>
       </div>
 
-      {isOutOfStock && (
+      {needsSelection && (
+        <p className="text-xs text-amber-700 font-medium pt-1">
+          Please select your preferred options above to enable purchase.
+        </p>
+      )}
+
+      {!needsSelection && isOutOfStock && (
         <p className="text-xs text-red-600 font-medium pt-1">
           This item is currently out of stock. You can still save it to your wishlist to receive updates when inventory is replenished.
         </p>

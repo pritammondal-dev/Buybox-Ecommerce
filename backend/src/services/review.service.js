@@ -87,6 +87,16 @@ const createReview = async ({
   title = null,
   comment = null,
 }) => {
+  const { isFeatureEnabled } = require("./storefront-settings.service");
+  const reviewsEnabled = await isFeatureEnabled("reviews");
+  if (!reviewsEnabled) {
+    throw new AppError(
+      "Product reviews are currently disabled by platform administration",
+      403,
+      "REVIEWS_DISABLED"
+    );
+  }
+
   const customer =
     await getActiveCustomer(userId);
 
@@ -332,9 +342,11 @@ const addVendorResponse = async (
       deletedAt: null,
     });
 
+  const productVendorId = (product.vendorId?._id || product.vendorId)?.toString();
+
   if (
     !vendor ||
-    product.vendorId.toString() !==
+    productVendorId !==
       vendor._id.toString()
   ) {
     throw new AppError(

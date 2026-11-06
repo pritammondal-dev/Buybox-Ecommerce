@@ -9,11 +9,18 @@ const {
   revokeAllUserSessions,
 } = require("../services/session.service");
 
+const crypto = require("crypto");
 const {
   COOKIE_NAMES,
   customerCookieOptions,
+  guestCookieOptions,
   refreshCookieOptions,
 } = require("../config/cookie");
+const {
+  generateGuestToken,
+  verifyGuestToken,
+} = require("../services/token.service");
+const { isFeatureEnabled } = require("../services/storefront-settings.service");
 
 const register = asyncHandler(async (req, res) => {
   const user = await authService.registerUser(req.body);
@@ -458,6 +465,86 @@ const getPublicLoginMethods = asyncHandler(async (req, res) => {
   });
 });
 
+const createGuestSession = asyncHandler(async (req, res) => {
+  const guestCheckoutEnabled = await isFeatureEnabled("guestCheckout");
+  if (!guestCheckoutEnabled) {
+    throw new AppError(
+      "Guest checkout is disabled. Please sign in to complete checkout.",
+      403,
+      "GUEST_CHECKOUT_DISABLED"
+    );
+  }
+
+  const existingToken =
+    req.get("X-Guest-Session") ||
+    req.cookies?.[COOKIE_NAMES.GUEST] ||
+    req.cookies?.bb_guest_session;
+
+  if (existingToken) {
+    try {
+      const decoded = verifyGuestToken(existingToken);
+      const guestId = decoded.guestId || decoded.sub;
+      return sendSuccess(res, {
+        statusCode: 200,
+        message: "Existing guest session active",
+        data: {
+          guestId,
+          guestToken: existingToken,
+          expiresIn: "7d",
+        },
+      });
+    } catch (_) {
+      // Token invalid or expired, generate new session below
+    }
+  }
+
+  const guestId = "gst_" + crypto.randomUUID();
+  const guestToken = generateGuestToken({ guestId });
+
+  res.cookie(COOKIE_NAMES.GUEST, guestToken, guestCookieOptions);
+  res.setHeader("X-Guest-Session", guestToken);
+
+  return sendSuccess(res, {
+    statusCode: 201,
+    message: "Guest session initiated successfully",
+    data: {
+      guestId,
+      guestToken,
+      expiresIn: "7d",
+    },
+  });
+});
+
+const getGuestSession = asyncHandler(async (req, res) => {
+  const token =
+    req.get("X-Guest-Session") ||
+    req.cookies?.[COOKIE_NAMES.GUEST] ||
+    req.cookies?.bb_guest_session ||
+    (req.get("Authorization")?.startsWith("Bearer ") ? req.get("Authorization").slice(7) : null);
+
+  if (!token) {
+    throw new AppError("No guest session found", 401, "INVALID_GUEST_SESSION");
+  }
+
+  let decoded;
+  try {
+    decoded = verifyGuestToken(token);
+  } catch (err) {
+    throw new AppError("Invalid or expired guest session", 401, "INVALID_GUEST_SESSION");
+  }
+
+  const guestCheckoutEnabled = await isFeatureEnabled("guestCheckout");
+
+  return sendSuccess(res, {
+    statusCode: 200,
+    message: "Guest session active",
+    data: {
+      guestId: decoded.guestId || decoded.sub,
+      guestCheckoutEnabled,
+    },
+  });
+});
+
 module.exports = {
   register,
   login,
@@ -482,4 +569,6 @@ module.exports = {
   changePhoneRequest,
   changePhoneVerify,
   getPublicLoginMethods,
+  createGuestSession,
+  getGuestSession,
 };

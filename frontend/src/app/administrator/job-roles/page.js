@@ -24,12 +24,13 @@ import {
   HelpCircle,
 } from "lucide-react";
 import { jobRoleService, permissionService } from "@/services/admin/admin.service.js";
-import { useAuth } from "@/hooks/useAuth.js";
+import { useAdminAuth } from "@/hooks/useAdminAuth.js";
 
 export default function JobRolesPage() {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser } = useAdminAuth();
   const isSuperadmin =
-    currentUser?.role === "super_admin" || currentUser?.role === "SUPERADMIN";
+    ["super_admin", "SUPER_ADMIN", "superadmin"].includes(currentUser?.role) ||
+    currentUser?.isSuperadmin;
 
   const [roles, setRoles] = useState([]);
   const [originalOrder, setOriginalOrder] = useState([]);
@@ -292,17 +293,17 @@ export default function JobRolesPage() {
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-gray-200 dark:border-gray-800">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-              Job Roles & Hierarchy
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+              Job Roles &amp; Hierarchy
             </h1>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300">
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
               Superadmin Only
             </span>
           </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-sm text-slate-500 mt-1">
             Dynamic database-backed organizational authority. Reorder roles to adjust
             authority tiers, define management scopes, and configure granular permissions.
           </p>
@@ -313,7 +314,7 @@ export default function JobRolesPage() {
             <button
               onClick={handleSaveOrder}
               disabled={savingOrder}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-all focus:ring-2 focus:ring-indigo-500 focus:outline-none disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs transition-all focus:ring-2 focus:ring-emerald-500 focus:outline-hidden disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
               {savingOrder ? "Saving..." : "Save Hierarchy Priority"}
@@ -322,7 +323,7 @@ export default function JobRolesPage() {
 
           <button
             onClick={handleOpenCreateModal}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg text-white bg-gray-900 hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100 shadow-sm transition-all focus:ring-2 focus:ring-gray-900 focus:outline-none"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl text-white bg-[#004D38] hover:bg-[#003828] shadow-xs transition-all"
           >
             <Plus className="w-4 h-4" />
             Create Job Role
@@ -332,24 +333,24 @@ export default function JobRolesPage() {
 
       {/* Alert Banners */}
       {successMsg && (
-        <div className="flex items-center gap-2 p-4 text-sm text-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300 rounded-lg border border-emerald-200 dark:border-emerald-800">
+        <div className="flex items-center gap-2 p-4 text-sm text-emerald-800 bg-emerald-50 rounded-xl border border-emerald-200">
           <CheckCircle className="w-5 h-5 flex-shrink-0" />
           <span>{successMsg}</span>
         </div>
       )}
 
       {error && (
-        <div className="flex items-center gap-2 p-4 text-sm text-red-800 bg-red-50 dark:bg-red-950/40 dark:text-red-300 rounded-lg border border-red-200 dark:border-red-800">
+        <div className="flex items-center gap-2 p-4 text-sm text-rose-800 bg-rose-50 rounded-xl border border-rose-200">
           <AlertTriangle className="w-5 h-5 flex-shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {/* Reorder Helper Banner */}
-      <div className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-lg flex items-start gap-3 text-sm text-amber-900 dark:text-amber-300">
-        <HelpCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+      <div className="p-4 bg-amber-50/80 border border-amber-200/80 rounded-2xl flex items-start gap-3 text-sm text-amber-900 shadow-2xs">
+        <HelpCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600" />
         <div>
-          <span className="font-semibold">Draggable Role Priority & Tier System:</span> Lower
+          <span className="font-semibold">Draggable Role Priority &amp; Tier System:</span> Lower
           tier numbers indicate higher authority (e.g. Tier 1 is top authority). Drag a role or
           use the up/down arrows to change priority. A role can only manage roles positioned at a
           lower authority tier and included in its database-backed management scope.
@@ -357,21 +358,21 @@ export default function JobRolesPage() {
       </div>
 
       {/* Toolbar / Search */}
-      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row gap-4 items-center justify-between">
         <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
           <input
             type="text"
             placeholder="Search roles by name or slug..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 placeholder-slate-400 focus:ring-1 focus:ring-emerald-500 focus:outline-hidden"
           />
         </div>
 
-        <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-4">
-          <span>Total Roles: <strong className="text-gray-900 dark:text-white">{roles.length}</strong></span>
-          <span>Active: <strong className="text-emerald-600">{roles.filter((r) => r.isActive).length}</strong></span>
+        <div className="text-xs text-slate-500 flex items-center gap-4">
+          <span>Total Roles: <strong className="text-slate-900">{roles.length}</strong></span>
+          <span>Active: <strong className="text-emerald-700">{roles.filter((r) => r.isActive).length}</strong></span>
         </div>
       </div>
 
@@ -381,17 +382,17 @@ export default function JobRolesPage() {
           {[1, 2, 3, 4, 5].map((i) => (
             <div
               key={i}
-              className="h-20 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse"
+              className="h-20 bg-slate-100 rounded-2xl animate-pulse"
             />
           ))}
         </div>
       ) : filteredRoles.length === 0 ? (
-        <div className="text-center py-12 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
-          <ShieldAlert className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-          <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+        <div className="text-center py-12 bg-white border border-slate-200 rounded-2xl shadow-xs">
+          <ShieldAlert className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+          <h3 className="text-base font-semibold text-slate-900">
             No Job Roles Found
           </h3>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-slate-500 mt-1">
             {searchTerm ? "No roles match your search term." : "Create your first Job Role to begin."}
           </p>
         </div>
@@ -408,10 +409,10 @@ export default function JobRolesPage() {
                 onDragStart={(e) => handleDragStart(e, idx)}
                 onDragOver={(e) => handleDragOver(e, idx)}
                 onDrop={(e) => handleDrop(e, idx)}
-                className={`flex flex-col md:flex-row md:items-center justify-between p-4 bg-white dark:bg-gray-900 border rounded-xl shadow-sm transition-all duration-200 gap-4 ${
+                className={`flex flex-col md:flex-row md:items-center justify-between p-5 bg-white border rounded-2xl shadow-xs transition-all duration-200 gap-4 ${
                   isTopTier
-                    ? "border-indigo-300 dark:border-indigo-700/60 bg-indigo-50/20 dark:bg-indigo-950/10"
-                    : "border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700"
+                    ? "border-emerald-300 bg-emerald-50/25"
+                    : "border-slate-200/80 hover:border-slate-300 hover:shadow-sm"
                 }`}
               >
                 {/* Left: Drag Handle, Tier, Role Info */}
@@ -422,7 +423,7 @@ export default function JobRolesPage() {
                       className={`p-1.5 rounded text-gray-400 ${
                         isProtected
                           ? "cursor-not-allowed opacity-30"
-                          : "cursor-grab active:cursor-grabbing hover:text-gray-600 dark:hover:text-gray-200"
+                          : "cursor-grab active:cursor-grabbing hover:text-gray-600"
                       }`}
                       title={isProtected ? "Superadmin Tier 1 is immutable" : "Drag to reorder hierarchy"}
                     >
@@ -433,7 +434,7 @@ export default function JobRolesPage() {
                       <button
                         onClick={() => moveRole(idx, -1)}
                         disabled={idx <= 1 || isProtected}
-                        className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-20"
+                        className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-20"
                         title="Move up in hierarchy"
                       >
                         <ArrowUp className="w-3.5 h-3.5" />
@@ -441,7 +442,7 @@ export default function JobRolesPage() {
                       <button
                         onClick={() => moveRole(idx, 1)}
                         disabled={idx === 0 || idx === roles.length - 1}
-                        className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-20"
+                        className="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-20"
                         title="Move down in hierarchy"
                       >
                         <ArrowDown className="w-3.5 h-3.5" />
@@ -451,12 +452,12 @@ export default function JobRolesPage() {
 
                   {/* Tier Badge */}
                   <div
-                    className={`flex flex-col items-center justify-center w-12 h-12 rounded-lg font-bold text-sm ${
+                    className={`flex flex-col items-center justify-center w-12 h-12 rounded-xl font-bold text-sm ${
                       isTopTier
-                        ? "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-300 dark:border-amber-700"
+                        ? "bg-amber-50 text-amber-800 border border-amber-200"
                         : role.tier <= 3
-                        ? "bg-indigo-100 text-indigo-900 dark:bg-indigo-900/40 dark:text-indigo-300"
-                        : "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300"
+                        ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                        : "bg-slate-50 text-slate-800 border border-slate-200"
                     }`}
                   >
                     <span className="text-[10px] uppercase font-semibold leading-tight">Tier</span>
@@ -466,41 +467,41 @@ export default function JobRolesPage() {
                   {/* Role Name & Meta */}
                   <div>
                     <div className="flex items-center gap-2">
-                      <h4 className="font-semibold text-gray-900 dark:text-white text-base">
+                      <h4 className="font-bold text-slate-900 text-base">
                         {role.name}
                       </h4>
 
                       {role.isSuperadminRole && (
-                        <span className="px-2 py-0.5 text-xs font-semibold rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                        <span className="px-2 py-0.5 text-xs font-semibold rounded bg-amber-50 text-amber-800 border border-amber-200">
                           Superadmin
                         </span>
                       )}
 
                       {role.isSystemRole && !role.isSuperadminRole && (
-                        <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                        <span className="px-2 py-0.5 text-xs font-medium rounded bg-slate-100 text-slate-700 border border-slate-200">
                           System Role
                         </span>
                       )}
 
                       {!role.isActive && (
-                        <span className="px-2 py-0.5 text-xs font-medium rounded bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300">
+                        <span className="px-2 py-0.5 text-xs font-medium rounded bg-rose-50 text-rose-800 border border-rose-200">
                           Inactive
                         </span>
                       )}
                     </div>
 
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">
+                    <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
                       {role.description || "No description provided"}
                     </p>
                   </div>
                 </div>
 
                 {/* Middle: Metrics & Scope */}
-                <div className="flex flex-wrap items-center gap-4 text-xs text-gray-600 dark:text-gray-300 pl-16 md:pl-0">
+                <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600 pl-16 md:pl-0">
                   <div className="flex items-center gap-1.5" title="Assigned Employees">
-                    <Users className="w-4 h-4 text-gray-400" />
+                    <Users className="w-4 h-4 text-slate-400" />
                     <span>
-                      <strong className="text-gray-900 dark:text-white">
+                      <strong className="text-slate-900">
                         {role.employeeCount || 0}
                       </strong>{" "}
                       employees
@@ -508,9 +509,9 @@ export default function JobRolesPage() {
                   </div>
 
                   <div className="flex items-center gap-1.5" title="Configured Permissions">
-                    <KeyRound className="w-4 h-4 text-gray-400" />
+                    <KeyRound className="w-4 h-4 text-slate-400" />
                     <span>
-                      <strong className="text-gray-900 dark:text-white">
+                      <strong className="text-slate-900">
                         {role.isSuperadminRole ? "Full Authority (*)" : (role.permissions || []).length}
                       </strong>{" "}
                       permissions
@@ -519,20 +520,20 @@ export default function JobRolesPage() {
 
                   {/* Management Scope summary */}
                   <div className="flex items-center gap-1.5">
-                    <Sliders className="w-4 h-4 text-gray-400" />
-                    <span className="text-gray-500">Scope:</span>
+                    <Sliders className="w-4 h-4 text-slate-400" />
+                    <span className="text-slate-500">Scope:</span>
                     <div className="flex flex-wrap gap-1 max-w-xs">
                       {role.isSuperadminRole ? (
-                        <span className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
+                        <span className="text-[11px] font-semibold text-emerald-700">
                           All lower tiers
                         </span>
                       ) : !role.managementScope || role.managementScope.length === 0 ? (
-                        <span className="text-[11px] text-gray-400 italic">None</span>
+                        <span className="text-[11px] text-slate-400 italic">None</span>
                       ) : (
                         role.managementScope.map((scopeItem) => (
                           <span
                             key={scopeItem._id || scopeItem}
-                            className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-[10px] font-medium"
+                            className="px-2 py-0.5 bg-slate-100 border border-slate-200 text-slate-700 rounded-md text-[10px] font-medium"
                           >
                             {scopeItem.name || scopeItem.slug || "Role"}
                           </span>
@@ -546,7 +547,7 @@ export default function JobRolesPage() {
                 <div className="flex items-center gap-2 justify-end pl-16 md:pl-0">
                   <Link
                     href={`/administrator/job-roles/${role._id}`}
-                    className="p-2 text-gray-600 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                    className="p-2 text-slate-600 hover:text-emerald-700 rounded-xl hover:bg-slate-100 transition-colors"
                     title="View Role Details & Full Permissions"
                   >
                     <Eye className="w-4 h-4" />
@@ -554,7 +555,7 @@ export default function JobRolesPage() {
 
                   <button
                     onClick={() => handleOpenEditModal(role)}
-                    className="p-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                    className="p-2 text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors"
                     title="Edit Role"
                   >
                     <Edit2 className="w-4 h-4" />
@@ -563,7 +564,7 @@ export default function JobRolesPage() {
                   {!role.isSuperadminRole && (
                     <button
                       onClick={() => handleOpenDeactivateModal(role)}
-                      className="p-2 text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                      className="p-2 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition-colors"
                       title="Deactivate Role & Migrate Employees"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -578,15 +579,15 @@ export default function JobRolesPage() {
 
       {/* Create Job Role Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl max-w-2xl w-full p-6 border border-gray-200 dark:border-gray-800 my-8">
-            <div className="flex items-center justify-between pb-4 border-b border-gray-200 dark:border-gray-800">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 border border-slate-200 my-8">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <h3 className="text-lg font-bold text-slate-900">
                 Create Dynamic Job Role
               </h3>
               <button
                 onClick={() => setShowCreateModal(false)}
-                className="text-gray-400 hover:text-gray-500"
+                className="text-slate-400 hover:text-slate-600"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -595,7 +596,7 @@ export default function JobRolesPage() {
             <form onSubmit={handleCreateSubmit} className="space-y-4 mt-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Role Name *
                   </label>
                   <input
@@ -613,12 +614,12 @@ export default function JobRolesPage() {
                           .replace(/^-|-$/g, ""),
                       })
                     }
-                    className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Slug Identifier *
                   </label>
                   <input
@@ -627,13 +628,13 @@ export default function JobRolesPage() {
                     placeholder="e.g. catalog-specialist"
                     value={roleForm.slug}
                     onChange={(e) => setRoleForm({ ...roleForm, slug: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-hidden font-mono"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Description
                 </label>
                 <textarea
@@ -641,25 +642,25 @@ export default function JobRolesPage() {
                   placeholder="Outline responsibilities and operational expectations..."
                   value={roleForm.description}
                   onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
                 />
               </div>
 
               {/* Management Scope Selection */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Database-Backed Management Scope
                 </label>
-                <p className="text-xs text-gray-500 mb-2">
+                <p className="text-xs text-slate-500 mb-2">
                   Select which lower-tier Job Roles employees with this role are authorized to manage:
                 </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700 max-h-40 overflow-y-auto">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200 max-h-40 overflow-y-auto">
                   {roles
                     .filter((r) => !r.isSuperadminRole)
                     .map((targetRole) => (
                       <label
                         key={targetRole._id}
-                        className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer"
+                        className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer"
                       >
                         <input
                           type="checkbox"
@@ -678,7 +679,7 @@ export default function JobRolesPage() {
                               });
                             }
                           }}
-                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                         />
                         <span>{targetRole.name} (Tier {targetRole.tier})</span>
                       </label>
@@ -686,18 +687,18 @@ export default function JobRolesPage() {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-800">
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                  className="px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={formSubmitting}
-                  className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm disabled:opacity-50"
+                  className="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors shadow-xs disabled:opacity-50"
                 >
                   {formSubmitting ? "Creating..." : "Create Job Role"}
                 </button>
@@ -709,15 +710,15 @@ export default function JobRolesPage() {
 
       {/* Edit Job Role Modal */}
       {showEditModal && editingRole && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl max-w-2xl w-full p-6 border border-gray-200 dark:border-gray-800 my-8">
-            <div className="flex items-center justify-between pb-4 border-b border-gray-200 dark:border-gray-800">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 border border-slate-200 my-8">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <h3 className="text-lg font-bold text-slate-900">
                 Edit Job Role: {editingRole.name}
               </h3>
               <button
                 onClick={() => setShowEditModal(false)}
-                className="text-gray-400 hover:text-gray-500"
+                className="text-slate-400 hover:text-slate-600"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -725,7 +726,7 @@ export default function JobRolesPage() {
 
             <form onSubmit={handleEditSubmit} className="space-y-4 mt-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Role Name
                 </label>
                 <input
@@ -734,38 +735,38 @@ export default function JobRolesPage() {
                   disabled={editingRole.isSuperadminRole}
                   value={roleForm.name}
                   onChange={(e) => setRoleForm({ ...roleForm, name: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none disabled:opacity-50"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-hidden disabled:opacity-50"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Description
                 </label>
                 <textarea
                   rows={2}
                   value={roleForm.description}
                   onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
                 />
               </div>
 
               {/* Management Scope Selection */}
               {!editingRole.isSuperadminRole && (
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Management Scope
                   </label>
-                  <p className="text-xs text-gray-500 mb-2">
+                  <p className="text-xs text-slate-500 mb-2">
                     Authorized subordinate roles (only lower tiers can be managed):
                   </p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700 max-h-40 overflow-y-auto">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200 max-h-40 overflow-y-auto">
                     {roles
                       .filter((r) => r._id !== editingRole._id && !r.isSuperadminRole)
                       .map((targetRole) => (
                         <label
                           key={targetRole._id}
-                          className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer"
+                          className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer"
                         >
                           <input
                             type="checkbox"
@@ -784,7 +785,7 @@ export default function JobRolesPage() {
                                 });
                               }
                             }}
-                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                           />
                           <span>
                             {targetRole.name} (Tier {targetRole.tier})
@@ -795,10 +796,10 @@ export default function JobRolesPage() {
                 </div>
               )}
 
-              <div className="flex justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-800">
+              <div className="flex justify-between items-center pt-4 border-t border-slate-100">
                 <Link
                   href={`/administrator/job-roles/${editingRole._id}`}
-                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                  className="text-xs font-semibold text-emerald-700 hover:text-emerald-800"
                 >
                   Configure Granular Permissions →
                 </Link>
@@ -807,14 +808,14 @@ export default function JobRolesPage() {
                   <button
                     type="button"
                     onClick={() => setShowEditModal(false)}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                    className="px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={formSubmitting}
-                    className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm disabled:opacity-50"
+                    className="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors shadow-xs disabled:opacity-50"
                   >
                     {formSubmitting ? "Saving..." : "Save Changes"}
                   </button>
@@ -827,22 +828,22 @@ export default function JobRolesPage() {
 
       {/* Deactivate & Migrate Modal */}
       {showDeactivateModal && deactivatingRole && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl max-w-lg w-full p-6 border border-gray-200 dark:border-gray-800 my-8">
-            <div className="flex items-center gap-3 text-red-600 mb-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 border border-slate-200 my-8">
+            <div className="flex items-center gap-3 text-rose-600 mb-2">
               <AlertTriangle className="w-6 h-6 flex-shrink-0" />
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+              <h3 className="text-lg font-bold text-slate-900">
                 Deactivate Job Role
               </h3>
             </div>
 
-            <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">
+            <p className="text-sm text-slate-600 mt-2">
               Are you sure you want to deactivate{" "}
-              <strong className="text-gray-900 dark:text-white">{deactivatingRole.name}</strong>?
+              <strong className="text-slate-900">{deactivatingRole.name}</strong>?
             </p>
 
             {deactivatingRole.employeeCount > 0 ? (
-              <div className="mt-4 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-lg text-xs space-y-3 text-amber-900 dark:text-amber-200">
+              <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-3 text-amber-900">
                 <p className="font-semibold">
                   MANDATORY EMPLOYEE MIGRATION: This role currently has{" "}
                   <strong>{deactivatingRole.employeeCount}</strong> active employee(s) assigned.
@@ -859,7 +860,7 @@ export default function JobRolesPage() {
                   <select
                     value={replacementRoleId}
                     onChange={(e) => handleReplacementRoleChange(e.target.value)}
-                    className="w-full px-3 py-2 text-xs border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
                   >
                     <option value="">-- Choose replacement role --</option>
                     {roles
@@ -873,9 +874,9 @@ export default function JobRolesPage() {
                 </div>
 
                 {previewLoading ? (
-                  <p className="text-gray-500 italic">Calculating migration preview...</p>
+                  <p className="text-slate-500 italic">Calculating migration preview...</p>
                 ) : migrationPreview ? (
-                  <div className="p-2.5 bg-white/70 dark:bg-gray-900/60 rounded border border-amber-300 dark:border-amber-700/60 space-y-1">
+                  <div className="p-2.5 bg-white rounded-xl border border-amber-300 space-y-1">
                     <p>
                       <strong>Affected Employees:</strong> {migrationPreview.employeeCount}
                     </p>
@@ -887,17 +888,17 @@ export default function JobRolesPage() {
                 ) : null}
               </div>
             ) : (
-              <p className="text-xs text-gray-500 mt-2">
+              <p className="text-xs text-slate-500 mt-2">
                 No active employees are currently assigned to this role. It can be safely
                 deactivated without migration.
               </p>
             )}
 
-            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200 dark:border-gray-800">
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setShowDeactivateModal(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                className="px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
               >
                 Cancel
               </button>
@@ -905,7 +906,7 @@ export default function JobRolesPage() {
                 type="button"
                 disabled={formSubmitting || (deactivatingRole.employeeCount > 0 && !replacementRoleId)}
                 onClick={handleConfirmDeactivate}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-sm disabled:opacity-50"
+                className="px-4 py-2 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors shadow-xs disabled:opacity-50"
               >
                 {formSubmitting ? "Migrating & Deactivating..." : "Confirm Deactivation"}
               </button>

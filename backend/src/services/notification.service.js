@@ -9,6 +9,7 @@ const {
   emailVerificationTemplate,
   passwordResetTemplate,
   abandonedCartTemplate,
+  vendorNewOrderTemplate,
 } = require("./notification.templates");
 
 class NotificationService {
@@ -152,6 +153,26 @@ class NotificationService {
       itemCount,
       grandTotal,
       currency,
+    });
+
+    return this.sendEmail({
+      to,
+      ...template,
+    });
+  }
+
+  async sendVendorNewOrderNotification({
+    to,
+    vendorName,
+    orderNumber,
+    items,
+    orderUrl,
+  }) {
+    const template = vendorNewOrderTemplate({
+      vendorName,
+      orderNumber,
+      items,
+      orderUrl,
     });
 
     return this.sendEmail({

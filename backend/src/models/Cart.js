@@ -24,6 +24,48 @@ const cartItemSchema = new mongoose.Schema(
       min: 0,
     },
 
+    regularPrice: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: null,
+    },
+
+    effectivePrice: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: null,
+    },
+
+    isPromotional: {
+      type: Boolean,
+      default: false,
+    },
+
+    promotionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ProductDiscount",
+      default: null,
+    },
+
+    promotionName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
+    promotionalDiscountAmount: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: 0,
+    },
+
+    promotionalSavings: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: 0,
+    },
+
+    allowCoupons: {
+      type: Boolean,
+      default: true,
+    },
+
     currency: {
       type: String,
       required: true,
@@ -49,7 +91,15 @@ const cartSchema = new mongoose.Schema(
     customerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",
-      required: true,
+      required: false,
+      default: null,
+      index: true,
+    },
+
+    guestId: {
+      type: String,
+      default: null,
+      trim: true,
       index: true,
     },
 
@@ -93,6 +143,11 @@ const cartSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Decimal128,
       required: true,
       min: 0,
+      default: 0,
+    },
+
+    productDiscountTotal: {
+      type: mongoose.Schema.Types.Decimal128,
       default: 0,
     },
 
@@ -145,12 +200,30 @@ const cartSchema = new mongoose.Schema(
   }
 );
 
+cartSchema.pre("validate", function () {
+  if (!this.customerId && !this.guestId) {
+    throw new Error("Cart must be bound to either a customerId or a guestId");
+  }
+});
+
 cartSchema.index(
   { customerId: 1, status: 1 },
   {
     unique: true,
     partialFilterExpression: {
       status: "active",
+      customerId: { $type: "objectId" },
+    },
+  }
+);
+
+cartSchema.index(
+  { guestId: 1, status: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      status: "active",
+      guestId: { $type: "string" },
     },
   }
 );

@@ -1,0 +1,196 @@
+[
+  {
+    "v": 2,
+    "key": {
+      "_id": 1
+    },
+    "name": "_id_"
+  },
+  {
+    "v": 2,
+    "key": {
+      "orderNumber": 1
+    },
+    "name": "orderNumber_1",
+    "unique": true
+  },
+  {
+    "v": 2,
+    "key": {
+      "customerId": 1
+    },
+    "name": "customerId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "storeId": 1
+    },
+    "name": "storeId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "status": 1
+    },
+    "name": "status_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "paymentStatus": 1
+    },
+    "name": "paymentStatus_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "fulfillmentStatus": 1
+    },
+    "name": "fulfillmentStatus_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "customerId": 1,
+      "createdAt": -1
+    },
+    "name": "customerId_1_createdAt_-1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "customerId": 1,
+      "status": 1
+    },
+    "name": "customerId_1_status_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "couponId": 1
+    },
+    "name": "couponId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "cancellationStatus": 1
+    },
+    "name": "cancellationStatus_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "cancellationStatus": 1,
+      "status": 1
+    },
+    "name": "cancellationStatus_1_status_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "items.vendorId": 1,
+      "status": 1,
+      "createdAt": -1
+    },
+    "name": "items.vendorId_1_status_1_createdAt_-1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "status": 1,
+      "paymentStatus": 1,
+      "createdAt": -1
+    },
+    "name": "status_1_paymentStatus_1_createdAt_-1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "customerId": 1,
+      "idempotencyKey": 1
+    },
+    "name": "customerId_1_idempotencyKey_1",
+    "unique": true,
+    "partialFilterExpression": {
+      "idempotencyKey": {
+        "$type": "string"
+      }
+    }
+  },
+  {
+    "v": 2,
+    "key": {
+      "status": 1,
+      "createdAt": 1
+    },
+    "name": "status_1_createdAt_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "inventoryStatus": 1
+    },
+    "name": "inventoryStatus_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "items.inventoryStatus": 1
+    },
+    "name": "items.inventoryStatus_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "items.fulfillmentStatus": 1
+    },
+    "name": "items.fulfillmentStatus_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "isGuestOrder": 1
+    },
+    "name": "isGuestOrder_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "guestId": 1
+    },
+    "name": "guestId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "guestEmail": 1
+    },
+    "name": "guestEmail_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "guestOrderAccessToken": 1
+    },
+    "name": "guestOrderAccessToken_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "guestId": 1,
+      "idempotencyKey": 1
+    },
+    "name": "guestId_1_idempotencyKey_1",
+    "unique": true,
+    "partialFilterExpression": {
+      "idempotencyKey": {
+        "$type": "string"
+      },
+      "guestId": {
+        "$type": "string"
+      }
+    }
+  }
+]

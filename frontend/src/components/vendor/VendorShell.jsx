@@ -11,6 +11,7 @@ import {
   LifeBuoy,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth.store";
+import { vendorTokenManager } from "@/lib/auth/vendor-token-manager";
 import { vendorService } from "@/services/vendor.service";
 import { VendorSidebar } from "./VendorSidebar.jsx";
 import { VendorHeader } from "./VendorHeader.jsx";
@@ -19,32 +20,39 @@ import { VendorMobileNav } from "./VendorMobileNav.jsx";
 export function VendorShell({ children }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, isAuthenticated, isInitialized } = useAuthStore();
+  const { user, vendorUser, isAuthenticated, isVendorAuthenticated, isInitialized, isVendorInitialized } = useAuthStore();
 
   const [vendorProfile, setVendorProfile] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  const isAdmin = isInitialized && isAuthenticated && ["admin", "super_admin"].includes(user?.role);
-  const isCustomer = isInitialized && isAuthenticated && user?.role === "customer";
-  const hasNoVendor = isInitialized && isAuthenticated && !isAdmin && !isCustomer && !isLoading && !vendorProfile;
+  const effectiveUser = vendorUser || user;
+  const isVendorSession = Boolean(isVendorAuthenticated || (typeof window !== "undefined" && vendorTokenManager.hasAccessToken()));
+  const isAdmin = isInitialized && isAuthenticated && ["admin", "super_admin"].includes(effectiveUser?.role);
+  const isPureCustomer =
+    isInitialized &&
+    isAuthenticated &&
+    effectiveUser?.role === "customer" &&
+    !effectiveUser?.roles?.includes("vendor") &&
+    !isVendorSession;
+  const hasNoVendor = (isInitialized || isVendorInitialized) && (isAuthenticated || isVendorSession) && !isAdmin && !isPureCustomer && !isLoading && !vendorProfile;
 
   useEffect(() => {
-    if (!isInitialized) {
-      useAuthStore.getState().initializeAuth();
+    if (!isVendorInitialized || !vendorTokenManager.hasAccessToken()) {
+      useAuthStore.getState().initializeVendorAuth();
     }
-  }, [isInitialized]);
+  }, [isVendorInitialized]);
 
   useEffect(() => {
-    if (!isInitialized) return;
+    if (!isVendorInitialized && !isInitialized) return;
 
-    if (!isAuthenticated) {
+    if (!isVendorSession && !isAuthenticated) {
       router.push(`/vendor/login?redirect=${encodeURIComponent(pathname)}`);
       return;
     }
 
-    if (user?.role === "customer") {
+    if (isPureCustomer) {
       return;
     }
 
@@ -70,10 +78,10 @@ export function VendorShell({ children }) {
     return () => {
       isMounted = false;
     };
-  }, [isInitialized, isAuthenticated, user, router, pathname]);
+  }, [isInitialized, isVendorInitialized, isAuthenticated, isVendorSession, isPureCustomer, effectiveUser, router, pathname]);
 
   // Boundary check: Customer attempting vendor dashboard
-  if (isCustomer) {
+  if (isPureCustomer) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 bg-slate-50">
         <div className="w-full max-w-md bg-white rounded-3xl border border-red-200 p-8 shadow-card text-center">

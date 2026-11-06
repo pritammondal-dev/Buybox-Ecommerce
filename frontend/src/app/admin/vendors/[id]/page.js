@@ -56,27 +56,10 @@ export default function AdminVendorReviewPage() {
   }, [rawId]);
 
   useEffect(() => {
-    if (!rawId) return;
-    let isMounted = true;
-    const run = async () => {
-      try {
-        const data = await adminVendorService.getVendorById(rawId);
-        if (!isMounted) return;
-        setVendor(data);
-      } catch (err) {
-        if (!isMounted) return;
-        toast.error(err.response?.data?.message || "Failed to load vendor application details");
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-    run();
-    return () => {
-      isMounted = false;
-    };
-  }, [rawId]);
+    if (rawId) {
+      router.replace(`/administrator/vendors/${encodeURIComponent(rawId)}`);
+    }
+  }, [rawId, router]);
 
   // Actions
   const handleApprove = async () => {
@@ -439,6 +422,12 @@ export default function AdminVendorReviewPage() {
                   <Mail className="h-3 w-3" />
                   {applicant.email || "No email"}
                 </span>
+                {(applicant.phone || vendor.phone) && (
+                  <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-0.5 font-mono">
+                    <Phone className="h-3 w-3" />
+                    {applicant.phone || vendor.phone}
+                  </span>
+                )}
               </div>
             </div>
 

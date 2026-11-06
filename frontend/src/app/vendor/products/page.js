@@ -23,10 +23,18 @@ import {
 import { toast } from "sonner";
 import { vendorService } from "@/services/vendor.service";
 import { getVendorProductUrl } from "@/utils/secure-id.util";
+import VendorTablePagination from "@/components/vendor/VendorTablePagination";
+import {
+  VendorPageHeader,
+  VendorStatusBadge,
+  VendorEmptyState,
+} from "@/components/vendor";
 
 export default function VendorProductsPage() {
   const [products, setProducts] = useState([]);
-  const [meta, setMeta] = useState({ page: 1, limit: 20, total: 0 });
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [meta, setMeta] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
@@ -35,7 +43,7 @@ export default function VendorProductsPage() {
 
   useEffect(() => {
     let isMounted = true;
-    const params = { page: 1, limit: 20 };
+    const params = { page, limit };
     if (status !== "all") params.status = status;
     if (search.trim()) params.search = search.trim();
 
@@ -45,7 +53,12 @@ export default function VendorProductsPage() {
         if (!isMounted) return;
         const data = res?.data?.data || res?.data?.products || res?.data || [];
         const items = Array.isArray(data) ? data : data.items || [];
-        const paginationMeta = res?.data?.meta || { page: 1, limit: 20, total: items.length };
+        const paginationMeta = res?.data?.meta || {
+          page,
+          limit,
+          total: items.length,
+          totalPages: Math.ceil(items.length / limit) || 1,
+        };
         setProducts(items);
         setMeta(paginationMeta);
       })
@@ -53,7 +66,7 @@ export default function VendorProductsPage() {
         if (!isMounted) return;
         if (err.status === 403 || err.status === 404 || err.response?.status === 403 || err.response?.status === 404) {
           setProducts([]);
-          setMeta({ page: 1, limit: 20, total: 0 });
+          setMeta({ page: 1, limit: 20, total: 0, totalPages: 1 });
           return;
         }
         toast.error("Failed to fetch product catalog", {
@@ -67,25 +80,30 @@ export default function VendorProductsPage() {
     return () => {
       isMounted = false;
     };
-  }, [status, search]);
+  }, [status, search, page, limit]);
 
   const handleRefresh = async () => {
     setIsLoading(true);
     try {
-      const params = { page: 1, limit: 20 };
+      const params = { page, limit };
       if (status !== "all") params.status = status;
       if (search.trim()) params.search = search.trim();
 
       const res = await vendorService.getMyProducts(params);
       const data = res?.data?.data || res?.data?.products || res?.data || [];
       const items = Array.isArray(data) ? data : data.items || [];
-      const paginationMeta = res?.data?.meta || { page: 1, limit: 20, total: items.length };
+      const paginationMeta = res?.data?.meta || {
+        page,
+        limit,
+        total: items.length,
+        totalPages: Math.ceil(items.length / limit) || 1,
+      };
       setProducts(items);
       setMeta(paginationMeta);
     } catch (err) {
       if (err.status === 403 || err.status === 404 || err.response?.status === 403 || err.response?.status === 404) {
         setProducts([]);
-        setMeta({ page: 1, limit: 20, total: 0 });
+        setMeta({ page: 1, limit: 20, total: 0, totalPages: 1 });
         return;
       }
       toast.error("Failed to fetch product catalog", {
@@ -105,12 +123,15 @@ export default function VendorProductsPage() {
       if (search.trim()) params.search = search.trim();
 
       const res = await vendorService.exportProducts(params);
-      const blob = new Blob([res.data], {
-        type:
-          format === "xlsx"
-            ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            : "text/csv;charset=utf-8;",
-      });
+      let blob = res instanceof Blob ? res : (res?.data instanceof Blob ? res.data : null);
+      if (!blob) {
+        blob = new Blob([res?.data || res], {
+          type:
+            format === "xlsx"
+              ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              : "text/csv;charset=utf-8;",
+        });
+      }
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -132,82 +153,78 @@ export default function VendorProductsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-            Product Catalog
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Manage your marketplace listings, variants, pricing, and catalog approval statuses.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={handleRefresh}
-            disabled={isLoading}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition-colors"
-            title="Refresh product list"
-          >
-            <RefreshCw className={`size-3.5 ${isLoading ? "animate-spin" : ""}`} />
-            <span className="hidden sm:inline">Refresh</span>
-          </button>
-
-          {/* Export Dropdown */}
-          <div className="relative">
+      <VendorPageHeader
+        title="Product Catalog"
+        subtitle="Manage your marketplace listings, variants, pricing, and catalog approval statuses."
+        breadcrumbs={[{ label: "Products" }]}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => setExportMenuOpen(!exportMenuOpen)}
-              disabled={isExporting}
+              onClick={handleRefresh}
+              disabled={isLoading}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition-colors"
+              title="Refresh product list"
             >
-              {isExporting ? (
-                <RefreshCw className="size-3.5 animate-spin text-slate-500" />
-              ) : (
-                <Download className="size-3.5 text-slate-500" />
-              )}
-              <span>Export</span>
-              <ChevronDown className="size-3 text-slate-400" />
+              <RefreshCw className={`size-3.5 ${isLoading ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">Refresh</span>
             </button>
 
-            {exportMenuOpen && (
-              <div className="absolute right-0 mt-1.5 w-44 bg-white rounded-xl border border-slate-200 shadow-lg py-1 z-20 text-xs">
-                <button
-                  onClick={() => handleExport("csv")}
-                  className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
-                >
-                  <FileText className="size-3.5 text-slate-400" />
-                  <span>Export as CSV</span>
-                </button>
-                <button
-                  onClick={() => handleExport("xlsx")}
-                  className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
-                >
-                  <FileSpreadsheet className="size-3.5 text-emerald-600" />
-                  <span>Export as Excel (.xlsx)</span>
-                </button>
-              </div>
-            )}
+            {/* Export Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setExportMenuOpen(!exportMenuOpen)}
+                disabled={isExporting}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition-colors"
+              >
+                {isExporting ? (
+                  <RefreshCw className="size-3.5 animate-spin text-slate-500" />
+                ) : (
+                  <Download className="size-3.5 text-slate-500" />
+                )}
+                <span>Export</span>
+                <ChevronDown className="size-3 text-slate-400" />
+              </button>
+
+              {exportMenuOpen && (
+                <div className="absolute right-0 mt-1.5 w-44 bg-white rounded-xl border border-slate-200 shadow-lg py-1 z-20 text-xs">
+                  <button
+                    onClick={() => handleExport("csv")}
+                    className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                  >
+                    <FileText className="size-3.5 text-slate-400" />
+                    <span>Export as CSV</span>
+                  </button>
+                  <button
+                    onClick={() => handleExport("xlsx")}
+                    className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                  >
+                    <FileSpreadsheet className="size-3.5 text-emerald-600" />
+                    <span>Export as Excel (.xlsx)</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Bulk Import */}
+            <Link
+              href="/vendor/products/import"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition-colors"
+            >
+              <UploadCloud className="size-3.5 text-[#004D38]" />
+              <span>Bulk Import</span>
+            </Link>
+
+            {/* Add New Product */}
+            <Link
+              href="/vendor/products/new"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#004D38] hover:bg-[#003828] text-white text-xs font-semibold shadow-sm transition-colors"
+            >
+              <Plus className="size-4" />
+              <span>Add New Product</span>
+            </Link>
           </div>
-
-          {/* Bulk Import */}
-          <Link
-            href="/vendor/products/import"
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition-colors"
-          >
-            <UploadCloud className="size-3.5 text-[#004D38]" />
-            <span>Bulk Import</span>
-          </Link>
-
-          {/* Add New Product */}
-          <Link
-            href="/vendor/products/new"
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#004D38] hover:bg-[#003828] text-white text-xs font-semibold shadow-sm transition-colors"
-          >
-            <Plus className="size-4" />
-            <span>Add New Product</span>
-          </Link>
-        </div>
-      </div>
+        }
+      />
 
       {/* Filters & Search */}
       <div className="flex flex-col md:flex-row gap-3 items-center justify-between bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs">
@@ -218,7 +235,10 @@ export default function VendorProductsPage() {
             type="text"
             placeholder="Search by title, SKU..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50/50 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-600 transition-all"
           />
         </div>
@@ -234,7 +254,10 @@ export default function VendorProductsPage() {
           ].map((s) => (
             <button
               key={s.id}
-              onClick={() => setStatus(s.id)}
+              onClick={() => {
+                setStatus(s.id);
+                setPage(1);
+              }}
               className={`px-3 py-1 text-xs font-semibold rounded-lg whitespace-nowrap transition-all ${
                 status === s.id
                   ? "bg-[#004D38] text-white shadow-xs"
@@ -264,22 +287,30 @@ export default function VendorProductsPage() {
             ))}
           </div>
         ) : products.length === 0 ? (
-          <div className="p-16 text-center">
-            <Package className="size-12 text-slate-300 mx-auto mb-3" />
-            <h4 className="text-sm font-bold text-slate-800">No Products Found</h4>
-            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto mb-4">
-              {search || status !== "all"
-                ? "No listings match the current filters. Try changing your search query or status."
-                : "You haven't listed any products yet. Create your first product to start selling on Buybox Marketplace."}
-            </p>
-            <Link
-              href="/vendor/products/new"
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#004D38] text-white text-xs font-semibold hover:bg-[#003828] transition-colors"
-            >
-              <Plus className="size-3.5" />
-              <span>Create Product</span>
-            </Link>
-          </div>
+          <VendorEmptyState
+            icon={Package}
+            title={search || status !== "all" ? "No Products Found" : "No Products Yet"}
+            description={
+              search || status !== "all"
+                ? "No listings match the current filters. Try changing your search query or status filter."
+                : "You haven't listed any products yet. Create your first product to start selling on Buybox Marketplace."
+            }
+            action={
+              search || status !== "all"
+                ? {
+                    label: "Clear Filters",
+                    onClick: () => {
+                      setSearch("");
+                      setStatus("all");
+                      setPage(1);
+                    },
+                  }
+                : {
+                    label: "Create Product",
+                    href: "/vendor/products/new",
+                  }
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -323,9 +354,16 @@ export default function VendorProductsPage() {
                             >
                               {prd.name || prd.title}
                             </Link>
-                            <span className="text-[11px] text-slate-400 block truncate">
-                              {prd.slug || "no-slug"}
-                            </span>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="text-[11px] text-slate-400 truncate max-w-[140px]">
+                                {prd.slug || "no-slug"}
+                              </span>
+                              {prd.productType === "variable" && (
+                                <span className="inline-flex px-1.5 py-0.2 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-[9px] font-bold uppercase tracking-wider">
+                                  Variable
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -339,19 +377,7 @@ export default function VendorProductsPage() {
                         ₹{Number(prd.price || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                       </td>
                       <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            isListingActive
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : prd.status === "draft"
-                              ? "bg-slate-100 text-slate-700 border border-slate-200"
-                              : prd.status === "pending_review"
-                              ? "bg-amber-50 text-amber-700 border border-amber-200"
-                              : "bg-rose-50 text-rose-700 border border-rose-200"
-                          }`}
-                        >
-                          {prd.status || "draft"}
-                        </span>
+                        <VendorStatusBadge status={prd.status || "draft"} entityType="catalog" />
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="inline-flex items-center gap-2">
@@ -362,10 +388,11 @@ export default function VendorProductsPage() {
                           >
                             <Edit className="size-3.5" />
                           </Link>
-                          {isListingActive && prd.slug && (
+                          {isListingActive && (prd.slug || prd.secureId || prd._id) && (
                             <Link
-                              href={`/products/${prd.slug}`}
+                              href={`/product/${encodeURIComponent(prd.slug || prd.secureId || prd._id)}`}
                               target="_blank"
+                              rel="noopener noreferrer"
                               className="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 transition-colors"
                               title="View on Storefront"
                             >
@@ -379,6 +406,21 @@ export default function VendorProductsPage() {
                 })}
               </tbody>
             </table>
+
+            {/* Pagination */}
+            <VendorTablePagination
+              page={page}
+              limit={limit}
+              total={meta?.total ?? products.length}
+              totalPages={meta?.totalPages}
+              onPageChange={(newPage) => setPage(newPage)}
+              onLimitChange={(newLimit) => {
+                setLimit(newLimit);
+                setPage(1);
+              }}
+              isLoading={isLoading}
+              itemLabel="products"
+            />
           </div>
         )}
       </div>

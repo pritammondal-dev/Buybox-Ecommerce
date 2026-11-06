@@ -103,11 +103,44 @@ const verifyRazorpaySignature = ({
  */
 const validateCustomerOrderAccess = async (
   userId,
-  order
+  order,
+  options = {}
 ) => {
+  const isGuestCaller = Boolean(
+    options.isGuest ||
+    (typeof userId === "string" && userId.startsWith("gst_")) ||
+    (typeof userId === "object" && (userId.isGuest || userId.guestId))
+  );
+
+  if (order.isGuestOrder) {
+    const callerGuestId = options.guestId || (typeof userId === "object" ? userId.guestId || userId.id : userId);
+    const token = options.guestOrderAccessToken || options.token;
+
+    const isMatchGuestId = Boolean(callerGuestId && order.guestId === callerGuestId);
+    const isMatchToken = Boolean(token && order.guestOrderAccessToken === token);
+
+    if (!isMatchGuestId && !isMatchToken) {
+      throw new AppError(
+        "You are not allowed to verify this payment",
+        403,
+        "PAYMENT_ACCESS_DENIED"
+      );
+    }
+
+    return { isGuest: true, guestId: order.guestId, _id: null };
+  }
+
+  if (isGuestCaller) {
+    throw new AppError(
+      "You are not allowed to verify this payment",
+      403,
+      "PAYMENT_ACCESS_DENIED"
+    );
+  }
+
   const customer =
     await Customer.findOne({
-      userId,
+      $or: [{ userId }, { _id: userId }],
       isActive: true,
       deletedAt: null,
     });
@@ -121,6 +154,7 @@ const validateCustomerOrderAccess = async (
   }
 
   if (
+    !order.customerId ||
     customer._id.toString() !==
     order.customerId.toString()
   ) {

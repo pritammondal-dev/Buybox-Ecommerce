@@ -71,10 +71,10 @@ const createQuestion = async (req, res) => {
 
 const addAnswer = async (req, res) => {
   const { questionId } = req.params;
-  const { answer } = req.body;
+  const answerText = req.body.answer || req.body.content;
   const userId = req.user.id;
 
-  if (!answer || !answer.trim()) {
+  if (!answerText || !answerText.trim()) {
     throw new AppError("Answer text is required", 400, "INVALID_INPUT");
   }
 
@@ -90,7 +90,7 @@ const addAnswer = async (req, res) => {
     authorId: userId,
     authorName: user?.name || user?.firstName || "Customer",
     authorRole: role,
-    answer: answer.trim(),
+    answer: answerText.trim(),
     helpfulCount: 0,
     helpfulVoters: [],
     isVerified: role !== "customer",

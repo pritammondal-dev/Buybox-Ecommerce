@@ -18,6 +18,8 @@ import {
   Loader2,
 } from "lucide-react";
 import { adminCatalogService, adminMediaService } from "@/services/admin/admin.service.js";
+import NextImage from "next/image";
+import { ConfirmDialog } from "@/components/admin/ConfirmDialog.jsx";
 
 export default function AdminBrandsPage() {
   const [brands, setBrands] = useState([]);
@@ -85,7 +87,7 @@ export default function AdminBrandsPage() {
       setForm((prev) => ({
         ...prev,
         logoUrl: url,
-        logoAlt: prev.logoAlt || prev.name || file.name,
+        logoAlt: prev.logoAlt || prev.name || "",
       }));
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || "Failed to upload logo");
@@ -154,17 +156,29 @@ export default function AdminBrandsPage() {
     }
   };
 
-  const handleDelete = async (brand) => {
-    if (!confirm(`Are you sure you want to delete brand "${brand.name}"?`)) return;
+  // Delete Confirmation Dialog State
+  const [brandToDelete, setBrandToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = (brand) => {
+    setBrandToDelete(brand);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!brandToDelete) return;
+    setDeleting(true);
     try {
-      await adminCatalogService.deleteBrand(brand._id);
+      await adminCatalogService.deleteBrand(brandToDelete._id);
       setSuccess("Brand deleted successfully");
       setTimeout(() => setSuccess(null), 4000);
+      setBrandToDelete(null);
       fetchBrands();
     } catch (err) {
       setError(
         err?.response?.data?.message || err?.message || "Failed to delete brand"
       );
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -273,10 +287,13 @@ export default function AdminBrandsPage() {
                     <td className="py-3.5 px-4 font-bold text-slate-900">
                       <div className="flex items-center gap-3">
                         {b.logo?.url ? (
-                          <img
+                          <NextImage
                             src={b.logo.url}
                             alt={b.name}
+                            width={36}
+                            height={36}
                             className="size-9 rounded-xl object-contain bg-white border border-slate-200 p-0.5 shadow-2xs"
+                            unoptimized
                           />
                         ) : (
                           <div className="size-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 border border-slate-200">
@@ -403,10 +420,13 @@ export default function AdminBrandsPage() {
 
                 {form.logoUrl ? (
                   <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200">
-                    <img
+                    <NextImage
                       src={form.logoUrl}
                       alt={form.logoAlt || "Brand Logo"}
+                      width={56}
+                      height={56}
                       className="size-14 rounded-xl object-contain bg-white border border-slate-200 p-1 shadow-2xs"
+                      unoptimized
                     />
                     <div className="flex-1 min-w-0">
                       <div className="text-[11px] font-medium text-slate-700 truncate">
@@ -521,6 +541,18 @@ export default function AdminBrandsPage() {
           </div>
         </div>
       )}
+
+      {/* Delete Brand Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={Boolean(brandToDelete)}
+        onClose={() => setBrandToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        isLoading={deleting}
+        title={`Delete Brand "${brandToDelete?.name || ""}"?`}
+        description="Are you sure you want to delete this brand? Products linked to this brand may lose their brand affiliation. This action cannot be undone."
+        confirmLabel="Delete Brand"
+        variant="destructive"
+      />
     </div>
   );
 }

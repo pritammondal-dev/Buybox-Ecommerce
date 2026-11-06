@@ -5,8 +5,8 @@ export const campaignService = {
     return apiClient.get("/campaigns/active");
   },
 
-  async getCampaignBySlug(slug) {
-    return apiClient.get(`/campaigns/slug/${encodeURIComponent(slug)}`);
+  async getCampaignBySlug(slug, params = {}) {
+    return apiClient.get(`/campaigns/slug/${encodeURIComponent(slug)}`, { params });
   },
 
   async getActiveCoupons() {

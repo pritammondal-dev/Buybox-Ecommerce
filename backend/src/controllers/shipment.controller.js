@@ -69,13 +69,20 @@ const transitionVendorShipmentStatus = async (
     await shipmentService.transitionShipmentStatus({
       shipmentId: req.params.shipmentId,
       nextStatus: req.body.status,
-      trackingNumber:
-        req.body.trackingNumber,
-      trackingUrl:
-        req.body.trackingUrl,
-      failureReason:
-        req.body.failureReason,
+      carrier: req.body.carrier,
+      serviceLevel: req.body.serviceLevel,
+      trackingNumber: req.body.trackingNumber || req.body.awbNumber,
+      awbNumber: req.body.awbNumber || req.body.trackingNumber,
+      trackingUrl: req.body.trackingUrl,
+      failureReason: req.body.failureReason,
+      notes: req.body.notes,
+      reason: req.body.reason,
+      location: req.body.location,
+      expectedPreviousStatus: req.body.expectedPreviousStatus,
+      expectedVersion: req.body.expectedVersion,
       userId: req.user.id,
+      actorUser: req.user,
+      req,
     });
 
   return apiResponse.sendSuccess(res, {
@@ -96,12 +103,19 @@ const transitionShipmentStatus = async (
     await shipmentService.transitionShipmentStatus({
       shipmentId: req.params.shipmentId,
       nextStatus: req.body.status,
-      trackingNumber:
-        req.body.trackingNumber,
-      trackingUrl:
-        req.body.trackingUrl,
-      failureReason:
-        req.body.failureReason,
+      carrier: req.body.carrier,
+      serviceLevel: req.body.serviceLevel,
+      trackingNumber: req.body.trackingNumber,
+      trackingUrl: req.body.trackingUrl,
+      failureReason: req.body.failureReason,
+      notes: req.body.notes,
+      reason: req.body.reason,
+      expectedPreviousStatus: req.body.expectedPreviousStatus,
+      expectedVersion: req.body.expectedVersion,
+      isOverride: req.body.isOverride,
+      overrideReason: req.body.overrideReason,
+      actorUser: req.user,
+      req,
     });
 
   return apiResponse.sendSuccess(res, {
@@ -250,15 +264,25 @@ const getMyVendorShipments = async (
   req,
   res
 ) => {
-  const shipments =
+  const result =
     await shipmentService.getMyVendorShipments(
-      req.user.id
+      req.user.id,
+      req.query
     );
+
+  if (result && Array.isArray(result.items)) {
+    return apiResponse.sendSuccess(res, {
+      message:
+        "Your vendor shipments retrieved successfully",
+      data: result.items,
+      meta: result.meta,
+    });
+  }
 
   return apiResponse.sendSuccess(res, {
     message:
       "Your vendor shipments retrieved successfully",
-    data: shipments,
+    data: result,
   });
 };
 
@@ -292,6 +316,167 @@ const listAllShipments = async (req, res, next) => {
   }
 };
 
+
+/*
+ * Phase VD-06: Operational Controller Handlers
+ */
+const scheduleVendorShipmentPickup = async (req, res) => {
+  const shipment = await shipmentService.scheduleShipmentPickup({
+    shipmentId: req.params.shipmentId,
+    scheduledDate: req.body.scheduledDate,
+    timeSlot: req.body.timeSlot,
+    notes: req.body.notes,
+    userId: req.user.id,
+    actorUser: req.user,
+  });
+
+  return apiResponse.sendSuccess(res, {
+    message: "Carrier pickup scheduled successfully",
+    data: shipment,
+  });
+};
+
+const scheduleShipmentPickup = async (req, res) => {
+  const shipment = await shipmentService.scheduleShipmentPickup({
+    shipmentId: req.params.shipmentId,
+    scheduledDate: req.body.scheduledDate,
+    timeSlot: req.body.timeSlot,
+    notes: req.body.notes,
+    actorUser: req.user,
+  });
+
+  return apiResponse.sendSuccess(res, {
+    message: "Carrier pickup scheduled successfully",
+    data: shipment,
+  });
+};
+
+const getVendorShipmentLabel = async (req, res) => {
+  const result = await shipmentService.generateShipmentLabel({
+    shipmentId: req.params.shipmentId,
+    userId: req.user.id,
+    actorUser: req.user,
+  });
+
+  return apiResponse.sendSuccess(res, {
+    message: "Shipping label generated successfully",
+    data: result,
+  });
+};
+
+const getShipmentLabel = async (req, res) => {
+  const result = await shipmentService.generateShipmentLabel({
+    shipmentId: req.params.shipmentId,
+    actorUser: req.user,
+  });
+
+  return apiResponse.sendSuccess(res, {
+    message: "Shipping label generated successfully",
+    data: result,
+  });
+};
+
+const cancelVendorShipment = async (req, res) => {
+  const shipment = await shipmentService.cancelShipment({
+    shipmentId: req.params.shipmentId,
+    reason: req.body.reason,
+    userId: req.user.id,
+    actorUser: req.user,
+  });
+
+  return apiResponse.sendSuccess(res, {
+    message: "Shipment cancelled successfully",
+    data: shipment,
+  });
+};
+
+const cancelShipment = async (req, res) => {
+  const shipment = await shipmentService.cancelShipment({
+    shipmentId: req.params.shipmentId,
+    reason: req.body.reason,
+    actorUser: req.user,
+  });
+
+  return apiResponse.sendSuccess(res, {
+    message: "Shipment cancelled successfully",
+    data: shipment,
+  });
+};
+
+const checkServiceability = async (req, res) => {
+  const result = await shipmentService.checkServiceability({
+    provider: req.query.provider,
+    originPostalCode: req.query.originPostalCode,
+    destinationPostalCode: req.query.destinationPostalCode,
+    weightGrams: req.query.weightGrams ? Number(req.query.weightGrams) : 500,
+  });
+
+  return apiResponse.sendSuccess(res, {
+    message: "Serviceability checked successfully",
+    data: result,
+  });
+};
+
+const retryVendorCarrierBooking = async (req, res) => {
+  const shipment = await shipmentService.retryCarrierBooking({
+    shipmentId: req.params.shipmentId,
+    userId: req.user.id,
+    actorRole: "vendor",
+  });
+
+  return apiResponse.sendSuccess(res, {
+    message: shipment.status === "booked" ? "Shipment booked with carrier successfully" : "Carrier booking attempted",
+    data: shipment,
+  });
+};
+
+const retryCarrierBooking = async (req, res) => {
+  const shipment = await shipmentService.retryCarrierBooking({
+    shipmentId: req.params.shipmentId,
+    userId: req.user.id,
+    actorRole: "admin",
+  });
+
+  return apiResponse.sendSuccess(res, {
+    message: shipment.status === "booked" ? "Shipment booked with carrier successfully" : "Carrier booking attempted",
+    data: shipment,
+  });
+};
+
+const receiveAndInspectRtoShipment = async (req, res) => {
+  const shipment = await shipmentService.receiveAndInspectRtoShipment({
+    shipmentId: req.params.shipmentId || req.params.id,
+    outcome: req.body?.outcome || "resellable",
+    condition: req.body?.condition || "unopened",
+    notes: req.body?.notes || "",
+    userId: req.user.id || req.user._id,
+    actorUser: req.user,
+    isAdmin: true,
+  });
+
+  return apiResponse.sendSuccess(res, {
+    message: "RTO shipment received and inspected successfully",
+    data: shipment,
+  });
+};
+
+const vendorReceiveAndInspectRtoShipment = async (req, res) => {
+  const shipment = await shipmentService.receiveAndInspectRtoShipment({
+    shipmentId: req.params.shipmentId || req.params.id,
+    outcome: req.body?.outcome || "resellable",
+    condition: req.body?.condition || "unopened",
+    notes: req.body?.notes || "",
+    userId: req.user.id || req.user._id,
+    actorUser: req.user,
+    isAdmin: false,
+  });
+
+  return apiResponse.sendSuccess(res, {
+    message: "RTO shipment received and inspected successfully",
+    data: shipment,
+  });
+};
+
 module.exports = {
   createShipment,
   createVendorShipment,
@@ -308,4 +493,15 @@ module.exports = {
   getMyVendorShipments,
   getMyVendorShipmentById,
   listAllShipments,
+  scheduleVendorShipmentPickup,
+  scheduleShipmentPickup,
+  getVendorShipmentLabel,
+  getShipmentLabel,
+  cancelVendorShipment,
+  cancelShipment,
+  checkServiceability,
+  retryVendorCarrierBooking,
+  retryCarrierBooking,
+  receiveAndInspectRtoShipment,
+  vendorReceiveAndInspectRtoShipment,
 };

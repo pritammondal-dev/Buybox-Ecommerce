@@ -17,6 +17,10 @@ import {
   Star,
   Info,
   ExternalLink,
+  FileText,
+  RotateCcw,
+  RefreshCw,
+  ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { orderService } from "../../../services/order.service.js";
@@ -235,6 +239,11 @@ export function OrderDetailView({ orderId }) {
   const isDeliveredOrCompleted =
     order && (currentStatus === "delivered" || currentStatus === "completed");
 
+  const hasInvoice =
+    order &&
+    (currentPaymentStatus === "paid" ||
+      ["confirmed", "processing", "shipped", "delivered", "completed"].includes(currentStatus));
+
   const orderNumber = order?.orderNumber || `BB-${orderId?.slice(-8)?.toUpperCase()}`;
 
   // Timeline active step calculation
@@ -303,7 +312,7 @@ export function OrderDetailView({ orderId }) {
 
               {order && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <OrderStatusBadge status={order.status} type="order" size="md" />
+                  <OrderStatusBadge status={order.customerDisplayStatus || order.status} type="order" size="md" />
                   <OrderStatusBadge status={order.paymentStatus} type="payment" size="md" />
 
                   {isCancellable && (
@@ -314,6 +323,28 @@ export function OrderDetailView({ orderId }) {
                     >
                       Cancel Order
                     </button>
+                  )}
+
+                  {hasInvoice && (
+                    <Link
+                      href={`/orders/${order._id || orderId}/invoice`}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs px-3.5 py-1.5 transition-colors cursor-pointer shadow-2xs"
+                      title="View & Print Tax Invoice"
+                    >
+                      <FileText className="size-3.5 text-slate-500" />
+                      <span>Tax Invoice</span>
+                    </Link>
+                  )}
+
+                  {isDeliveredOrCompleted && (
+                    <Link
+                      href={`/orders/${order._id || orderId}/return`}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-[#007A55] font-bold text-xs px-3.5 py-1.5 transition-colors cursor-pointer shadow-2xs"
+                      title="Return or Exchange Delivered Items"
+                    >
+                      <RotateCcw className="size-3.5" />
+                      <span>Return / Exchange</span>
+                    </Link>
                   )}
                 </div>
               )}
@@ -388,6 +419,17 @@ export function OrderDetailView({ orderId }) {
                         {TIMELINE_STEPS.map((step, idx) => {
                           const isPastOrCurrent = idx <= activeTimelineIdx;
                           const isCurrent = idx === activeTimelineIdx;
+                          let stepLabel = step.label;
+                          if (step.key === "confirmed") {
+                            if (
+                              order.isAwaitingVendorConfirmation ||
+                              order.customerDisplayStatus === "awaiting_merchant_confirmation"
+                            ) {
+                              stepLabel = "Merchant Review";
+                            } else if (order.customerDisplayStatus === "merchant_accepted") {
+                              stepLabel = "Accepted";
+                            }
+                          }
 
                           return (
                             <div key={step.key} className="space-y-1.5">
@@ -411,7 +453,7 @@ export function OrderDetailView({ orderId }) {
                                     : "text-slate-400"
                                 }`}
                               >
-                                {step.label}
+                                {stepLabel}
                               </p>
                             </div>
                           );
@@ -420,6 +462,251 @@ export function OrderDetailView({ orderId }) {
                     </div>
                   )}
                 </div>
+
+                {/* Estimated Delivery Information Section */}
+                {order.status !== "cancelled" && (
+                  <div className="rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50/50 via-white to-slate-50 p-5 space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex size-8 items-center justify-center rounded-xl bg-[#007A55]/10 text-[#007A55]">
+                          <Truck className="size-4" />
+                        </div>
+                        <div>
+                          <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                            Estimated Delivery
+                          </h3>
+                          <p className="text-[11px] text-slate-500">
+                            Authoritative fulfillment & shipment timeline
+                          </p>
+                        </div>
+                      </div>
+
+                      {order.estimatedDelivery?.source && (
+                        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                          {order.estimatedDelivery.source === "courier"
+                            ? "Courier Confirmed"
+                            : order.estimatedDelivery.source === "shipment"
+                            ? "Shipment Dispatched"
+                            : order.estimatedDelivery.source === "vendor_confirmed"
+                            ? "Merchant Confirmed"
+                            : order.estimatedDelivery.source === "actual_delivery"
+                            ? "Delivered"
+                            : order.estimatedDelivery.source === "awaiting_vendor_confirmation"
+                            ? "Awaiting Merchant"
+                            : order.estimatedDelivery.source === "awaiting_fulfillment_details"
+                            ? "Preparing Order"
+                            : order.estimatedDelivery.source === "vendor_rejected_triage"
+                            ? "Under Review"
+                            : order.estimatedDelivery.source === "multi_shipment"
+                            ? "Multi-Shipment Order"
+                            : "Standard Window"}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Delivery Date / Window Highlight */}
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        {order.estimatedDelivery?.estimatedDateRange ? (
+                          <div className="space-y-1">
+                            <span className="text-xs font-semibold text-slate-500">
+                              Expected Arrival Date:
+                            </span>
+                            <p className="text-lg sm:text-xl font-black text-[#007A55] tracking-tight">
+                              {order.estimatedDelivery.estimatedDateRange}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                              <Clock className="size-4 text-amber-600 shrink-0" />
+                              <span>
+                                {order.estimatedDelivery?.message ||
+                                  "Expected delivery date will be confirmed once the merchant processes your order."}
+                              </span>
+                            </div>
+                            {order.estimatedDelivery?.provisionalEstimate?.window && (
+                              <p className="text-[11px] text-slate-400 italic">
+                                Standard checkout estimate: {order.estimatedDelivery.provisionalEstimate.window} ({order.estimatedDelivery.provisionalEstimate.disclaimer || "Subject to merchant confirmation"})
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {order.estimatedDelivery?.isDelivered && (
+                        <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-[#007A55]">
+                          <CheckCircle2 className="size-3.5" />
+                          <span>Delivered</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Multi-Shipment Details (when order has separate shipments) */}
+                    {Array.isArray(order.shipments) && order.shipments.length > 0 && (
+                      <div className="space-y-3 pt-3 border-t border-slate-100">
+                        <h4 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-600">
+                          Shipments ({order.shipments.length})
+                        </h4>
+
+                        <div className="space-y-2.5">
+                          {order.shipments.map((shp, sIdx) => {
+                            const shpEst = shp.estimatedDelivery?.estimatedDateRange;
+                            const shpFallback = shp.estimatedDelivery?.message;
+
+                            return (
+                              <div
+                                key={shp._id || shp.shipmentNumber || sIdx}
+                                className="rounded-xl border border-slate-200/80 bg-white p-3.5 space-y-2 text-xs shadow-2xs"
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <Package className="size-3.5 text-slate-500" />
+                                    <span className="font-bold text-slate-900">
+                                      Shipment {shp.shipmentNumber || `#${sIdx + 1}`}
+                                    </span>
+                                  </div>
+                                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-[#007A55] uppercase tracking-wider border border-emerald-100">
+                                    {shp.status?.replace(/_/g, " ")}
+                                  </span>
+                                </div>
+
+                                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
+                                  <div>
+                                    <span className="text-slate-400">Estimate: </span>
+                                    {shpEst ? (
+                                      <strong className="text-[#007A55] font-bold">{shpEst}</strong>
+                                    ) : (
+                                      <span className="text-slate-500 italic">
+                                        {shpFallback || "Delivery estimate will be available after shipment confirmation."}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {(shp.carrier || shp.trackingNumber) && (
+                                    <div className="flex items-center gap-2 text-slate-500">
+                                      {shp.carrier && <span>Carrier: <strong className="text-slate-700">{shp.carrier}</strong></span>}
+                                      {shp.trackingNumber && (
+                                        <span>
+                                          Tracking:{" "}
+                                          {shp.trackingUrl ? (
+                                            <a
+                                              href={shp.trackingUrl}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="text-[#007A55] hover:underline inline-flex items-center gap-0.5 font-mono"
+                                            >
+                                              {shp.trackingNumber}
+                                              <ExternalLink className="size-2.5" />
+                                            </a>
+                                          ) : (
+                                            <span className="font-mono text-slate-700">{shp.trackingNumber}</span>
+                                          )}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {Array.isArray(shp.items) && shp.items.length > 0 && (
+                                  <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-50 flex flex-wrap gap-2">
+                                    <span>Contains:</span>
+                                    {shp.items.map((it, iIdx) => (
+                                      <span key={iIdx} className="font-medium text-slate-600">
+                                        {it.quantity}× {it.name || "Item"}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Multi-Vendor Package Grouping (Phase VD-05) */}
+                {Array.isArray(order.vendorPackages) && order.vendorPackages.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                      <Truck className="size-4 text-[#007A55]" />
+                      <span>Fulfillment Packages ({order.vendorPackages.length} {order.vendorPackages.length > 1 ? "Dispatches" : "Dispatch"})</span>
+                    </h3>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {order.vendorPackages.map((pkg, idx) => (
+                        <div
+                          key={pkg.vendorId || idx}
+                          className="p-4 rounded-2xl border border-slate-200/80 bg-slate-50/70 space-y-2 text-xs"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-900">
+                              Package {idx + 1}: {pkg.vendorName || "Merchant Partner"}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                pkg.acceptanceStatus === "accepted"
+                                  ? "bg-emerald-50 text-[#007A55] border border-emerald-200"
+                                  : pkg.acceptanceStatus === "rejected"
+                                  ? "bg-rose-50 text-rose-700 border border-rose-200"
+                                  : "bg-amber-50 text-amber-800 border border-amber-200"
+                              }`}
+                            >
+                              {pkg.acceptanceStatus === "accepted"
+                                ? pkg.isFulfillmentConfirmed
+                                  ? "Confirmed"
+                                  : "Merchant Accepted"
+                                : pkg.acceptanceStatus === "rejected"
+                                ? "Rejected / In Triage"
+                                : "Awaiting Merchant"}
+                            </span>
+                          </div>
+
+                          <div className="space-y-1 text-slate-600 text-[11px]">
+                            <div>
+                              Merchant: <strong className="text-slate-800">{pkg.vendorName || "Merchant Partner"}</strong>
+                            </div>
+                            <div>
+                              Expected Delivery:{" "}
+                              {pkg.expectedDeliveryDate ? (
+                                <strong className="text-[#007A55]">
+                                  {new Date(pkg.expectedDeliveryDate).toLocaleDateString("en-IN", {
+                                    day: "numeric",
+                                    month: "short",
+                                    year: "numeric",
+                                  })}
+                                </strong>
+                              ) : pkg.acceptanceStatus === "accepted" ? (
+                                <span className="text-slate-500 italic">To be confirmed with shipping details</span>
+                              ) : (
+                                <span className="text-slate-500 italic">Awaiting merchant confirmation</span>
+                              )}
+                            </div>
+                            <div>
+                              Courier:{" "}
+                              {pkg.assignedShipmentPartner?.partnerName ? (
+                                <strong className="text-slate-800">{pkg.assignedShipmentPartner.partnerName}</strong>
+                              ) : (
+                                <span className="text-slate-500 italic">To be assigned by merchant</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="pt-1.5 border-t border-slate-200/60 text-[11px] text-slate-500">
+                            <span>Contains: </span>
+                            {pkg.items?.map((it, i) => (
+                              <span key={i} className="font-medium text-slate-700">
+                                {it.quantity}× {it.productName || it.name || "Item"}{i < pkg.items.length - 1 ? ", " : ""}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Ordered Items Table */}
                 <div className="space-y-3">
@@ -447,7 +734,6 @@ export function OrderDetailView({ orderId }) {
                                   {item.variantName}
                                 </span>
                               )}
-                              {item.sku && <span>SKU: {item.sku}</span>}
                               <span>•</span>
                               <span>
                                 Qty: {item.quantity} × {formatCurrency(unit)}
@@ -459,6 +745,27 @@ export function OrderDetailView({ orderId }) {
                             <span className="text-sm font-black text-slate-950">
                               {formatCurrency(lineTotal)}
                             </span>
+
+                            {/* Return or Exchange Action */}
+                            {isDeliveredOrCompleted && (
+                              item.returnStatus && item.returnStatus !== "none" ? (
+                                <Link
+                                  href={`/orders/${order._id || orderId}/return`}
+                                  className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 text-amber-900 font-bold text-[11px] px-3 py-1 transition-colors shadow-2xs"
+                                >
+                                  <RefreshCw className="size-3 text-amber-600" />
+                                  <span>Return: {item.returnStatus.toUpperCase()}</span>
+                                </Link>
+                              ) : (
+                                <Link
+                                  href={`/orders/${order._id || orderId}/return`}
+                                  className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 text-[#007A55] hover:bg-emerald-100 font-bold text-[11px] px-3 py-1 transition-colors shadow-2xs"
+                                >
+                                  <RotateCcw className="size-3" />
+                                  <span>Return / Exchange</span>
+                                </Link>
+                              )
+                            )}
 
                             {/* Write Review Button - ONLY if delivered/completed */}
                             {isDeliveredOrCompleted && item.productId && (
@@ -575,14 +882,14 @@ export function OrderDetailView({ orderId }) {
                   </div>
                 </div>
 
-                {/* Honest Disclosures for Invoices & Returns */}
+                {/* 7-Day Flipkart Returns Guarantee Info */}
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2 text-xs text-slate-600">
                   <div className="flex items-start gap-2">
-                    <Info className="size-4 text-[#007A55] mt-0.5 shrink-0" />
+                    <ShieldCheck className="size-4 text-[#007A55] mt-0.5 shrink-0" />
                     <div className="space-y-1">
-                      <p className="font-bold text-slate-900">Returns & Invoices Information</p>
+                      <p className="font-bold text-slate-900">7-Day Hassle-Free Returns & Exchange Guarantee</p>
                       <p className="text-[11px] text-slate-600 leading-relaxed">
-                        Invoice download is not currently available. Contact customer support if you need an invoice. Self-service online returns are not currently supported; please contact Buybox Support with your order number ({orderNumber}) for return or exchange inquiries.
+                        Delivered items are eligible for self-service return or exchange within 7 calendar days of delivery. Our courier partner handles doorstep reverse pickup directly from your address.
                       </p>
                     </div>
                   </div>

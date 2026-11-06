@@ -1,7 +1,7 @@
 const express = require("express");
 
 const vendorSettlementController = require("../controllers/vendor-settlement.controller");
-const authenticate = require("../middlewares/authentication.middleware");
+const { authenticate, authenticateVendor } = require("../middlewares/authentication.middleware");
 const {
   requirePermissions,
   requireRoles,
@@ -20,6 +20,12 @@ const router = express.Router();
 router.use(authenticate);
 
 // Admin settlement management (must precede generic /:settlementId)
+router.get(
+  "/admin/promotions/reconciliation",
+  requirePermissions(PERMISSIONS.FINANCE_READ),
+  vendorSettlementController.getPromotionSubsidyReconciliation
+);
+
 router.get(
   "/admin",
   requirePermissions(PERMISSIONS.FINANCE_READ),
@@ -47,18 +53,21 @@ router.post(
 // Vendor-scoped settlement self-service (must precede /:settlementId)
 router.get(
   "/vendor/finance-summary",
+  authenticateVendor,
   requireRoles(ROLES.VENDOR),
   vendorSettlementController.getVendorFinanceSummary
 );
 
 router.get(
   "/vendor/my",
+  authenticateVendor,
   requireRoles(ROLES.VENDOR),
   vendorSettlementController.getMyVendorSettlements
 );
 
 router.get(
   "/vendor/my/:settlementId",
+  authenticateVendor,
   requireRoles(ROLES.VENDOR),
   vendorSettlementController.getMyVendorSettlementById
 );

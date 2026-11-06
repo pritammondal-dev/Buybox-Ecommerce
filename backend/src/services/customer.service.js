@@ -7,14 +7,23 @@ const getCustomerProfile = async (userId) => {
 
   if (!customer) {
     const user = await User.findById(userId);
-    if (user && user.role === "customer") {
-      customer = await customerRepository.create({ userId });
+    if (user && (user.role === "customer" || user.role === "vendor" || (user.roles || []).includes("customer"))) {
+      customer = await customerRepository.create({
+        userId,
+        phone: user.phone || null,
+      });
     } else {
       throw new AppError(
         "Customer profile not found",
         404,
         "CUSTOMER_NOT_FOUND"
       );
+    }
+  } else if (!customer.phone) {
+    const user = await User.findById(userId).select("phone").lean();
+    if (user && user.phone) {
+      customer.phone = user.phone;
+      await customerRepository.updateByUserId(userId, { phone: user.phone });
     }
   }
 
@@ -33,6 +42,11 @@ const createCustomerProfile = async (userId, data = {}) => {
     );
   }
 
+  if (data.phone !== undefined) {
+    const normalizedPhone = data.phone && String(data.phone).trim() ? String(data.phone).trim() : undefined;
+    await User.findByIdAndUpdate(userId, { phone: normalizedPhone });
+  }
+
   return customerRepository.create({
     userId,
     ...data,
@@ -40,6 +54,11 @@ const createCustomerProfile = async (userId, data = {}) => {
 };
 
 const updateCustomerProfile = async (userId, data) => {
+  if (data && data.phone !== undefined) {
+    const normalizedPhone = data.phone && String(data.phone).trim() ? String(data.phone).trim() : undefined;
+    await User.findByIdAndUpdate(userId, { phone: normalizedPhone });
+  }
+
   const customer = await customerRepository.updateByUserId(
     userId,
     data

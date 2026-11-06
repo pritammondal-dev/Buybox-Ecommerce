@@ -21,7 +21,6 @@ export function CartItem({
     item.product?.images?.[0]?.url ||
     item.product?.image ||
     null;
-  const sku = item.sku || item.product?.sku || null;
   const slug = item.slug || item.product?.slug || null;
 
   const unitPrice = parsePrice(item.unitPrice || item.price || 0);
@@ -66,12 +65,6 @@ export function CartItem({
           >
             {title}
           </Link>
-
-          {sku && (
-            <p className="text-[11px] font-mono text-slate-400">
-              SKU: <span className="font-semibold text-slate-600">{sku}</span>
-            </p>
-          )}
 
           <p className="text-xs text-muted-foreground">
             Unit Price:{" "}

@@ -3,8 +3,7 @@ const { sendSuccess } = require("../utils/apiResponse");
 
 const getActiveSettings = async (req, res, next) => {
   try {
-    const settings =
-      await storefrontSettingsService.getActiveSettings();
+    const settings = await storefrontSettingsService.getActiveSettings();
 
     return sendSuccess(res, {
       message: "Storefront settings fetched successfully",
@@ -17,10 +16,9 @@ const getActiveSettings = async (req, res, next) => {
 
 const getSettingsById = async (req, res, next) => {
   try {
-    const settings =
-      await storefrontSettingsService.getSettingsById(
-        req.params.settingsId
-      );
+    const settings = await storefrontSettingsService.getSettingsById(
+      req.params.settingsId
+    );
 
     return sendSuccess(res, {
       message: "Storefront settings fetched successfully",
@@ -33,11 +31,10 @@ const getSettingsById = async (req, res, next) => {
 
 const createSettings = async (req, res, next) => {
   try {
-    const settings =
-      await storefrontSettingsService.createSettings(
-        req.body,
-        req.user.id
-      );
+    const settings = await storefrontSettingsService.createSettings(
+      req.body,
+      req.user?.id
+    );
 
     return sendSuccess(res, {
       statusCode: 201,
@@ -51,15 +48,50 @@ const createSettings = async (req, res, next) => {
 
 const updateSettings = async (req, res, next) => {
   try {
-    const settings =
-      await storefrontSettingsService.updateSettings(
-        req.params.settingsId,
-        req.body,
-        req.user.id
-      );
+    const settings = await storefrontSettingsService.updateSettings(
+      req.params.settingsId,
+      req.body,
+      req.user?.id,
+      req.user?.role
+    );
 
     return sendSuccess(res, {
       message: "Storefront settings updated successfully",
+      data: settings,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateActiveSettings = async (req, res, next) => {
+  try {
+    const settings = await storefrontSettingsService.updateSettings(
+      null,
+      req.body,
+      req.user?.id,
+      req.user?.role
+    );
+
+    return sendSuccess(res, {
+      message: "Storefront platform settings updated successfully",
+      data: settings,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateFeatureFlags = async (req, res, next) => {
+  try {
+    const settings = await storefrontSettingsService.updateFeatureFlags(
+      req.body,
+      req.user?.id,
+      req.user?.role
+    );
+
+    return sendSuccess(res, {
+      message: "Platform feature flags updated successfully",
       data: settings,
     });
   } catch (error) {
@@ -72,4 +104,6 @@ module.exports = {
   getSettingsById,
   createSettings,
   updateSettings,
+  updateActiveSettings,
+  updateFeatureFlags,
 };

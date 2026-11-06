@@ -16,6 +16,7 @@ const couponRedemptionService = require("./coupon-redemption.service");
 const taxService = require("./tax.service");
 const notificationService = require("./notification");
 const notificationOutboxService = require("./notification-outbox.service");
+const logger = require("../config/logger");
 
 const paymentService = require("./payment.service");
 
@@ -1349,6 +1350,148 @@ const cancelOrder = async (orderId, options = {}) => {
   }
 
   /*
+   * Dispatched order pre-shipment cancellation guard:
+   * Packages in transit or delivered cannot be cancelled directly by customers.
+   */
+  const rawItemIds = options.itemIds || options.orderItemId;
+  const targetItemIds = rawItemIds
+    ? (Array.isArray(rawItemIds) ? rawItemIds.map((id) => id?.toString?.() || String(id)) : [rawItemIds?.toString?.() || String(rawItemIds)])
+    : null;
+
+  const existingShipments =
+    (mongoose.Types.ObjectId.isValid(orderId)
+      ? await shipmentRepository.findByOrderId(orderId, options)
+      : []) || [];
+
+  if (!options.isAdmin) {
+    if (targetItemIds && targetItemIds.length > 0) {
+      const dispatchedForItems = existingShipments.find((s) =>
+        ["picked_up", "in_transit", "out_for_delivery", "delivered"].includes(s.status) &&
+        (s.items || []).some((si) =>
+          targetItemIds.includes(si.orderItemId?.toString()) ||
+          targetItemIds.includes(si.productVariantId?.toString())
+        )
+      );
+      if (dispatchedForItems) {
+        throw new AppError(
+          "Order item or package has already been dispatched and cannot be cancelled directly. You may refuse delivery at the doorstep or request a return after delivery.",
+          409,
+          "ORDER_ALREADY_DISPATCHED"
+        );
+      }
+    } else {
+      const dispatchedShipment = existingShipments.find((s) =>
+        ["picked_up", "in_transit", "out_for_delivery", "delivered"].includes(s.status)
+      );
+      if (dispatchedShipment) {
+        throw new AppError(
+          "Order or package has already been dispatched and cannot be cancelled directly. You may refuse delivery at the doorstep or request a return after delivery.",
+          409,
+          "ORDER_ALREADY_DISPATCHED"
+        );
+      }
+    }
+  }
+
+  let isPartialCancel = false;
+  let matchingItems = [];
+  let itemsToCancel = [];
+  if (targetItemIds && targetItemIds.length > 0) {
+    matchingItems = (order.items || []).filter((it) =>
+      targetItemIds.includes(it._id?.toString()) ||
+      (it.productVariantId && targetItemIds.includes(it.productVariantId.toString()))
+    );
+
+    if (matchingItems.length === 0) {
+      throw new AppError("No matching order items found to cancel", 404, "ORDER_ITEMS_NOT_FOUND");
+    }
+
+    // Exclude items that are already cancelled or returned
+    itemsToCancel = matchingItems.filter(
+      (it) => it.fulfillmentStatus !== "cancelled" && it.returnStatus !== "completed"
+    );
+
+    // If all requested items have already been cancelled, this is an idempotent retry
+    if (itemsToCancel.length === 0) {
+      return order;
+    }
+
+    const hasAlreadyCancelledItems = (order.items || []).some(
+      (it) => it.fulfillmentStatus === "cancelled"
+    );
+    const nonCancelledItems = (order.items || []).filter((it) => it.fulfillmentStatus !== "cancelled");
+    const isAllItems =
+      !hasAlreadyCancelledItems &&
+      nonCancelledItems.length === itemsToCancel.length &&
+      nonCancelledItems.every((it) =>
+        itemsToCancel.some((m) => m._id?.toString() === it._id?.toString())
+      );
+
+    if (!isAllItems) {
+      isPartialCancel = true;
+    }
+  } else {
+    itemsToCancel = (order.items || []).filter(
+      (it) => it.fulfillmentStatus !== "cancelled" && it.returnStatus !== "completed"
+    );
+  }
+
+  /*
+   * PHASE 1: Atomic Business-State Claim (Distributed Saga Mutual Exclusion)
+   * Atomically claim the cancellation intent across shipments and order items
+   * BEFORE initiating any irreversible external payment gateway refunds.
+   * If any package has already been dispatched, the claim fails closed and
+   * zero money is refunded.
+   */
+  const operationId = `op_cancel_${order._id.toString()}_${Date.now()}`;
+  let claimResult = { claimed: true, shipments: [], dispatchedShipments: [] };
+
+  if (typeof shipmentRepository.claimOrderShipmentsCancellation === "function") {
+    claimResult = await shipmentRepository.claimOrderShipmentsCancellation(order._id, {
+      targetItemIds: targetItemIds || null,
+      userId,
+      operationId,
+    });
+  } else if (!options.isAdmin) {
+    const freshCheck = await shipmentRepository.findByOrderId(order._id, options);
+    const dispatched = (freshCheck || []).filter((s) =>
+      ["picked_up", "in_transit", "out_for_delivery", "delivered"].includes(s.status) &&
+      (!targetItemIds || (s.items || []).some((si) =>
+        targetItemIds.includes(si.orderItemId?.toString()) ||
+        targetItemIds.includes(si.productVariantId?.toString())
+      ))
+    );
+    if (dispatched.length > 0) {
+      claimResult = { claimed: false, shipments: freshCheck, dispatchedShipments: dispatched };
+    }
+  }
+
+  if (claimResult && !claimResult.claimed && !options.isAdmin) {
+    throw new AppError(
+      "Order item or package has already been dispatched and cannot be cancelled directly. You may refuse delivery at the doorstep or request a return after delivery.",
+      409,
+      "ORDER_ALREADY_DISPATCHED"
+    );
+  }
+
+  // Record durable in-progress cancellation intent on order
+  try {
+    if (typeof orderRepository.updateById === "function") {
+      await orderRepository.updateById(order._id, {
+        cancellationStatus: "pending",
+        cancellationClaim: {
+          claimedAt: new Date(),
+          claimedBy: userId,
+          operationId,
+          itemIds: itemsToCancel.map((i) => i._id?.toString() || String(i)),
+        },
+      });
+    }
+  } catch (claimErr) {
+    logger.warn({ orderId, error: claimErr.message }, "Non-fatal order cancellation claim record warning");
+  }
+
+  /*
    * Payment-aware cancellation.
    *
    * Captured payments must be refunded before the
@@ -1367,10 +1510,53 @@ const cancelOrder = async (orderId, options = {}) => {
     payment?.status === "captured" ||
     payment?.status === "partially_refunded"
   ) {
-    refundedPayment = await paymentService.refundPaymentForOrder(
-      orderId,
-      userId
-    );
+    let refundAmountToIssue = null;
+    let refundKey = `order_cancel_${order._id.toString()}`;
+
+    if (isPartialCancel) {
+      const { buildOrderItemFinancialAllocationMap } = require("./return-request.service");
+      const allocMap = buildOrderItemFinancialAllocationMap(order);
+      let targetRefundMinor = 0;
+      for (const mItem of itemsToCancel) {
+        const alloc =
+          allocMap.get(mItem._id?.toString()) ||
+          allocMap.get(`${mItem.productId}_${mItem.productVariantId || ""}`);
+        if (alloc && alloc.itemCustomerPaidTotalMinor > 0) {
+          targetRefundMinor += alloc.itemCustomerPaidTotalMinor;
+        } else {
+          const uPrice = Math.round(Number(mItem.unitPrice?.toString() || 0) * 100);
+          targetRefundMinor += uPrice * (mItem.quantity || 1);
+        }
+      }
+      refundAmountToIssue = Number((targetRefundMinor / 100).toFixed(2));
+      refundKey = `order_cancel_item_${order._id.toString()}_${itemsToCancel.map((i) => i._id.toString()).join("_")}`;
+    }
+
+    if (!isPartialCancel || (refundAmountToIssue && refundAmountToIssue > 0)) {
+      try {
+        refundedPayment = await paymentService.refundPaymentForOrder(
+          orderId,
+          userId,
+          refundAmountToIssue,
+          refundKey
+        );
+      } catch (refError) {
+        if (refError.code === "REFUND_LOCAL_SYNC_FAILED") {
+          logger.warn(
+            { orderId, error: refError.message },
+            "Order cancellation: refund succeeded at gateway with local sync warning"
+          );
+        } else {
+          // If refund failed before gateway execution or with unrecoverable error, release shipment claim
+          if (claimResult?.claimed && typeof shipmentRepository.releaseShipmentCancellationClaim === "function") {
+            for (const cs of claimResult.shipments || []) {
+              await shipmentRepository.releaseShipmentCancellationClaim(cs._id, { previousStatus: "ready_to_ship" });
+            }
+          }
+          throw refError;
+        }
+      }
+    }
   }
 
   if (
@@ -1420,6 +1606,157 @@ const cancelOrder = async (orderId, options = {}) => {
         return currentOrder;
       }
 
+      // Re-verify shipment dispatch status inside the transaction to eliminate cancellation vs dispatch races
+      if (!options.isAdmin) {
+        const freshShipments = mongoose.Types.ObjectId.isValid(orderId)
+          ? await shipmentRepository.findByOrderId(orderId, { session })
+          : [];
+
+        if (isPartialCancel) {
+          const dispatchedForItems = freshShipments.find((s) =>
+            ["picked_up", "in_transit", "out_for_delivery", "delivered"].includes(s.status) &&
+            (s.items || []).some((si) =>
+              itemsToCancel.some((it) =>
+                it._id?.toString() === si.orderItemId?.toString() ||
+                (it.productVariantId && it.productVariantId.toString() === si.productVariantId?.toString())
+              )
+            )
+          );
+          if (dispatchedForItems) {
+            throw new AppError(
+              "Order item or package has already been dispatched and cannot be cancelled directly. You may refuse delivery at the doorstep or request a return after delivery.",
+              409,
+              "ORDER_ALREADY_DISPATCHED"
+            );
+          }
+        } else {
+          const dispatchedShipment = freshShipments.find((s) =>
+            ["picked_up", "in_transit", "out_for_delivery", "delivered"].includes(s.status)
+          );
+          if (dispatchedShipment) {
+            throw new AppError(
+              "Order or package has already been dispatched and cannot be cancelled directly. You may refuse delivery at the doorstep or request a return after delivery.",
+              409,
+              "ORDER_ALREADY_DISPATCHED"
+            );
+          }
+        }
+      }
+
+      if (isPartialCancel) {
+        for (const item of currentOrder.items) {
+          const isTarget = itemsToCancel.some(
+            (m) => m._id?.toString() === item._id?.toString()
+          );
+          if (!isTarget || item.fulfillmentStatus === "cancelled") {
+            continue;
+          }
+
+          if (
+            item.inventoryStatus === "reserved" &&
+            item.warehouseId &&
+            !item.isVirtual &&
+            !item.isDownloadable
+          ) {
+            const inventory =
+              await inventoryRepository.findByVariantAndWarehouse(
+                item.productVariantId,
+                item.warehouseId,
+                { session }
+              );
+
+            if (inventory) {
+              const itemReleaseKey = `order-reservation-release-${currentOrder._id.toString()}-${item.productVariantId.toString()}-${item.warehouseId.toString()}`;
+              await inventoryService.releaseStockInTransaction(
+                inventory._id,
+                item.quantity,
+                {
+                  referenceType: "order",
+                  referenceId: currentOrder.orderNumber,
+                  idempotencyKey: itemReleaseKey,
+                  notes: "Inventory released due to partial item cancellation",
+                },
+                session
+              );
+            }
+          }
+
+          item.inventoryStatus = "released";
+          item.inventoryReleasedAt = new Date();
+          item.fulfillmentStatus = "cancelled";
+          item.cancelledAt = new Date();
+        }
+
+        const shipments = mongoose.Types.ObjectId.isValid(orderId)
+          ? await shipmentRepository.findByOrderId(orderId, { session })
+          : [];
+
+        for (const shipment of shipments) {
+          if (["created", "ready_to_ship", "cancellation_pending", "booking_pending", "booked", "awb_assigned", "label_available", "pickup_scheduled"].includes(shipment.status)) {
+            const shipmentItemsAllCancelled = (shipment.items || []).every((si) => {
+              const oItem = currentOrder.items.find(
+                (oi) => oi._id?.toString() === si.orderItemId?.toString()
+              );
+              return oItem?.fulfillmentStatus === "cancelled";
+            });
+
+            if (shipmentItemsAllCancelled) {
+              await shipmentRepository.updateById(
+                shipment._id,
+                {
+                  status: "cancelled",
+                  cancelledAt: new Date(),
+                  inventoryStatus: "released",
+                  inventoryReleasedAt: new Date(),
+                  dispatchBlocked: true,
+                },
+                { session }
+              );
+            }
+          }
+        }
+
+        if (refundedPayment) {
+          currentOrder.paymentStatus = "partially_refunded";
+        }
+
+        const hasActiveItems = currentOrder.items.some(
+          (it) => it.fulfillmentStatus !== "cancelled"
+        );
+
+        if (!hasActiveItems) {
+          return transitionOrderStatus(orderId, "cancelled", {
+            session,
+            paymentStatus: refundedPayment ? "refunded" : currentOrder.paymentStatus,
+            inventoryStatus: "released",
+            inventoryReleasedAt: new Date(),
+            items: currentOrder.items,
+            cancellationReason: options.cancellationReason,
+            cancellationStatus: "completed",
+          });
+        }
+
+        const anyFulfilled = currentOrder.items.some(
+          (it) => it.fulfillmentStatus === "fulfilled"
+        );
+        currentOrder.fulfillmentStatus = anyFulfilled
+          ? "partially_fulfilled"
+          : "unfulfilled";
+
+        await orderRepository.updateById(
+          currentOrder._id,
+          {
+            items: currentOrder.items,
+            paymentStatus: currentOrder.paymentStatus,
+            fulfillmentStatus: currentOrder.fulfillmentStatus,
+            cancellationStatus: "completed",
+          },
+          { session }
+        );
+
+        return currentOrder;
+      }
+
       for (const item of currentOrder.items) {
         if (
           item.inventoryStatus === "released" ||
@@ -1465,7 +1802,7 @@ const cancelOrder = async (orderId, options = {}) => {
         : [];
 
       for (const shipment of shipments) {
-        if (["created", "ready_to_ship"].includes(shipment.status)) {
+        if (["created", "ready_to_ship", "cancellation_pending", "booking_pending", "booked", "awb_assigned", "label_available", "pickup_scheduled"].includes(shipment.status)) {
           await shipmentRepository.updateById(
             shipment._id,
             {
@@ -1473,6 +1810,7 @@ const cancelOrder = async (orderId, options = {}) => {
               cancelledAt: new Date(),
               inventoryStatus: "released",
               inventoryReleasedAt: new Date(),
+              dispatchBlocked: true,
             },
             { session }
           );
@@ -1524,16 +1862,17 @@ const cancelOrder = async (orderId, options = {}) => {
             );
           }
         } else if (
-          currentPayment.status === "captured" ||
-          currentPayment.status === "partially_refunded"
+          !refundedPayment &&
+          (currentPayment.status === "captured" ||
+           currentPayment.status === "partially_refunded")
         ) {
           throw new AppError(
             "Payment was captured concurrently. Please retry cancellation to trigger refund.",
             409,
             "PAYMENT_CAPTURED_CONCURRENTLY"
           );
-        } else if (currentPayment.status === "refunded") {
-          orderPaymentStatus = "refunded";
+        } else if (currentPayment.status === "refunded" || refundedPayment) {
+          orderPaymentStatus = refundedPayment ? (isPartialCancel ? "partially_refunded" : "refunded") : "refunded";
         }
       }
 

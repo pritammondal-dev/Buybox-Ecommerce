@@ -5,10 +5,14 @@ const courierService = require("../services/courier.service");
 const handleWebhook = asyncHandler(async (req, res) => {
   const { provider } = req.params;
 
+  // Preserve exact unparsed request bytes for cryptographic HMAC verification
+  const rawBody = req.rawBody || (Buffer.isBuffer(req.body) ? req.body : null);
+
   const result = await courierService.handleWebhook({
     provider,
     headers: req.headers,
     body: req.body,
+    rawBody,
   });
 
   return sendSuccess(res, {

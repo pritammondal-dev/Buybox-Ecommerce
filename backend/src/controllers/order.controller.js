@@ -8,13 +8,23 @@ const createOrder = async (req, res) => {
   const idempotencyKey =
     rawIdempotencyKey !== undefined ? rawIdempotencyKey : null;
 
+  const isGuest = Boolean(req.isGuest || req.user?.isGuest);
+  const guestId = req.guestId || req.user?.guestId;
+
   const order =
     await orderService.createOrderFromCurrentCart(
       req.user.id,
       req.body.shippingAddressId,
       req.body.couponCode || null,
       idempotencyKey,
-      req.body.deliveryOptionId || "standard"
+      req.body.deliveryOptionId || "standard",
+      req.body.quoteReference || null,
+      {
+        isGuest,
+        guestId,
+        guestEmail: req.body.guestEmail,
+        guestShippingAddress: req.body.guestShippingAddress,
+      }
     );
 
   const isReplay = Boolean(order?.isReplay);
@@ -22,7 +32,7 @@ const createOrder = async (req, res) => {
     delete order.isReplay;
   }
 
-  if (!isReplay) {
+  if (!isReplay && !isGuest) {
     await analyticsService.track({
       eventName: "order_created",
       eventType: "order",
@@ -50,11 +60,17 @@ const createOrder = async (req, res) => {
 };
 
 const getCheckoutQuote = async (req, res) => {
+  const isGuest = Boolean(req.isGuest || req.user?.isGuest);
+  const guestId = req.guestId || req.user?.guestId;
+
   const quote = await orderService.calculateCheckoutQuote({
     userId: req.user.id,
     shippingAddressId: req.body.shippingAddressId || null,
+    guestShippingAddress: req.body.guestShippingAddress || null,
     couponCode: req.body.couponCode || null,
     deliveryOptionId: req.body.deliveryOptionId || "standard",
+    isGuest,
+    guestId,
   });
 
   return apiResponse.sendSuccess(res, {
@@ -65,10 +81,20 @@ const getCheckoutQuote = async (req, res) => {
 
 const getOrderActivity = async (req, res) => {
   const isAdmin = req.user?.role === "admin" || req.user?.roles?.includes?.("admin");
+  const isGuest = Boolean(req.isGuest || req.user?.isGuest);
+  const guestId = req.guestId || req.user?.guestId;
+  const token = req.get("X-Order-Token") || req.query.token;
+
   const activity = await orderService.getOrderActivity(
     req.params.id,
     req.user.id,
-    isAdmin
+    isAdmin,
+    {
+      isGuest,
+      guestId,
+      guestOrderAccessToken: token,
+      token,
+    }
   );
 
   return apiResponse.sendSuccess(res, {
@@ -90,10 +116,20 @@ const getMyOrders = async (req, res) => {
 };
 
 const getMyOrderById = async (req, res) => {
+  const isGuest = Boolean(req.isGuest || req.user?.isGuest);
+  const guestId = req.guestId || req.user?.guestId;
+  const token = req.get("X-Order-Token") || req.query.token;
+
   const order =
     await orderService.getOrderById(
       req.params.id,
-      req.user.id
+      req.user.id,
+      {
+        isGuest,
+        guestId,
+        guestOrderAccessToken: token,
+        token,
+      }
     );
 
   return apiResponse.sendSuccess(res, {
@@ -103,11 +139,20 @@ const getMyOrderById = async (req, res) => {
 };
 
 const cancelOrder = async (req, res) => {
+  const isGuest = Boolean(req.isGuest || req.user?.isGuest);
+  const guestId = req.guestId || req.user?.guestId;
+  const token = req.get("X-Order-Token") || req.query.token;
+
   const order =
     await orderService.cancelOrder(
       req.params.id,
       {
         userId: req.user.id,
+        isGuest,
+        guestId,
+        guestOrderAccessToken: token,
+        token,
+        itemIds: req.body?.itemIds || (req.body?.orderItemId ? [req.body.orderItemId] : undefined),
         cancellationReason: req.body?.reason || req.body?.cancellationReason || "Customer requested cancellation",
       }
     );
@@ -118,12 +163,33 @@ const cancelOrder = async (req, res) => {
   });
 };
 
+const linkGuestOrder = async (req, res) => {
+  const order = await orderService.linkGuestOrderToCustomer({
+    customerUserId: req.user.id,
+    orderId: req.body.orderId || req.params.id,
+    orderAccessToken:
+      req.body.orderAccessToken ||
+      req.body.guestOrderAccessToken ||
+      req.get("X-Order-Token"),
+    guestSessionToken:
+      req.body.guestSessionToken ||
+      req.body.guestToken ||
+      req.get("X-Guest-Session"),
+  });
+
+  return apiResponse.sendSuccess(res, {
+    message: "Guest order linked to customer successfully",
+    data: order,
+  });
+};
+
 const cancelAdminOrder = async (req, res) => {
   const order = await orderService.cancelOrder(
     req.params.id,
     {
       userId: req.user.id || req.user._id,
       isAdmin: true,
+      itemIds: req.body?.itemIds || (req.body?.orderItemId ? [req.body.orderItemId] : undefined),
       cancellationReason: req.body?.reason || req.body?.cancellationReason || "Administratively cancelled",
     }
   );
@@ -200,6 +266,31 @@ const getAdminOrderById = async (req, res) => {
   });
 };
 
+const updateAdminOrderStatus = async (req, res) => {
+  const order = await orderService.updateAdminOrderStatus({
+    orderId: req.params.id,
+    status: req.body.status,
+    reason: req.body.reason || "",
+    notes: req.body.notes || "",
+    expectedPreviousStatus: req.body.expectedPreviousStatus || null,
+    expectedVersion: req.body.expectedVersion !== undefined ? req.body.expectedVersion : null,
+    isOverride: Boolean(req.body.isOverride),
+    overrideReason: req.body.overrideReason || "",
+    actor: {
+      userId: req.user.id || req.user._id,
+      role: req.user.role || (req.user.roles && req.user.roles[0]) || "admin",
+      roles: req.user.roles || [req.user.role],
+      ipAddress: req.ip,
+      userAgent: req.get("user-agent"),
+    },
+  });
+
+  return apiResponse.sendSuccess(res, {
+    message: `Order status updated to ${req.body.status} successfully`,
+    data: order,
+  });
+};
+
 module.exports = {
   createOrder,
   getCheckoutQuote,
@@ -208,11 +299,13 @@ module.exports = {
   getMyOrderById,
   cancelOrder,
   cancelAdminOrder,
+  linkGuestOrder,
   getMyVendorOrders,
   getMyVendorOrderById,
   transitionVendorOrderStatus,
   getAdminOrders,
   getAdminOrderById,
+  updateAdminOrderStatus,
 };
 
 

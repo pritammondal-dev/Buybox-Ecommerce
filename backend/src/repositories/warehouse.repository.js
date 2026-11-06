@@ -1,33 +1,47 @@
 const Warehouse = require("../models/Warehouse");
 
-const create = async (data) => {
-  return Warehouse.create(data);
+const create = async (data, options = {}) => {
+  return Warehouse.create([data], options).then((docs) => docs[0]);
 };
 
-const findById = async (id) => {
+const findById = async (id, options = {}) => {
   return Warehouse.findOne({
     _id: id,
     deletedAt: null,
-  });
+  }).session(options.session || null);
 };
 
-const findByCode = async (code) => {
+const findByCode = async (code, options = {}) => {
   return Warehouse.findOne({
     code,
     deletedAt: null,
-  });
+  }).session(options.session || null);
 };
 
-const findAll = async (filter = {}) => {
+const findAll = async (filter = {}, options = {}) => {
   return Warehouse.find({
     deletedAt: null,
     ...filter,
-  }).sort({
-    createdAt: -1,
-  });
+  })
+    .session(options.session || null)
+    .sort({
+      createdAt: -1,
+    });
 };
 
-const updateById = async (id, data) => {
+const findActive = async (filter = {}, options = {}) => {
+  return Warehouse.find({
+    deletedAt: null,
+    isActive: true,
+    ...filter,
+  })
+    .session(options.session || null)
+    .sort({
+      createdAt: -1,
+    });
+};
+
+const updateById = async (id, data, options = {}) => {
   return Warehouse.findOneAndUpdate(
     {
       _id: id,
@@ -37,11 +51,12 @@ const updateById = async (id, data) => {
     {
       new: true,
       runValidators: true,
+      session: options.session,
     }
   );
 };
 
-const softDeleteById = async (id) => {
+const softDeleteById = async (id, options = {}) => {
   return Warehouse.findOneAndUpdate(
     {
       _id: id,
@@ -53,6 +68,7 @@ const softDeleteById = async (id) => {
     },
     {
       new: true,
+      session: options.session,
     }
   );
 };
@@ -62,6 +78,7 @@ module.exports = {
   findById,
   findByCode,
   findAll,
+  findActive,
   updateById,
   softDeleteById,
 };

@@ -93,8 +93,8 @@ const listStaff = async (query = {}) => {
         id: u._id,
         firstName: u.firstName,
         lastName: u.lastName,
-        phone: u.phone || null,
         email: u.email,
+        phone: u.phone || null,
         role: u.role,
         isActive: u.isActive,
         lastLoginAt: u.lastLoginAt,
@@ -119,6 +119,7 @@ const listStaff = async (query = {}) => {
           : null,
         activeTasksCount: taskCount,
         permissionsCount: permissions.length,
+        permissions: permissions,
       };
     })
   );
@@ -161,8 +162,8 @@ const getStaffById = async (userId) => {
     id: user._id,
     firstName: user.firstName,
     lastName: user.lastName,
-    phone: user.phone || null,
     email: user.email,
+    phone: user.phone || null,
     role: user.role,
     isActive: user.isActive,
     lastLoginAt: user.lastLoginAt,
@@ -259,7 +260,7 @@ const createStaff = async (payload, actor, req = null) => {
     password: hashedPassword,
     firstName: firstName.trim(),
     lastName: lastName.trim(),
-    phone: phone?.trim() || undefined,
+    phone: phone ? phone.trim() : undefined,
     role: role || (targetJobRole ? (targetJobRole.slug.includes("editor") ? "editor" : "admin") : "staff"),
     isActive: true,
     isEmailVerified: true,
@@ -313,7 +314,9 @@ const createStaff = async (payload, actor, req = null) => {
     email: newUser.email,
     firstName: newUser.firstName,
     lastName: newUser.lastName,
+    phone: newUser.phone || null,
     role: newUser.role,
+    isActive: newUser.isActive,
     employee: {
       id: employee._id,
       _id: employee._id,
@@ -369,9 +372,9 @@ const updateStaff = async (userId, payload, actor, req = null) => {
     user.role = payload.role;
   }
 
-  if (payload.firstName !== undefined) user.firstName = payload.firstName;
-  if (payload.lastName !== undefined) user.lastName = payload.lastName;
-  if (payload.phone !== undefined) user.phone = payload.phone?.trim() || undefined;\n  if (payload.phone !== undefined) user.phone = payload.phone?.trim() || undefined;
+  if (payload.firstName !== undefined) user.firstName = payload.firstName ? payload.firstName.trim() : user.firstName;
+  if (payload.lastName !== undefined) user.lastName = payload.lastName ? payload.lastName.trim() : user.lastName;
+  if (payload.phone !== undefined) user.phone = payload.phone && payload.phone.trim() ? payload.phone.trim() : undefined;
   await user.save();
 
   if (employee) {
@@ -410,6 +413,7 @@ const updateStaff = async (userId, payload, actor, req = null) => {
     firstName: user.firstName,
     lastName: user.lastName,
     email: user.email,
+    phone: user.phone || null,
     role: user.role,
     isActive: user.isActive,
     employee: employee

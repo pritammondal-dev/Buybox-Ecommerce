@@ -24,10 +24,38 @@ const ICONS = {
   delivered: Home,
 };
 
-export function OrderStatusTimeline({ status, cancellationReason = null }) {
+export function OrderStatusTimeline({
+  status,
+  cancellationReason = null,
+  customerDisplayStatus = null,
+  isAwaitingVendorConfirmation = false,
+}) {
   const normalized = String(status || "pending").toLowerCase();
   const isCancelled = normalized === "cancelled";
   const currentStepIndex = getTimelineStepIndex(normalized);
+
+  const stages = ORDER_TIMELINE_STAGES.map((stage) => {
+    if (stage.key === "confirmed") {
+      if (
+        isAwaitingVendorConfirmation ||
+        customerDisplayStatus === "awaiting_merchant_confirmation"
+      ) {
+        return {
+          ...stage,
+          label: "Merchant Confirmation",
+          description: "Payment verified. Awaiting merchant confirmation.",
+        };
+      }
+      if (customerDisplayStatus === "merchant_accepted") {
+        return {
+          ...stage,
+          label: "Merchant Accepted",
+          description: "Merchant accepted items. Preparing fulfillment.",
+        };
+      }
+    }
+    return stage;
+  });
 
   if (isCancelled) {
     return (
@@ -80,7 +108,7 @@ export function OrderStatusTimeline({ status, cancellationReason = null }) {
             />
           )}
 
-          {ORDER_TIMELINE_STAGES.map((stage, idx) => {
+          {stages.map((stage, idx) => {
             const isCompleted = idx < currentStepIndex;
             const isCurrent = idx === currentStepIndex;
             const isUpcoming = idx > currentStepIndex;
@@ -125,7 +153,7 @@ export function OrderStatusTimeline({ status, cancellationReason = null }) {
 
         {/* Mobile Vertical Timeline */}
         <div className="sm:hidden space-y-4 relative pl-4 border-l-2 border-slate-200 ml-3">
-          {ORDER_TIMELINE_STAGES.map((stage, idx) => {
+          {stages.map((stage, idx) => {
             const isCompleted = idx < currentStepIndex;
             const isCurrent = idx === currentStepIndex;
             const Icon = ICONS[stage.key] || Package;
@@ -182,6 +210,8 @@ export function OrderStatusTimeline({ status, cancellationReason = null }) {
 OrderStatusTimeline.propTypes = {
   status: PropTypes.string,
   cancellationReason: PropTypes.string,
+  customerDisplayStatus: PropTypes.string,
+  isAwaitingVendorConfirmation: PropTypes.bool,
 };
 
 export default OrderStatusTimeline;

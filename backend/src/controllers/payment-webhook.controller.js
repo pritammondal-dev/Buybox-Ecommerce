@@ -16,6 +16,19 @@ const handleRazorpayWebhook = async (req, res) => {
   });
 };
 
+const handlePayPalWebhook = async (req, res) => {
+  await paymentWebhookService.handlePayPalWebhook({
+    rawBody: req.body,
+    headers: req.headers,
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: "PayPal webhook received successfully",
+  });
+};
+
 module.exports = {
   handleRazorpayWebhook,
+  handlePayPalWebhook,
 };

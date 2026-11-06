@@ -4,6 +4,7 @@ import React, { useRef } from "react";
 import Link from "next/link";
 import { ArrowRight, ChevronRight, ChevronLeft } from "lucide-react";
 import { cn } from "../../../utils/cn.js";
+import { getCategorySlug, getCategoryHref } from "../../../utils/category.util.js";
 
 const DEFAULT_SHOP_CATEGORIES = [
   {
@@ -71,14 +72,18 @@ export function FeaturedCategories({ initialCategories = [] }) {
   const categories = React.useMemo(() => {
     if (Array.isArray(initialCategories) && initialCategories.length > 0) {
       return initialCategories.map((cat, idx) => {
+        const slugStr = getCategorySlug(cat);
         const def =
           DEFAULT_SHOP_CATEGORIES.find(
-            (d) => d.slug === cat.slug || cat.name?.toLowerCase().includes(d.slug)
+            (d) => d.slug === slugStr || cat.name?.toLowerCase().includes(d.slug)
           ) || DEFAULT_SHOP_CATEGORIES[idx % DEFAULT_SHOP_CATEGORIES.length];
+
+        const finalSlug = slugStr || def?.slug || "";
 
         return {
           name: cat.name,
-          slug: cat.slug || cat._id,
+          slug: finalSlug,
+          href: getCategoryHref(finalSlug),
           count: cat.productCount ? `${cat.productCount} products` : def?.count || "Explore products",
           bgTint: def?.bgTint || "bg-[#E0F2FE] border-sky-200/80 hover:border-sky-400",
           image:
@@ -129,11 +134,11 @@ export function FeaturedCategories({ initialCategories = [] }) {
             className="flex items-center gap-4 sm:gap-5 overflow-x-auto scrollbar-none py-2"
             style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
           >
-            {categories.map((cat) => {
-              const href = `/category/${cat.slug}`;
+            {categories.map((cat, idx) => {
+              const href = cat.href || getCategoryHref(cat.slug);
               return (
                 <Link
-                  key={cat.slug}
+                  key={cat.slug || idx}
                   href={href}
                   className="flex flex-col items-center shrink-0 w-28 sm:w-32 group/cat transition-transform duration-200 hover:-translate-y-1 text-center"
                 >

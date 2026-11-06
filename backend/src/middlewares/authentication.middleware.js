@@ -1,13 +1,18 @@
+const crypto = require("crypto");
 const mongoose = require("mongoose");
 const User = require("../models/User");
 const Employee = require("../models/Employee");
 const AppError = require("../errors/AppError");
 const {
   verifyAccessToken,
+  verifyGuestToken,
+  generateGuestToken,
   TOKEN_CONTEXTS,
   TOKEN_AUDIENCES,
 } = require("../services/token.service");
-const { ROLES } = require("../constants/auth.constants");
+const { COOKIE_NAMES, guestCookieOptions } = require("../config/cookie");
+const { isFeatureEnabled } = require("../services/storefront-settings.service");
+const { ROLES, ADMIN_INACTIVITY_TIMEOUT_MS } = require("../constants/auth.constants");
 
 const ALLOWED_STAFF_ROLES = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.EDITOR];
 
@@ -23,7 +28,21 @@ const ALLOWED_STAFF_ROLES = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.EDITOR];
 const createAuthMiddleware = (options = {}) => {
   return async function authenticate(req, res, next) {
     if (req.user) {
-      if (options.expectedContext && req.user.context && req.user.context !== options.expectedContext) {
+      let isStaff = Boolean(
+        options.allowPlatformStaff &&
+        (req.user.context === TOKEN_CONTEXTS.ADMINISTRATOR ||
+          ALLOWED_STAFF_ROLES.includes(req.user.role))
+      );
+      if (options.allowPlatformStaff && !isStaff && req.user.id && mongoose.connection.readyState === 1) {
+        try {
+          const hasEmp = await Employee.exists({ userId: req.user.id });
+          if (hasEmp) {
+            isStaff = true;
+          }
+        } catch (_) {}
+      }
+
+      if (options.expectedContext && req.user.context && req.user.context !== options.expectedContext && !isStaff) {
         return next(
           new AppError(
             `Cross-context session disallowed. Required: ${options.expectedContext}, found: ${req.user.context}`,
@@ -32,7 +51,7 @@ const createAuthMiddleware = (options = {}) => {
           )
         );
       }
-      if (options.allowedRoles && !options.allowedRoles.includes(req.user.role)) {
+      if (options.allowedRoles && !isStaff && !options.allowedRoles.includes(req.user.role)) {
         return next(
           new AppError(
             "You do not have permission to access this resource",
@@ -47,6 +66,9 @@ const createAuthMiddleware = (options = {}) => {
     const authorization = req.get("Authorization");
 
     if (!authorization) {
+      if (options.optional) {
+        return next();
+      }
       return next(
         new AppError("Authentication required", 401, "AUTHENTICATION_REQUIRED")
       );
@@ -86,10 +108,25 @@ const createAuthMiddleware = (options = {}) => {
     }
 
     // Context Isolation Check
-    if (options.expectedContext && decoded.context && decoded.context !== options.expectedContext) {
+    let isStaffOverride = Boolean(
+      options.allowPlatformStaff &&
+      (decoded.context === TOKEN_CONTEXTS.ADMINISTRATOR ||
+        ALLOWED_STAFF_ROLES.includes(decoded.role))
+    );
+
+    if (options.allowPlatformStaff && !isStaffOverride && decoded.sub && mongoose.connection.readyState === 1) {
+      try {
+        const hasEmp = await Employee.exists({ userId: decoded.sub });
+        if (hasEmp) {
+          isStaffOverride = true;
+        }
+      } catch (_) {}
+    }
+
+    if (options.expectedContext && !isStaffOverride && decoded.context !== options.expectedContext) {
       return next(
         new AppError(
-          `Cross-context session disallowed. Required: ${options.expectedContext}, found: ${decoded.context}`,
+          `Cross-context session disallowed. Required: ${options.expectedContext}, found: ${decoded.context || "none"}`,
           403,
           "INVALID_SESSION_CONTEXT"
         )
@@ -107,7 +144,7 @@ const createAuthMiddleware = (options = {}) => {
         const query = User.findById(decoded.sub);
         if (query && typeof query.select === "function") {
           dbUser = await query
-            .select("authVersion permissionVersion isActive role")
+            .select("authVersion permissionVersion isActive deletedAt isEmailVerified role roles adminLastActiveAt")
             .lean();
         } else if (query && typeof query.then === "function") {
           dbUser = await query;
@@ -123,9 +160,9 @@ const createAuthMiddleware = (options = {}) => {
     }
 
     if (dbUser) {
-      if (dbUser.isActive === false) {
+      if (dbUser.isActive === false || dbUser.deletedAt) {
         return next(
-          new AppError("User account is inactive", 401, "USER_INACTIVE")
+          new AppError("User account is inactive or deactivated", 401, "USER_INACTIVE")
         );
       }
 
@@ -139,19 +176,75 @@ const createAuthMiddleware = (options = {}) => {
           )
         );
       }
+
+      // Administrator Session Inactivity Check (30 minutes)
+      const isAdministratorSession = Boolean(
+        options.expectedContext === TOKEN_CONTEXTS.ADMINISTRATOR ||
+        decoded.context === TOKEN_CONTEXTS.ADMINISTRATOR ||
+        (options.allowPlatformStaff && isStaffOverride)
+      );
+
+      if (isAdministratorSession && dbUser.adminLastActiveAt) {
+        const elapsed = Date.now() - new Date(dbUser.adminLastActiveAt).getTime();
+        if (elapsed > ADMIN_INACTIVITY_TIMEOUT_MS) {
+          return next(
+            new AppError(
+              "Administrator session has expired due to inactivity. Please log in again.",
+              401,
+              "ADMIN_INACTIVITY_TIMEOUT"
+            )
+          );
+        }
+
+        // Background polling or automated refreshes do NOT extend inactivity session
+        const isBackground = Boolean(
+          req.headers["x-background-request"] === "true" ||
+          req.headers["x-background-poll"] === "true" ||
+          req.query?.background === "true"
+        );
+
+        if (!isBackground && elapsed > 60 * 1000) {
+          User.updateOne(
+            { _id: dbUser._id },
+            { $set: { adminLastActiveAt: new Date() } }
+          ).exec().catch(() => {});
+        }
+      }
     }
 
-    const activeRole = dbUser?.role || decoded.role;
+    const userRoles = Array.isArray(dbUser?.roles) && dbUser.roles.length > 0
+      ? dbUser.roles
+      : (Array.isArray(decoded.roles) && decoded.roles.length > 0 ? decoded.roles : [dbUser?.role || decoded.role]);
+
+    let activeRole = dbUser?.role || decoded.role;
+
+    // Activate vendor role if user is authorized as vendor and accessing under vendor context or token
+    if (
+      (decoded.context === TOKEN_CONTEXTS.VENDOR || decoded.role === ROLES.VENDOR) &&
+      userRoles.includes(ROLES.VENDOR)
+    ) {
+      activeRole = ROLES.VENDOR;
+    }
 
     // Allowed Roles Check
-    if (options.allowedRoles && !options.allowedRoles.includes(activeRole)) {
-      return next(
-        new AppError(
-          "You do not have permission to access this resource",
-          403,
-          "INSUFFICIENT_ROLE"
-        )
-      );
+    if (options.allowedRoles && !isStaffOverride) {
+      const allowed = options.allowPlatformStaff
+        ? [...options.allowedRoles, ...ALLOWED_STAFF_ROLES]
+        : options.allowedRoles;
+      const hasRole =
+        allowed.includes(activeRole) ||
+        (!["customer", "vendor"].includes(activeRole) &&
+          Array.isArray(userRoles) &&
+          userRoles.some((r) => allowed.includes(r)));
+      if (!hasRole) {
+        return next(
+          new AppError(
+            "You do not have permission to access this resource",
+            403,
+            "INSUFFICIENT_ROLE"
+          )
+        );
+      }
     }
 
     // Active Employee check for administrator boundary
@@ -183,11 +276,15 @@ const createAuthMiddleware = (options = {}) => {
       : tokenPermissionVersion;
     const isPermissionFresh = tokenPermissionVersion === dbPermissionVersion;
 
+    const resolvedUserId = decoded.sub || decoded.userId || decoded.id || decoded._id;
+
     req.user = {
-      id: decoded.sub,
-      _id: decoded.sub,
+      id: resolvedUserId,
+      _id: resolvedUserId,
       role: activeRole,
+      roles: userRoles,
       context: decoded.context || null,
+      isEmailVerified: Boolean(dbUser ? dbUser.isEmailVerified : decoded.isEmailVerified),
       authVersion: tokenAuthVersion,
       permissionVersion: tokenPermissionVersion,
       dbAuthVersion: dbUser ? Number(dbUser.authVersion ?? 1) : tokenAuthVersion,
@@ -203,6 +300,9 @@ const createAuthMiddleware = (options = {}) => {
 // Default generic authenticator (backward compatible)
 const authenticate = createAuthMiddleware();
 
+// Optional authenticator (populates req.user if token present; passes if unauthenticated)
+const authenticateOptional = createAuthMiddleware({ optional: true });
+
 // Dedicated Administrator Authenticator
 const authenticateAdministrator = createAuthMiddleware({
   expectedContext: TOKEN_CONTEXTS.ADMINISTRATOR,
@@ -214,18 +314,147 @@ const authenticateAdministrator = createAuthMiddleware({
 const authenticateCustomer = createAuthMiddleware({
   expectedContext: TOKEN_CONTEXTS.CUSTOMER,
   allowedRoles: [ROLES.CUSTOMER],
+  allowPlatformStaff: true,
 });
 
 // Dedicated Vendor Authenticator
 const authenticateVendor = createAuthMiddleware({
   expectedContext: TOKEN_CONTEXTS.VENDOR,
   allowedRoles: [ROLES.VENDOR],
+  allowPlatformStaff: true,
 });
 
+/**
+ * Dual Authenticator: Authenticates registered Customer OR validates/provisions Guest Session.
+ * Strictly verifies the authoritative guestCheckout feature flag.
+ */
+const authenticateGuestOrCustomer = async (req, res, next) => {
+  const authorization = req.get("Authorization");
+  const hasCustomerSessionCookie = Boolean(
+    req.cookies?.[COOKIE_NAMES.CUSTOMER] || req.cookies?.bb_customer_session
+  );
+
+  // 1. If customer bearer token or session cookie is present, attempt normal authentication
+  if (authorization || hasCustomerSessionCookie) {
+    const [scheme, token] = (authorization || "").split(" ");
+
+    // Check if the bearer token is specifically a guest token
+    if (scheme === "Bearer" && token) {
+      try {
+        const guestDecoded = verifyGuestToken(token);
+        if (guestDecoded) {
+          req.guestId = guestDecoded.guestId || guestDecoded.sub;
+          req.isGuest = true;
+          req.user = {
+            id: req.guestId,
+            _id: req.guestId,
+            guestId: req.guestId,
+            role: "guest",
+            context: TOKEN_CONTEXTS.GUEST,
+            isGuest: true,
+          };
+          return next();
+        }
+      } catch (guestErr) {
+        if (guestErr.name === "TokenExpiredError") {
+          return next(
+            new AppError("Invalid or expired guest session", 401, "INVALID_GUEST_SESSION")
+          );
+        }
+        // Not a guest token or malformed; proceed with standard user authentication
+      }
+    }
+
+    return authenticate(req, res, (err) => {
+      if (!err && req.user) {
+        req.isGuest = false;
+        return next();
+      }
+      return next(err);
+    });
+  }
+
+  // 2. Check for explicit Guest Session headers or cookies
+  const guestToken =
+    req.get("X-Guest-Session") ||
+    req.cookies?.[COOKIE_NAMES.GUEST] ||
+    req.cookies?.bb_guest_session;
+
+  if (guestToken) {
+    try {
+      const decoded = verifyGuestToken(guestToken);
+      req.guestId = decoded.guestId || decoded.sub;
+      req.isGuest = true;
+      req.user = {
+        id: req.guestId,
+        _id: req.guestId,
+        guestId: req.guestId,
+        role: "guest",
+        context: TOKEN_CONTEXTS.GUEST,
+        isGuest: true,
+      };
+      return next();
+    } catch (guestErr) {
+      return next(
+        new AppError("Invalid or expired guest session", 401, "INVALID_GUEST_SESSION")
+      );
+    }
+  }
+
+  // Check for Order Access Token (e.g. guest viewing order confirmation, status, invoice)
+  const orderAccessToken = req.get("X-Order-Token") || req.query?.token;
+  if (orderAccessToken) {
+    req.isGuest = true;
+    req.guestOrderAccessToken = orderAccessToken;
+    req.user = {
+      id: "guest_token_access",
+      _id: "guest_token_access",
+      guestOrderAccessToken: orderAccessToken,
+      role: "guest",
+      context: TOKEN_CONTEXTS.GUEST,
+      isGuest: true,
+    };
+    return next();
+  }
+
+  // 3. No credentials provided: authoritative guestCheckout flag check
+  const guestCheckoutEnabled = await isFeatureEnabled("guestCheckout");
+  if (!guestCheckoutEnabled) {
+    return next(
+      new AppError(
+        "Guest checkout is disabled. Please sign in to complete checkout.",
+        403,
+        "GUEST_CHECKOUT_DISABLED"
+      )
+    );
+  }
+
+  // 4. Guest checkout enabled: auto-provision cryptographically strong guest session
+  const guestId = "gst_" + crypto.randomUUID();
+  const token = generateGuestToken({ guestId });
+  res.cookie(COOKIE_NAMES.GUEST, token, guestCookieOptions);
+  res.setHeader("X-Guest-Session", token);
+
+  req.guestId = guestId;
+  req.isGuest = true;
+  req.user = {
+    id: guestId,
+    _id: guestId,
+    guestId,
+    role: "guest",
+    context: TOKEN_CONTEXTS.GUEST,
+    isGuest: true,
+  };
+
+  return next();
+};
+
 authenticate.authenticate = authenticate;
+authenticate.authenticateOptional = authenticateOptional;
 authenticate.authenticateAdministrator = authenticateAdministrator;
 authenticate.authenticateCustomer = authenticateCustomer;
 authenticate.authenticateVendor = authenticateVendor;
+authenticate.authenticateGuestOrCustomer = authenticateGuestOrCustomer;
 authenticate.createAuthMiddleware = createAuthMiddleware;
 
 module.exports = authenticate;

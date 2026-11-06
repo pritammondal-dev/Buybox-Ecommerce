@@ -1229,6 +1229,7 @@ describe("Phase 1C — Effective Permission Resolver & Versioned Authorization",
     });
 
     it("4. Legacy super_admin caller without Employee profile succeeds on governance endpoints", async () => {
+      await User.deleteMany({ role: "super_admin" });
       const legacySuperAdminUser = await User.create({
         firstName: "Legacy",
         lastName: "SuperAdmin",

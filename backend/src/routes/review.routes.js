@@ -2,7 +2,7 @@ const express = require("express");
 
 const reviewController = require("../controllers/review.controller");
 
-const authenticate = require("../middlewares/authentication.middleware");
+const { authenticate, authenticateVendor } = require("../middlewares/authentication.middleware");
 const {
   requirePermissions,
   requireRoles,
@@ -25,7 +25,7 @@ const router = express.Router();
 // Vendor-scoped reviews (must precede /:reviewId)
 router.get(
   "/vendor/my",
-  authenticate,
+  authenticateVendor,
   requireRoles(ROLES.VENDOR),
   reviewController.getMyVendorReviews
 );

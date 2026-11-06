@@ -1,7 +1,8 @@
 const express = require("express");
 
 const inventoryController = require("../controllers/inventory.controller");
-const authenticate = require("../middlewares/authentication.middleware");
+const { authenticate, authenticateVendor } = require("../middlewares/authentication.middleware");
+const { requireApprovedVendor } = require("../middlewares/vendor.middleware");
 const validate = require("../middlewares/validate.middleware");
 
 const {
@@ -64,12 +65,15 @@ router.use(authenticate);
 // Vendor-scoped inventory (must precede /:id)
 router.get(
   "/vendor/my",
+  authenticateVendor,
+  requireApprovedVendor,
   requireRoles(ROLES.VENDOR),
   inventoryController.getMyVendorInventory
 );
 
 router.get(
   "/summary",
+  requirePermissions(PERMISSIONS.INVENTORY_READ),
   inventoryController.getInventorySummary
 );
 

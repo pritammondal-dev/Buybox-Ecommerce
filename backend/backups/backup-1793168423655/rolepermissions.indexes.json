@@ -1,0 +1,32 @@
+[
+  {
+    "v": 2,
+    "key": {
+      "_id": 1
+    },
+    "name": "_id_"
+  },
+  {
+    "v": 2,
+    "key": {
+      "roleId": 1
+    },
+    "name": "roleId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "permissionId": 1
+    },
+    "name": "permissionId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "roleId": 1,
+      "permissionId": 1
+    },
+    "name": "roleId_1_permissionId_1",
+    "unique": true
+  }
+]

@@ -70,11 +70,11 @@ export default function VendorSettlementDetailPage() {
           This statement does not exist or does not belong to your vendor account.
         </p>
         <Link
-          href="/vendor/finance"
+          href="/vendor/finance/statements"
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#004D38] text-white text-xs font-semibold"
         >
           <ArrowLeft className="size-4" />
-          <span>Back to Finance</span>
+          <span>Back to Statements</span>
         </Link>
       </div>
     );
@@ -87,11 +87,11 @@ export default function VendorSettlementDetailPage() {
     <div className="space-y-6 max-w-4xl mx-auto p-4 sm:p-6 pb-20">
       <div>
         <Link
-          href="/vendor/finance"
+          href="/vendor/finance/statements"
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 transition-colors mb-2"
         >
           <ArrowLeft className="size-3.5" />
-          <span>Back to Settlements</span>
+          <span>Back to Statements</span>
         </Link>
 
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -154,6 +154,17 @@ export default function VendorSettlementDetailPage() {
             </span>
           </div>
 
+          {Number(settlement.platformSubsidy || 0) > 0 && (
+            <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200/80">
+              <span className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider block mb-1">
+                Platform Promo Subsidy
+              </span>
+              <span className="text-xl font-black text-indigo-700">
+                +₹{Number(settlement.platformSubsidy || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+              </span>
+            </div>
+          )}
+
           <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/60">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
               Platform Commission
@@ -174,11 +185,19 @@ export default function VendorSettlementDetailPage() {
         </div>
 
         {settlement.paidAt && (
-          <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2">
-            <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
-            <span>
-              Disbursed to merchant bank account on <strong>{new Date(settlement.paidAt).toLocaleString("en-IN")}</strong>.
-            </span>
+          <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-xs text-emerald-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+              <span>
+                Disbursed to merchant bank account on <strong>{new Date(settlement.paidAt).toLocaleString("en-IN")}</strong>
+                {settlement.payoutReference && ` (Ref: ${settlement.payoutReference})`}.
+              </span>
+            </div>
+            {settlement.payoutDestination && (
+              <span className="font-mono text-emerald-900 bg-emerald-100/80 px-2 py-0.5 rounded text-[11px] font-semibold">
+                {settlement.payoutDestination.bankName} ({settlement.payoutDestination.accountNumberMasked})
+              </span>
+            )}
           </div>
         )}
       </div>

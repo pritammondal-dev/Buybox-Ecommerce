@@ -90,7 +90,19 @@ const errorMiddleware = (err, req, res, next) => {
         ? err.message
         : "Internal server error";
   }
-  // 6. Unexpected / Non-operational 500 errors
+  // 6. Mongoose / MongoDB Connection & Timeout Failures
+  else if (
+    err &&
+    (err.name === "MongooseServerSelectionError" ||
+      err.name === "MongoNetworkError" ||
+      err.name === "MongoServerSelectionError" ||
+      (typeof err.message === "string" && err.message.includes("buffering timed out")))
+  ) {
+    statusCode = 503;
+    code = "DATABASE_UNAVAILABLE";
+    message = "Database service is temporarily unavailable. Please verify MongoDB connection.";
+  }
+  // 7. Unexpected / Non-operational 500 errors
   else {
     statusCode = 500;
     code = "INTERNAL_SERVER_ERROR";
@@ -119,6 +131,10 @@ const errorMiddleware = (err, req, res, next) => {
     code,
     requestId: req && req.id !== undefined ? req.id : (req ? req.id : undefined),
   };
+
+  if (err && err.details !== undefined && err.details !== null) {
+    response.details = err.details;
+  }
 
   if (req && (req.app || (req.originalUrl && req.originalUrl !== "/api/v1/test"))) {
     response.errorCode = code;

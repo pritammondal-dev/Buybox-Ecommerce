@@ -69,7 +69,8 @@ const registerVendorSchema = z
         country: z
           .string()
           .trim()
-          .max(100)
+          .toUpperCase()
+          .regex(/^[A-Z]{2}$/, "Country must be a 2-letter ISO country code (e.g. IN, US)")
           .optional()
           .default("IN"),
       })

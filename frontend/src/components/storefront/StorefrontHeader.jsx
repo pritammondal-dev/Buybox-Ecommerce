@@ -23,17 +23,25 @@ import { DropdownMenu, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparato
 import { useAuth } from "../../hooks/useAuth.js";
 import { useCart } from "../../hooks/useCart.js";
 import { useWishlist } from "../../hooks/useWishlist.js";
+import { useStorefrontSettings } from "../../hooks/useStorefrontSettings.js";
 import { categoryService } from "../../services/category.service.js";
 import { formatCurrency } from "../../utils/formatCurrency.js";
 import { cn } from "../../utils/cn.js";
+import { getCategoryHref } from "../../utils/category.util.js";
 
 export function StorefrontHeader({ categories: propCategories, onCartClick, className }) {
   const { user, isAuthenticated, logout } = useAuth();
   const { itemCount = 0, subtotal = 0, isHydrated: isCartHydrated } = useCart();
   const { itemCount: wishlistCount = 0, isHydrated: isWishlistHydrated } = useWishlist();
+  const { logoUrl, storeName, logoDimensions, isFeatureEnabled } = useStorefrontSettings();
 
   const [internalCategories, setInternalCategories] = useState([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [logoError, setLogoError] = useState(false);
+
+  useEffect(() => {
+    setLogoError(false);
+  }, [logoUrl]);
 
   const categories = propCategories && propCategories.length > 0 ? propCategories : internalCategories;
 
@@ -71,13 +79,28 @@ export function StorefrontHeader({ categories: propCategories, onCartClick, clas
             <Menu className="size-5" />
           </button>
 
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="flex size-9 items-center justify-center rounded-xl bg-[#007A55] text-white shadow-xs transition-transform group-hover:scale-105">
-              <ShoppingBag className="size-5 stroke-[2.2]" />
-            </div>
-            <span className="text-2xl font-black tracking-tight text-[#007A55]">
-              Buybox
-            </span>
+          <Link href="/" className="flex items-center gap-2.5 group">
+            {logoUrl && !logoError ? (
+              <img
+                src={logoUrl}
+                alt={storeName || "Buybox"}
+                style={{
+                  maxWidth: `${logoDimensions?.desktopWidth || 160}px`,
+                  maxHeight: `${logoDimensions?.desktopMaxHeight || 48}px`,
+                }}
+                className="w-auto h-auto object-contain transition-transform group-hover:scale-105"
+                onError={() => setLogoError(true)}
+              />
+            ) : (
+              <>
+                <div className="flex size-9 items-center justify-center rounded-xl bg-[#007A55] text-white shadow-xs transition-transform group-hover:scale-105">
+                  <ShoppingBag className="size-5 stroke-[2.2]" />
+                </div>
+                <span className="text-2xl font-black tracking-tight text-[#007A55]">
+                  {storeName || "Buybox"}
+                </span>
+              </>
+            )}
           </Link>
         </div>
 
@@ -214,20 +237,22 @@ export function StorefrontHeader({ categories: propCategories, onCartClick, clas
           </DropdownMenu>
 
           {/* Wishlist Icon */}
-          <Link
-            href="/account/wishlist"
-            aria-label={isWishlistHydrated && wishlistCount > 0 ? `Wishlist with ${wishlistCount} items` : "Wishlist"}
-            className="relative flex items-center justify-center text-foreground hover:text-[#007A55] transition-colors"
-          >
-            <div className="flex size-9 items-center justify-center rounded-full border border-border hover:border-[#007A55] transition-colors">
-              <Heart className="size-4" />
-            </div>
-            {isWishlistHydrated && wishlistCount > 0 && (
-              <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-[#007A55] text-[10px] font-bold text-white shadow-xs">
-                {wishlistCount}
-              </span>
-            )}
-          </Link>
+          {isFeatureEnabled("wishlist") && (
+            <Link
+              href="/account/wishlist"
+              aria-label={isWishlistHydrated && wishlistCount > 0 ? `Wishlist with ${wishlistCount} items` : "Wishlist"}
+              className="relative flex items-center justify-center text-foreground hover:text-[#007A55] transition-colors"
+            >
+              <div className="flex size-9 items-center justify-center rounded-full border border-border hover:border-[#007A55] transition-colors">
+                <Heart className="size-4" />
+              </div>
+              {isWishlistHydrated && wishlistCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-[#007A55] text-[10px] font-bold text-white shadow-xs">
+                  {wishlistCount}
+                </span>
+              )}
+            </Link>
+          )}
 
           {/* Cart Icon & Subtotal (opens Mini-Cart Drawer) */}
           <button
@@ -269,10 +294,25 @@ export function StorefrontHeader({ categories: propCategories, onCartClick, clas
             <SheetHeader className="p-4 border-b bg-emerald-50/50">
               <SheetTitle>
                 <div className="flex items-center gap-2">
-                  <div className="flex size-8 items-center justify-center rounded-xl bg-[#007A55] text-white">
-                    <ShoppingBag className="size-4.5" />
-                  </div>
-                  <span className="font-black text-xl text-[#007A55]">Buybox</span>
+                  {logoUrl && !logoError ? (
+                    <img
+                      src={logoUrl}
+                      alt={storeName || "Buybox"}
+                      style={{
+                        maxWidth: `${logoDimensions?.mobileWidth || 120}px`,
+                        maxHeight: `${logoDimensions?.mobileMaxHeight || 36}px`,
+                      }}
+                      className="w-auto h-auto object-contain"
+                      onError={() => setLogoError(true)}
+                    />
+                  ) : (
+                    <>
+                      <div className="flex size-8 items-center justify-center rounded-xl bg-[#007A55] text-white">
+                        <ShoppingBag className="size-4.5" />
+                      </div>
+                      <span className="font-black text-xl text-[#007A55]">{storeName || "Buybox"}</span>
+                    </>
+                  )}
                 </div>
               </SheetTitle>
 
@@ -339,6 +379,17 @@ export function StorefrontHeader({ categories: propCategories, onCartClick, clas
                     <span className="rounded bg-[#E02424] px-1.5 py-0.5 text-[9px] text-white">HOT</span>
                   </Link>
                   <Link
+                    href="/campaigns"
+                    id="mobile-drawer-campaigns-link"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center justify-between rounded-lg px-3 py-2 text-emerald-800 hover:bg-emerald-50 font-bold"
+                  >
+                    <span>Campaigns &amp; Offers</span>
+                    <span className="rounded bg-amber-400 px-1.5 py-0.5 text-[9px] font-black text-slate-950 uppercase">
+                      LIVE
+                    </span>
+                  </Link>
+                  <Link
                     href="/shop?sort=newest"
                     onClick={() => setMobileMenuOpen(false)}
                     className="block rounded-lg px-3 py-2 text-foreground hover:bg-slate-50"
@@ -363,12 +414,11 @@ export function StorefrontHeader({ categories: propCategories, onCartClick, clas
                   </p>
                   <div className="space-y-1 text-sm">
                     {categories.map((cat) => {
-                      const id = cat.id || cat._id;
-                      const slug = cat.slug || id;
+                      const id = cat.id || cat._id || cat.slug;
                       return (
                         <Link
                           key={id}
-                          href={`/category/${slug}`}
+                          href={getCategoryHref(cat)}
                           onClick={() => setMobileMenuOpen(false)}
                           className="flex items-center justify-between rounded-lg px-3 py-2 text-foreground hover:bg-emerald-50 hover:text-[#007A55]"
                         >

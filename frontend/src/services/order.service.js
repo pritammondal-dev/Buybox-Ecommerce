@@ -58,6 +58,7 @@ export const orderService = {
     couponCode = null,
     deliveryOptionId = "standard",
     idempotencyKey = null,
+    quoteReference = null,
   }) {
     const body = {
       shippingAddressId,
@@ -65,6 +66,9 @@ export const orderService = {
     };
     if (couponCode) {
       body.couponCode = couponCode;
+    }
+    if (quoteReference) {
+      body.quoteReference = quoteReference;
     }
     const config = {};
     if (idempotencyKey && typeof idempotencyKey === "string" && idempotencyKey.trim().length >= 8) {

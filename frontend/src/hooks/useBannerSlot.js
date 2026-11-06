@@ -8,7 +8,50 @@ import { BANNER_SLOT_MAP } from "../constants/banner-slots.constants.js";
  * There is intentionally NO promotional/static fallback here: when Superadmin
  * deactivates a banner, the slot becomes empty instead of showing stale artwork.
  */
-export function resolveBannerSlot(banners = [], slotKey) {
+export function resolveBannerSlot(banners = [], slotKey, inactiveSlots = null) {
+  const inactiveSet = new Set([
+    ...(Array.isArray(inactiveSlots) ? inactiveSlots : []),
+    ...(Array.isArray(banners?.inactiveSlots) ? banners.inactiveSlots : []),
+    ...(Array.isArray(banners)
+      ? banners
+          .filter((b) => b && b.isActive === false && (b.slotKey || b.placement))
+          .map((b) => b.slotKey || b.placement)
+      : []),
+  ]);
+
+  const defaultSlot = BANNER_SLOT_MAP[slotKey] || {
+    slotKey,
+    defaultImage: "/images/banners/banner-work-smarter.png",
+    defaultLink: "/shop",
+    defaultAlt: "Buybox Promotional Banner",
+  };
+
+  // 1. Explicitly deactivated slot by admin (via inactiveSlots meta or inactive banner object in array)
+  const isDeactivated =
+    inactiveSet.has(slotKey) ||
+    (Array.isArray(banners) &&
+      banners.some(
+        (b) =>
+          b &&
+          (b.slotKey === slotKey || b.placement === slotKey) &&
+          b.isActive === false
+      ));
+
+  if (isDeactivated) {
+    return {
+      imageUrl: null,
+      mobileImageUrl: null,
+      linkUrl: defaultSlot.defaultLink || "/shop",
+      altText: "",
+      isCustom: false,
+      isActive: false,
+      isVisible: false,
+      fallbackImage: null,
+      slotKey,
+      bannerId: null,
+    };
+  }
+
   if (!Array.isArray(banners) || banners.length === 0) {
     return {
       imageUrl: null,
@@ -16,12 +59,15 @@ export function resolveBannerSlot(banners = [], slotKey) {
       linkUrl: null,
       altText: "",
       isCustom: false,
+      isActive: false,
+      isVisible: false,
       fallbackImage: null,
       slotKey,
       bannerId: null,
     };
   }
 
+  // 2. Active custom banner explicitly mapped to this slotKey or placement
   const customBanner = banners.find(
     (b) =>
       b &&
@@ -39,6 +85,8 @@ export function resolveBannerSlot(banners = [], slotKey) {
       linkUrl: null,
       altText: "",
       isCustom: false,
+      isActive: false,
+      isVisible: false,
       fallbackImage: null,
       slotKey,
       bannerId: null,
@@ -51,6 +99,8 @@ export function resolveBannerSlot(banners = [], slotKey) {
     linkUrl: customBanner.linkUrl || "/shop",
     altText: customBanner.altText || customBanner.title || "Buybox Promotional Banner",
     isCustom: true,
+    isActive: true,
+    isVisible: true,
     fallbackImage: null,
     slotKey,
     bannerId: customBanner._id || customBanner.id || null,
@@ -62,17 +112,18 @@ export function resolveBannerSlot(banners = [], slotKey) {
  *
  * @param {Array} banners - List of banners from API
  * @param {string} slotKey - Target slot identifier
+ * @param {Array} [inactiveSlots] - Optional list of deactivated slot keys
  */
-export function useBannerSlot(banners, slotKey) {
+export function useBannerSlot(banners, slotKey, inactiveSlots = null) {
   const resolved = useMemo(
-    () => resolveBannerSlot(banners, slotKey),
-    [banners, slotKey]
+    () => resolveBannerSlot(banners, slotKey, inactiveSlots),
+    [banners, slotKey, inactiveSlots]
   );
 
   const [failedUrl, setFailedUrl] = useState(null);
 
   const isFailed = failedUrl === resolved.imageUrl;
-  const src = isFailed ? null : resolved.imageUrl;
+  const src = (resolved.isVisible && !isFailed) ? resolved.imageUrl : null;
 
   const handleImageError = useCallback(() => {
     setFailedUrl(resolved.imageUrl);
@@ -80,6 +131,7 @@ export function useBannerSlot(banners, slotKey) {
 
   return {
     ...resolved,
+    isVisible: Boolean(resolved.isVisible && src),
     src,
     handleImageError,
   };

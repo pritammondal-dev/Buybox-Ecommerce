@@ -5,6 +5,7 @@ const Role = require("../models/Role");
 const Permission = require("../models/Permission");
 const RolePermission = require("../models/RolePermission");
 const EmployeeRole = require("../models/EmployeeRole");
+const JobRole = require("../models/JobRole");
 const EmployeePermissionGrant = require("../models/EmployeePermissionGrant");
 const EmployeePermissionRestriction = require("../models/EmployeePermissionRestriction");
 const WorkAssignment = require("../models/WorkAssignment");
@@ -43,6 +44,12 @@ const sanitizeAuditState = (state) => {
     "accessToken",
     "otp",
     "verificationToken",
+    "accountNumber",
+    "rawAccountNumber",
+    "fullAccountNumber",
+    "accountNumberEncrypted",
+    "accountNumberHash",
+    "cvv",
   ];
 
   try {
@@ -88,6 +95,7 @@ const recordAuditLog = async ({
   entityType,
   beforeState = null,
   afterState = null,
+  reason = null,
   req = null,
   session = null,
 }) => {
@@ -105,6 +113,8 @@ const recordAuditLog = async ({
     userAgent = (req.headers && req.headers["user-agent"]) || null;
   }
 
+  const resolvedReason = reason || (afterState && typeof afterState === "object" ? afterState.reason : null) || null;
+
   const logData = {
     actorId,
     targetId: targetId ? new mongoose.Types.ObjectId(targetId) : null,
@@ -112,6 +122,7 @@ const recordAuditLog = async ({
     entityType,
     beforeState: sanitizeAuditState(beforeState),
     afterState: sanitizeAuditState(afterState),
+    reason: resolvedReason,
     ipAddress,
     userAgent,
     createdAt: new Date(),
@@ -1570,14 +1581,51 @@ const updateEmployeePermissionsBulk = async ({
     permMap.set(p.slug, p);
   }
 
+  const { PERMISSIONS, ALIAS_MAP, SECTION5_CATALOG } = require("../constants/permissions.constants");
+  const knownValues = new Set([
+    ...Object.values(PERMISSIONS),
+    ...Object.keys(ALIAS_MAP || {}),
+  ]);
+  if (Array.isArray(SECTION5_CATALOG)) {
+    for (const cat of SECTION5_CATALOG) {
+      if (Array.isArray(cat?.permissions)) {
+        for (const p of cat.permissions) {
+          if (p?.slug) knownValues.add(p.slug);
+        }
+      }
+    }
+  }
+
   const validSlugs = new Set();
   for (const slug of permissionSlugs) {
     if (!permMap.has(slug)) {
-      throw new AppError(
-        `Invalid permission name: ${slug}`,
-        400,
-        "INVALID_PERMISSION"
-      );
+      if (knownValues.has(slug)) {
+        let permDoc = await Permission.findOne({ slug });
+        if (!permDoc) {
+          const moduleName = slug.split(/[.:]/)[0] || "system";
+          const humanName = slug
+            .replace(/[_.:]/g, " ")
+            .split(" ")
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(" ");
+
+          permDoc = await Permission.create({
+            name: humanName,
+            slug,
+            module: moduleName,
+            description: `Permission for ${slug}`,
+            isSystem: true,
+            isActive: true,
+          });
+        }
+        permMap.set(slug, permDoc);
+      } else {
+        throw new AppError(
+          `Invalid permission name: ${slug}`,
+          400,
+          "INVALID_PERMISSION"
+        );
+      }
     }
     validSlugs.add(slug);
   }
@@ -1586,6 +1634,19 @@ const updateEmployeePermissionsBulk = async ({
   const beforeEffective = await getEffectivePermissions(targetUser._id);
 
   // Determine base role permissions
+  const rolePermSlugs = new Set();
+
+  // Dynamic JobRole Permissions
+  if (employee.jobRoleId) {
+    const jobRole = await JobRole.findById(employee.jobRoleId).lean();
+    if (jobRole && jobRole.isActive && Array.isArray(jobRole.permissions)) {
+      for (const p of jobRole.permissions) {
+        rolePermSlugs.add(p);
+      }
+    }
+  }
+
+  // Legacy EmployeeRoles
   const activeRoles = await EmployeeRole.find({
     employeeId: employee._id,
     isActive: true,
@@ -1596,7 +1657,6 @@ const updateEmployeePermissionsBulk = async ({
   }).lean();
   const rolePermIds = new Set(rolePermissions.map((rp) => rp.permissionId.toString()));
 
-  const rolePermSlugs = new Set();
   for (const p of allPermissions) {
     if (rolePermIds.has(p._id.toString())) {
       rolePermSlugs.add(p.slug);
@@ -1624,7 +1684,28 @@ const updateEmployeePermissionsBulk = async ({
   // 2. Direct Restrictions for any base role permission stripped in the request
   for (const roleSlug of rolePermSlugs) {
     if (!validSlugs.has(roleSlug)) {
-      const pDoc = permMap.get(roleSlug);
+      let pDoc = permMap.get(roleSlug);
+      if (!pDoc) {
+        pDoc = await Permission.findOne({ slug: roleSlug });
+        if (!pDoc) {
+          const moduleName = roleSlug.split(/[.:]/)[0] || "system";
+          const humanName = roleSlug
+            .replace(/[_.:]/g, " ")
+            .split(" ")
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(" ");
+
+          pDoc = await Permission.create({
+            name: humanName,
+            slug: roleSlug,
+            module: moduleName,
+            description: `Permission for ${roleSlug}`,
+            isSystem: true,
+            isActive: true,
+          });
+        }
+        permMap.set(roleSlug, pDoc);
+      }
       if (pDoc) {
         await EmployeePermissionRestriction.create({
           employeeId: employee._id,

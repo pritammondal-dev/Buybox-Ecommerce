@@ -44,14 +44,14 @@ router.get(
 router.get(
   "/",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   storefrontContentBlockController.listBlocks
 );
 
 router.get(
   "/:blockId",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_READ),
+  requirePermissions(PERMISSIONS.CMS_VIEW),
   validate(
     storefrontContentBlockIdParamsSchema,
     "params"
@@ -62,7 +62,7 @@ router.get(
 router.post(
   "/",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_CREATE),
   validate(
     createStorefrontContentBlockSchema,
     "body"
@@ -73,7 +73,7 @@ router.post(
 router.patch(
   "/:blockId",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_EDIT),
   validate(
     storefrontContentBlockIdParamsSchema,
     "params"
@@ -88,7 +88,7 @@ router.patch(
 router.delete(
   "/:blockId",
   authenticate,
-  requirePermissions(PERMISSIONS.SETTINGS_MANAGE),
+  requirePermissions(PERMISSIONS.CMS_DELETE),
   validate(
     storefrontContentBlockIdParamsSchema,
     "params"

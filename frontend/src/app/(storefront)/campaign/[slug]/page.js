@@ -44,13 +44,18 @@ function CampaignFallback() {
   );
 }
 
-export default async function CampaignPage({ params }) {
+export default async function CampaignPage({ params, searchParams }) {
   const resolvedParams = await params;
+  const resolvedSearchParams = await searchParams;
   const slug = resolvedParams?.slug || "";
+  const isPreview = resolvedSearchParams?.preview === "true";
 
   let campaign = null;
   try {
-    const res = await campaignService.getCampaignBySlug(slug);
+    const res = await campaignService.getCampaignBySlug(
+      slug,
+      isPreview ? { preview: "true" } : {}
+    );
     campaign = res?.data;
   } catch {
     notFound();

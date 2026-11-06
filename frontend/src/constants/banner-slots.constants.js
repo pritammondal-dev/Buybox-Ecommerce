@@ -7,7 +7,8 @@
  */
 
 export const BANNER_SECTIONS = [
-  { id: "all", label: "All Slots", count: 11 },
+  { id: "all", label: "All Slots", count: 12 },
+  { id: "hero_main", label: "Hero Showcase", count: 1 },
   { id: "hero_mini", label: "Hero Mini Cards", count: 3 },
   { id: "mid_page", label: "Mid-Page Banners", count: 2 },
   { id: "category_highlights", label: "Category Highlights", count: 3 },
@@ -15,6 +16,20 @@ export const BANNER_SECTIONS = [
 ];
 
 export const BANNER_SLOTS = [
+  // 0. Hero Main Showcase Carousel
+  {
+    slotKey: "hero_main",
+    title: "Hero Main — Primary Carousel Slide",
+    section: "hero_main",
+    sectionLabel: "Hero Showcase",
+    description: "Main hero carousel slide (2/3 width) on the homepage showcase.",
+    defaultImage: null,
+    defaultLink: "/shop",
+    defaultAlt: "Buybox Official Marketplace Showcase",
+    recommendedDimensions: "840 × 430 px (~2:1)",
+    displayOrder: 0,
+  },
+
   // 1. Hero Mini Cards
   {
     slotKey: "hero_audio",

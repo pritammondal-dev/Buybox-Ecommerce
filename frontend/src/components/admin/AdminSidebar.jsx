@@ -15,6 +15,7 @@ import {
   Truck,
   Warehouse,
   Users,
+  Building,
   Building2,
   TicketPercent,
   Megaphone,
@@ -36,6 +37,13 @@ import {
   Sparkles,
   Sliders,
   FileSpreadsheet,
+  Percent,
+  BarChart2,
+  AlertTriangle,
+  Landmark,
+  TrendingUp,
+  Wallet,
+  Scale,
 } from "lucide-react";
 import { Tooltip } from "../ui/Tooltip.jsx";
 import { useAdminAuth } from "../../hooks/useAdminAuth.js";
@@ -69,6 +77,18 @@ const NAV_GROUPS = [
         permission: "vendors.view",
       },
       {
+        label: "Bank Applications",
+        href: "/administrator/bank-accounts",
+        icon: Landmark,
+        permission: "vendors.bank_accounts.view",
+      },
+      {
+        label: "Partner Banks",
+        href: "/administrator/partner-banks",
+        icon: Building,
+        permission: "partner_banks.view",
+      },
+      {
         label: "Customers",
         href: "/administrator/customers",
         icon: Users,
@@ -96,7 +116,7 @@ const NAV_GROUPS = [
         label: "Attributes",
         href: "/administrator/catalog/attributes",
         icon: Sliders,
-        permission: "products.view",
+        permission: "attributes.view",
       },
       {
         label: "Bulk Import / Export",
@@ -151,22 +171,64 @@ const NAV_GROUPS = [
         icon: Truck,
         permission: "shipping.view",
       },
+      {
+        label: "Exceptions",
+        href: "/administrator/operations/exceptions",
+        icon: AlertTriangle,
+        permission: "orders.view",
+      },
     ],
   },
   {
     title: "Finance & Settlements",
     items: [
       {
-        label: "Payments",
-        href: "/administrator/payments",
-        icon: CreditCard,
-        permission: "payments.view",
+        label: "Financial Overview",
+        href: "/administrator/finance/overview",
+        icon: TrendingUp,
+        permission: "settlements.view",
+      },
+      {
+        label: "Commission Policies",
+        href: "/administrator/finance/commission-policies",
+        icon: Percent,
+        permission: "settlements.view",
+      },
+      {
+        label: "Vendor Wallets",
+        href: "/administrator/finance/wallets",
+        icon: Wallet,
+        permission: "settlements.view",
+      },
+      {
+        label: "Reconciliation",
+        href: "/administrator/finance/reconciliation",
+        icon: Scale,
+        permission: "settlements.view",
       },
       {
         label: "Settlements & Payouts",
         href: "/administrator/finance/settlements",
         icon: Banknote,
         permission: "settlements.view",
+      },
+      {
+        label: "Withdrawals Queue",
+        href: "/administrator/finance/withdrawals",
+        icon: Landmark,
+        permission: "settlements.view",
+      },
+      {
+        label: "Reports & Analytics",
+        href: "/administrator/reports",
+        icon: BarChart2,
+        permission: "analytics.view",
+      },
+      {
+        label: "Payments",
+        href: "/administrator/payments",
+        icon: CreditCard,
+        permission: "payments.view",
       },
     ],
   },
@@ -186,9 +248,27 @@ const NAV_GROUPS = [
         permission: "coupons.view",
       },
       {
+        label: "Discounts",
+        href: "/administrator/marketing/discounts",
+        icon: Percent,
+        permission: "discounts.view",
+      },
+      {
+        label: "Promotions",
+        href: "/administrator/marketing/promotions",
+        icon: Tags,
+        permission: "discounts.view",
+      },
+      {
         label: "Store Banners (CMS)",
         href: "/administrator/marketing/banners",
         icon: ImageIcon,
+        permission: "cms.view",
+      },
+      {
+        label: "Storefront Merchandising",
+        href: "/administrator/cms/merchandising",
+        icon: Sliders,
         permission: "cms.view",
       },
       {
@@ -196,6 +276,12 @@ const NAV_GROUPS = [
         href: "/administrator/cms/pages",
         icon: FileText,
         permission: "cms.view",
+      },
+      {
+        label: "Special Event Pages",
+        href: "/administrator/cms/events",
+        icon: Sparkles,
+        permission: "cms.events.view",
       },
     ],
   },
@@ -240,6 +326,20 @@ const NAV_GROUPS = [
         permission: "support.view",
       },
       {
+        label: "Store Settings & Flags",
+        href: "/administrator/settings/store",
+        icon: Settings,
+        roles: ["SUPERADMIN", "super_admin"],
+        permission: "settings.manage",
+      },
+      {
+        label: "Tax Rules & Rates",
+        href: "/administrator/settings/taxes",
+        icon: Percent,
+        roles: ["SUPERADMIN", "super_admin"],
+        permission: "tax.read",
+      },
+      {
         label: "Platform Credentials",
         href: "/administrator/settings/credentials",
         icon: KeyRound,
@@ -272,32 +372,43 @@ const checkItemAccess = (item, user) => {
   if (permissions.includes(item.permission)) return true;
 
   const legacyAliases = {
-    "dashboard.view": "analytics:read",
-    "tasks.view": "work_assignments:read",
-    "vendors.view": "vendors:read",
-    "customers.view": "users:read",
-    "products.view": "products:read",
-    "categories.view": "products:read",
-    "brands.view": "products:read",
-    "inventory.view": "inventory:read",
-    "warehouses.view": "warehouses:read",
-    "orders.view": "orders:read",
-    "returns.view": "orders:read",
-    "refunds.view": "finance:read",
-    "shipping.view": "shipments:read",
-    "payments.view": "payments:read",
-    "settlements.view": "finance:read",
-    "campaigns.view": "campaigns:read",
-    "coupons.view": "coupons:read",
-    "cms.view": "settings:read",
-    "reviews.view": "reviews:read",
-    "support.view": "support_tickets:read",
-    "staff.view": "employees:read",
-    "activity_logs.view": "audit_logs:read",
+    "dashboard.view": ["analytics:read"],
+    "tasks.view": ["work_assignments:read"],
+    "vendors.view": ["vendors:read"],
+    "customers.view": ["users:read"],
+    "products.view": ["products:read"],
+    "attributes.view": ["products:read", "products.view"],
+    "categories.view": ["products:read", "products.view"],
+    "brands.view": ["products:read", "products.view"],
+    "inventory.view": ["inventory:read"],
+    "warehouses.view": ["warehouses:read"],
+    "orders.view": ["orders:read"],
+    "returns.view": ["orders:read"],
+    "refunds.view": ["finance:read"],
+    "shipping.view": ["shipments:read"],
+    "payments.view": ["payments:read"],
+    "settlements.view": ["finance:read"],
+    "campaigns.view": ["campaigns:read"],
+    "coupons.view": ["coupons:read"],
+    "discounts.view": ["coupons:read", "discounts:read", "discounts.view"],
+    "cms.view": ["settings:read"],
+    "cms.events.view": ["settings:read", "cms.view"],
+    "reviews.view": ["reviews:read"],
+    "support.view": ["support_tickets:read"],
+    "staff.view": ["employees:read"],
+    "job_roles.view": ["employees:read", "roles:read"],
+    "activity_logs.view": ["audit_logs:read"],
+    "tax.view": ["tax:read"],
+    "platform_settings.view": ["settings:read"],
+    "platform_credentials.view": ["settings:read"],
+    "permissions.view": ["permissions:read"],
   };
 
-  const alias = legacyAliases[item.permission];
-  return Boolean(alias && permissions.includes(alias));
+  const aliasEntry = legacyAliases[item.permission];
+  if (Array.isArray(aliasEntry)) {
+    return aliasEntry.some((alias) => permissions.includes(alias));
+  }
+  return Boolean(aliasEntry && permissions.includes(aliasEntry));
 };
 
 export function AdminSidebar({

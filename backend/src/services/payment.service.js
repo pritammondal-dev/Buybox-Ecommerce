@@ -15,6 +15,7 @@ const AppError = require("../errors/AppError");
 
 const {
   PAYMENT_GATEWAYS,
+  canTransitionPaymentStatus,
 } = require("../constants/payment.constants");
 
 const MINOR_UNIT_SCALE = 100;
@@ -325,17 +326,55 @@ const handleActivePayment = async ({
   );
 };
 
+const validateOrderPaymentAccess = async (order, userId, options = {}) => {
+  const isGuestCaller = Boolean(
+    options.isGuest ||
+    (typeof userId === "string" && userId.startsWith("gst_")) ||
+    (typeof userId === "object" && (userId.isGuest || userId.guestId))
+  );
+
+  if (order.isGuestOrder) {
+    const callerGuestId = options.guestId || (typeof userId === "object" ? userId.guestId || userId.id : userId);
+    const token = options.guestOrderAccessToken || options.token;
+
+    const isMatchGuestId = Boolean(callerGuestId && order.guestId === callerGuestId);
+    const isMatchToken = Boolean(token && order.guestOrderAccessToken === token);
+
+    if (!isMatchGuestId && !isMatchToken) {
+      throw new AppError(
+        "You are not allowed to access this order",
+        403,
+        "ORDER_ACCESS_DENIED"
+      );
+    }
+    return { isGuest: true, guestId: order.guestId, customer: null };
+  }
+
+  if (isGuestCaller) {
+    throw new AppError(
+      "You are not allowed to access this order",
+      403,
+      "ORDER_ACCESS_DENIED"
+    );
+  }
+
+  const customer = await validateCustomer(typeof userId === "object" ? (userId.id || userId._id) : userId);
+  if (!order.customerId || order.customerId.toString() !== customer._id.toString()) {
+    throw new AppError(
+      "You are not allowed to access this order",
+      403,
+      "ORDER_ACCESS_DENIED"
+    );
+  }
+  return { isGuest: false, customer, guestId: null };
+};
+
 const createPaymentForOrder = async (
   orderId,
   userId,
   idempotencyKey,
   options = {}
 ) => {
-  const customer = await validateCustomer(userId);
-
-  const normalizedIdempotencyKey =
-    validateIdempotencyKey(idempotencyKey);
-
   const order = await orderRepository.findById(
     orderId,
     options
@@ -349,16 +388,10 @@ const createPaymentForOrder = async (
     );
   }
 
-  if (
-    order.customerId.toString() !==
-    customer._id.toString()
-  ) {
-    throw new AppError(
-      "You are not allowed to access this order",
-      403,
-      "ORDER_ACCESS_DENIED"
-    );
-  }
+  const { customer } = await validateOrderPaymentAccess(order, userId, options);
+
+  const normalizedIdempotencyKey =
+    validateIdempotencyKey(idempotencyKey);
 
   if (order.paymentStatus === "paid") {
     throw new AppError(
@@ -484,7 +517,8 @@ const createPaymentForOrder = async (
     payment = await paymentRepository.create(
       {
         orderId: order._id,
-        customerId: customer._id,
+        customerId: customer ? customer._id : null,
+        guestId: order.isGuestOrder ? order.guestId : null,
         gateway: PAYMENT_GATEWAYS.RAZORPAY,
         gatewayOrderId: null,
         gatewayPaymentId: null,
@@ -643,43 +677,43 @@ const getLatestPaymentForOrder = async (
 const refundPaymentForOrder = async (
   orderId,
   userId,
-  requestedAmount = null
+  requestedAmount = null,
+  customIdempotencyKey = null
 ) => {
-  const customer = await validateCustomer(userId);
-
-  const order =
-    await orderRepository.findById(orderId);
-
+  const order = await orderRepository.findById(orderId);
   if (!order) {
-    throw new AppError(
-      "Order not found",
-      404,
-      "ORDER_NOT_FOUND"
-    );
+    throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
   }
 
-  if (
-    order.customerId.toString() !==
-    customer._id.toString()
-  ) {
-    throw new AppError(
-      "You are not allowed to access this order",
-      403,
-      "ORDER_ACCESS_DENIED"
-    );
+  let customer = null;
+  if (userId) {
+    const isDirectMatch = String(order.customerId) === String(userId);
+    if (isDirectMatch) {
+      customer = await Customer.findById(order.customerId);
+    } else {
+      customer = await Customer.findOne({
+        $or: [{ userId }, { _id: userId }],
+        isActive: true,
+        deletedAt: null,
+      });
+
+      if (customer && customer._id.toString() !== order.customerId.toString()) {
+        throw new AppError(
+          "You are not allowed to access this order",
+          403,
+          "ORDER_ACCESS_DENIED"
+        );
+      }
+    }
   }
 
-  const payment =
-    await paymentRepository.findLatestByOrderId(
-      order._id
-    );
+  if (!customer) {
+    customer = await Customer.findById(order.customerId);
+  }
 
+  const payment = await paymentRepository.findLatestByOrderId(order._id);
   if (!payment) {
-    throw new AppError(
-      "Payment record not found",
-      404,
-      "PAYMENT_NOT_FOUND"
-    );
+    throw new AppError("Payment record not found", 404, "PAYMENT_NOT_FOUND");
   }
 
   if (payment.status === "refunded") {
@@ -702,36 +736,17 @@ const refundPaymentForOrder = async (
     );
   }
 
-  const totalAmount =
-    Number(payment.amount.toString());
+  const totalAmount = Number(payment.amount.toString());
+  const refundedAmount = Number(payment.refundedAmount?.toString?.() || "0");
+  const reservedAmount = Number(payment.refundReservedAmount?.toString?.() || "0");
+  const refundableAmount = totalAmount - refundedAmount - reservedAmount;
 
-  const refundedAmount =
-    Number(
-      payment.refundedAmount?.toString?.() || "0"
-    );
-
-  const reservedAmount =
-    Number(
-      payment.refundReservedAmount?.toString?.() ||
-        "0"
-    );
-
-  const refundableAmount =
-    totalAmount -
-    refundedAmount -
-    reservedAmount;
-
-  if (
-    !Number.isFinite(refundableAmount) ||
-    refundableAmount <= 0
-  ) {
+  if (!Number.isFinite(refundableAmount) || refundableAmount <= 0) {
     if (refundedAmount >= totalAmount) {
-      return paymentRepository.updateById(
-        payment._id,
-        {
-          status: "refunded",
-        }
-      );
+      return paymentRepository.updateById(payment._id, {
+        status: "refunded",
+        refundReservedAmount: "0.00",
+      });
     }
 
     throw new AppError(
@@ -742,9 +757,7 @@ const refundPaymentForOrder = async (
   }
 
   const amountToRefund =
-    requestedAmount === null
-      ? refundableAmount
-      : Number(requestedAmount);
+    requestedAmount === null ? refundableAmount : Number(requestedAmount);
 
   if (
     !Number.isFinite(amountToRefund) ||
@@ -758,11 +771,7 @@ const refundPaymentForOrder = async (
     );
   }
 
-  const refundMinorUnits =
-    decimalToMinorUnits(
-      amountToRefund.toFixed(2)
-    );
-
+  const refundMinorUnits = decimalToMinorUnits(amountToRefund.toFixed(2));
   if (refundMinorUnits <= 0) {
     throw new AppError(
       "Refund amount must be greater than zero",
@@ -771,20 +780,100 @@ const refundPaymentForOrder = async (
     );
   }
 
-  const refundAmountString =
-    amountToRefund.toFixed(2);
-
+  const refundAmountString = amountToRefund.toFixed(2);
   const priorRefundedUnits = decimalToMinorUnits(
     payment.refundedAmount?.toString?.() || "0"
   );
 
-  const refundIdempotencyKey = `rfnd-${payment._id.toString().slice(-12)}-${priorRefundedUnits}-${refundMinorUnits}`;
+  const refundIdempotencyKey = customIdempotencyKey
+    ? String(customIdempotencyKey).trim()
+    : `rfnd-${payment._id.toString().slice(-12)}-${priorRefundedUnits}-${refundMinorUnits}`;
 
-  const reservation =
-    await paymentRepository.reserveRefundAmount(
-      payment._id,
-      refundAmountString
-    );
+  // 1. Idempotency Check BEFORE Calling Gateway
+  const existingRefund = await refundRepository.findByIdempotencyKey(
+    payment.gateway || PAYMENT_GATEWAYS.RAZORPAY,
+    refundIdempotencyKey
+  );
+
+  if (existingRefund) {
+    if (existingRefund.status === "processed") {
+      const currentRefUnits = decimalToMinorUnits(
+        payment.refundedAmount?.toString?.() || "0"
+      );
+      const existingRefUnits = decimalToMinorUnits(
+        existingRefund.amount?.toString?.() || "0"
+      );
+
+      // If local payment record is out of sync due to prior local failure, synchronize it
+      if (currentRefUnits < existingRefUnits || payment.status !== "refunded") {
+        const newRefAmount = Math.min(
+          totalAmount,
+          Number((refundedAmount + Number(existingRefund.amount)).toFixed(2))
+        );
+        const isFullyRefunded = newRefAmount >= totalAmount;
+        return await paymentRepository.updateById(payment._id, {
+          refundedAmount: newRefAmount.toFixed(2),
+          refundReservedAmount: "0.00",
+          status: isFullyRefunded ? "refunded" : "partially_refunded",
+          metadata: {
+            ...payment.metadata,
+            lastRefundId: existingRefund.gatewayRefundId || "",
+            lastRefundStatus: "processed",
+          },
+        });
+      }
+      return payment;
+    }
+
+    if (
+      existingRefund.status === "pending" ||
+      existingRefund.status === "pending_reconciliation"
+    ) {
+      if (existingRefund.gatewayRefundId && payment.gateway !== "paypal") {
+        try {
+          const gwRefund = await razorpayProvider.fetchRefund(
+            existingRefund.gatewayRefundId
+          );
+          if (gwRefund && gwRefund.status === "processed") {
+            await refundRepository.updateById(existingRefund._id, {
+              status: "processed",
+              processedAt: new Date(),
+              failureReason: null,
+            });
+            const newRefAmount = Math.min(
+              totalAmount,
+              Number((refundedAmount + amountToRefund).toFixed(2))
+            );
+            const isFullyRefunded = newRefAmount >= totalAmount;
+            return await paymentRepository.updateById(payment._id, {
+              refundedAmount: newRefAmount.toFixed(2),
+              refundReservedAmount: "0.00",
+              status: isFullyRefunded ? "refunded" : "partially_refunded",
+              metadata: {
+                ...payment.metadata,
+                lastRefundId: existingRefund.gatewayRefundId,
+                lastRefundStatus: "processed",
+              },
+            });
+          }
+        } catch {
+          // If provider query is pending, continue to block duplicate
+        }
+      }
+
+      throw new AppError(
+        "A refund with this idempotency key is already pending reconciliation",
+        409,
+        "REFUND_PENDING_RECONCILIATION"
+      );
+    }
+  }
+
+  // 2. Atomic Reservation: Guarantees concurrent requests cannot over-refund
+  const reservation = await paymentRepository.reserveRefundAmount(
+    payment._id,
+    refundAmountString
+  );
 
   if (!reservation) {
     throw new AppError(
@@ -794,10 +883,12 @@ const refundPaymentForOrder = async (
     );
   }
 
+  let gatewaySucceeded = false;
+  let gatewayRefundId = null;
+  let refundStatus = "processed";
+
   try {
     let refund;
-    let gatewayRefundId = null;
-    let refundStatus = "processed";
 
     if (payment.gateway === "paypal") {
       refund = await paypalProvider.refundCapture(
@@ -809,39 +900,27 @@ const refundPaymentForOrder = async (
         }
       );
       gatewayRefundId = refund?.id || null;
-      refundStatus =
-        refund?.status === "COMPLETED"
-          ? "processed"
-          : "pending";
+      refundStatus = refund?.status === "COMPLETED" ? "processed" : "pending";
+      gatewaySucceeded = true;
     } else {
-      refund =
-        await razorpayProvider.refundPayment({
-          paymentId:
-            payment.gatewayPaymentId,
-          amount:
-            refundMinorUnits,
-          notes: {
-            buyboxOrderId:
-              order._id.toString(),
-            orderNumber:
-              order.orderNumber,
-          },
-          idempotencyKey:
-            refundIdempotencyKey,
-        });
+      refund = await razorpayProvider.refundPayment({
+        paymentId: payment.gatewayPaymentId,
+        amount: refundMinorUnits,
+        notes: {
+          buyboxOrderId: order._id.toString(),
+          orderNumber: order.orderNumber,
+        },
+        idempotencyKey: refundIdempotencyKey,
+      });
       gatewayRefundId = refund?.id || null;
-      refundStatus =
-        refund?.status === "processed"
-          ? "processed"
-          : "pending";
+      refundStatus = refund?.status === "processed" ? "processed" : "pending";
+      gatewaySucceeded = true;
     }
 
-    const newRefundedAmount =
-      refundedAmount + amountToRefund;
+    const newRefundedAmount = refundedAmount + amountToRefund;
+    const isFullyRefunded = newRefundedAmount >= totalAmount;
 
-    const isFullyRefunded =
-      newRefundedAmount >= totalAmount;
-
+    // 3. Persist Local Refund Document
     try {
       await refundRepository.create({
         paymentId: payment._id,
@@ -854,56 +933,122 @@ const refundPaymentForOrder = async (
         status: refundStatus,
         reason: "Order cancellation refund",
         idempotencyKey: refundIdempotencyKey,
-        processedAt:
-          refundStatus === "processed"
-            ? new Date()
-            : null,
+        processedAt: refundStatus === "processed" ? new Date() : null,
       });
     } catch (createError) {
       if (createError?.code === 11000) {
-        const existingRefund =
-          (await refundRepository.findByIdempotencyKey(
-            payment.gateway || PAYMENT_GATEWAYS.RAZORPAY,
-            refundIdempotencyKey
-          )) ||
-          (gatewayRefundId
-            ? await refundRepository.findByGatewayRefundId(
-                payment.gateway || PAYMENT_GATEWAYS.RAZORPAY,
-                gatewayRefundId
-              )
-            : null);
-
-        if (
-          !existingRefund ||
-          existingRefund.paymentId.toString() !== payment._id.toString() ||
-          existingRefund.orderId.toString() !== order._id.toString()
-        ) {
-          throw createError;
+        const existing = await refundRepository.findByIdempotencyKey(
+          payment.gateway || PAYMENT_GATEWAYS.RAZORPAY,
+          refundIdempotencyKey
+        );
+        if (existing) {
+          await refundRepository.updateById(existing._id, {
+            gatewayRefundId,
+            status: refundStatus,
+            processedAt:
+              refundStatus === "processed" ? new Date() : existing.processedAt,
+          });
         }
       } else {
+        // Gateway succeeded but local refund document creation threw
+        // Do NOT release reservation; rethrow so payment sync can be recovered
         throw createError;
       }
     }
 
-    return await paymentRepository.updateById(
-      payment._id,
-      {
-        refundedAmount:
-          newRefundedAmount.toFixed(2),
-        refundReservedAmount: "0.00",
-        status:
-          isFullyRefunded
-            ? "refunded"
-            : "partially_refunded",
-        metadata: {
-          lastRefundId:
-            refund?.id || "",
-          lastRefundStatus:
-            refund?.status || "",
-        },
-      }
-    );
+    // 4. Update Payment Record
+    return await paymentRepository.updateById(payment._id, {
+      refundedAmount: newRefundedAmount.toFixed(2),
+      refundReservedAmount: "0.00",
+      status: isFullyRefunded ? "refunded" : "partially_refunded",
+      metadata: {
+        ...payment.metadata,
+        lastRefundId: gatewayRefundId || refund?.id || "",
+        lastRefundStatus: refundStatus,
+      },
+    });
   } catch (error) {
+    if (gatewaySucceeded) {
+      // Gateway succeeded but local persistence failed!
+      // NEVER release the reservation. The money has already left the gateway.
+      // Record error for operational recovery
+      try {
+        await refundRepository.create({
+          paymentId: payment._id,
+          orderId: order._id,
+          customerId: order.customerId,
+          gateway: payment.gateway || PAYMENT_GATEWAYS.RAZORPAY,
+          gatewayRefundId,
+          amount: refundAmountString,
+          currency: order.currency,
+          status: "pending_reconciliation",
+          reason: "Order cancellation refund",
+          idempotencyKey: refundIdempotencyKey,
+          failureReason:
+            "Gateway succeeded but local sync failed: " + error.message,
+        });
+      } catch {
+        // Squelch secondary persistence error
+      }
+
+      throw new AppError(
+        "Refund processed at gateway, but local payment synchronization failed. Recovery required.",
+        500,
+        "REFUND_LOCAL_SYNC_FAILED"
+      );
+    }
+
+    // Check if error was a provider network timeout
+    const isTimeout =
+      error.code === "ETIMEDOUT" ||
+      error.code === "ECONNRESET" ||
+      error.code === "ESOCKETTIMEDOUT" ||
+      error.message?.toLowerCase().includes("timeout") ||
+      error.message?.toLowerCase().includes("network error");
+
+    if (isTimeout) {
+      // Unknown outcome: keep reservation and create pending reconciliation refund
+      try {
+        await refundRepository.create({
+          paymentId: payment._id,
+          orderId: order._id,
+          customerId: order.customerId,
+          gateway: payment.gateway || PAYMENT_GATEWAYS.RAZORPAY,
+          gatewayRefundId: null,
+          amount: refundAmountString,
+          currency: order.currency,
+          status: "pending",
+          reason: "Order cancellation refund (gateway timeout)",
+          idempotencyKey: refundIdempotencyKey,
+          failureReason: "Gateway timeout / uncertain outcome: " + error.message,
+        });
+      } catch {
+        // Squelch secondary error
+      }
+
+      throw new AppError(
+        "Gateway refund timed out with uncertain outcome. Retain reservation for reconciliation.",
+        504,
+        "GATEWAY_TIMEOUT_UNCERTAIN"
+      );
+    }
+
+    // Check if the gateway tells us the payment was already refunded
+    const isAlreadyRefunded =
+      error.message?.includes("already been refunded") ||
+      error.description?.includes("already been refunded") ||
+      error.error?.description?.includes("already been refunded");
+
+    if (isAlreadyRefunded) {
+      await paymentRepository.updateById(payment._id, {
+        status: "refunded",
+        refundedAmount: totalAmount.toFixed(2),
+        refundReservedAmount: "0.00",
+      });
+      return await paymentRepository.findById(payment._id);
+    }
+
+    // Definite failure prior to gateway processing (e.g. invalid arguments or bad gateway response)
     await paymentRepository.releaseRefundReservation(
       payment._id,
       refundAmountString
@@ -913,21 +1058,14 @@ const refundPaymentForOrder = async (
   }
 };
 
-const createPayPalOrderForOrder = async (orderId, userId, idempotencyKey) => {
-  const customer = await validateCustomer(userId);
+const createPayPalOrderForOrder = async (orderId, userId, idempotencyKey, options = {}) => {
   const order = await orderRepository.findById(orderId);
 
   if (!order) {
     throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
   }
 
-  if (order.customerId.toString() !== customer._id.toString()) {
-    throw new AppError(
-      "You are not allowed to create payments for this order",
-      403,
-      "ORDER_ACCESS_DENIED"
-    );
-  }
+  const { customer } = await validateOrderPaymentAccess(order, userId, options);
 
   if (order.status !== "pending") {
     throw new AppError(
@@ -977,7 +1115,8 @@ const createPayPalOrderForOrder = async (orderId, userId, idempotencyKey) => {
 
   const paymentData = {
     orderId: order._id,
-    customerId: customer._id,
+    customerId: customer ? customer._id : null,
+    guestId: order.isGuestOrder ? order.guestId : null,
     gateway: "paypal",
     gatewayOrderId: paypalOrder.id,
     amount: order.grandTotal,
@@ -1010,7 +1149,7 @@ const createPayPalOrderForOrder = async (orderId, userId, idempotencyKey) => {
             title: "Payment Attempt Started",
             description: `Payment attempt initiated via PayPal (Order ID: ${paypalOrder.id}).`,
             timestamp: new Date(),
-            actor: { actorType: "customer", actorId: customer._id.toString() },
+            actor: { actorType: order.isGuestOrder ? "guest" : "customer", actorId: order.isGuestOrder ? order.guestId : customer._id.toString() },
             metadata: { gatewayOrderId: paypalOrder.id },
           },
         }
@@ -1030,21 +1169,14 @@ const createPayPalOrderForOrder = async (orderId, userId, idempotencyKey) => {
   };
 };
 
-const capturePayPalOrder = async ({ orderId, userId, paypalOrderId }) => {
-  const customer = await validateCustomer(userId);
+const capturePayPalOrder = async ({ orderId, userId, paypalOrderId, ...options }) => {
   const order = await orderRepository.findById(orderId);
 
   if (!order) {
     throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
   }
 
-  if (order.customerId.toString() !== customer._id.toString()) {
-    throw new AppError(
-      "You are not allowed to verify payments for this order",
-      403,
-      "ORDER_ACCESS_DENIED"
-    );
-  }
+  await validateOrderPaymentAccess(order, userId, options);
 
   const payment = await paymentRepository.findByGatewayOrderId("paypal", paypalOrderId);
   if (!payment) {
@@ -1059,7 +1191,30 @@ const capturePayPalOrder = async ({ orderId, userId, paypalOrderId }) => {
     return payment;
   }
 
-  const captureResult = await paypalProvider.captureOrder(paypalOrderId);
+  if (!canTransitionPaymentStatus(payment.status, "captured")) {
+    throw new AppError(
+      `Payment cannot be transitioned to captured from ${payment.status}`,
+      409,
+      "INVALID_PAYMENT_STATUS_TRANSITION"
+    );
+  }
+
+  let captureResult;
+  try {
+    captureResult = await paypalProvider.captureOrder(paypalOrderId);
+  } catch (error) {
+    // If order was already captured on PayPal, attempt authoritative reconciliation
+    try {
+      const fetchedOrder = await paypalProvider.fetchOrder(paypalOrderId);
+      if (fetchedOrder?.status === "COMPLETED") {
+        captureResult = fetchedOrder;
+      } else {
+        throw error;
+      }
+    } catch (fetchErr) {
+      throw error;
+    }
+  }
 
   const status = captureResult.status;
   if (status !== "COMPLETED") {
@@ -1074,8 +1229,40 @@ const capturePayPalOrder = async ({ orderId, userId, paypalOrderId }) => {
     );
   }
 
+  const captureObj =
+    captureResult.purchase_units?.[0]?.payments?.captures?.[0];
+
   const captureId =
-    captureResult.purchase_units?.[0]?.payments?.captures?.[0]?.id || paypalOrderId;
+    captureObj?.id ||
+    paypalOrderId;
+
+  // Validate amount and currency
+  const capturedAmount = captureObj?.amount?.value;
+  const capturedCurrency = captureObj?.amount?.currency_code;
+
+  if (capturedAmount !== undefined && capturedAmount !== null) {
+    const expectedAmount = Number(order.grandTotal.toString());
+    const actualAmount = Number(capturedAmount);
+    if (Math.abs(actualAmount - expectedAmount) > 0.01) {
+      throw new AppError(
+        "PayPal payment amount does not match order total",
+        409,
+        "PAYPAL_AMOUNT_MISMATCH"
+      );
+    }
+  }
+
+  if (capturedCurrency) {
+    const expectedCurrency = String(order.currency || "INR").toUpperCase();
+    const actualCurrency = String(capturedCurrency).toUpperCase();
+    if (actualCurrency !== expectedCurrency) {
+      throw new AppError(
+        "PayPal payment currency does not match order currency",
+        409,
+        "PAYPAL_CURRENCY_MISMATCH"
+      );
+    }
+  }
 
   const updatedPayment = await paymentRepository.updateById(payment._id, {
     status: "captured",
@@ -1125,13 +1312,14 @@ const listPaymentTransactions = async ({ page = 1, limit = 20, status, gateway }
 /**
  * Record payment cancellation or dismissal without deleting order or cart.
  */
-const recordPaymentCancellation = async ({ orderId, userId }) => {
-  const customer = await validateCustomer(userId);
+const recordPaymentCancellation = async ({ orderId, userId, ...options }) => {
   const Order = require("../models/Order");
-  const order = await Order.findOne({ _id: orderId, customerId: customer._id });
+  const order = await Order.findById(orderId);
   if (!order) {
     throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
   }
+
+  const { customer } = await validateOrderPaymentAccess(order, userId, options);
 
   // Update latest pending attempt to cancelled
   const attempts = order.paymentAttempts || [];
@@ -1155,7 +1343,7 @@ const recordPaymentCancellation = async ({ orderId, userId }) => {
     title: "Payment Cancelled / Dismissed",
     description: "Customer closed payment modal without completing transaction.",
     timestamp: new Date(),
-    actor: { actorType: "customer", actorId: customer._id.toString() },
+    actor: { actorType: order.isGuestOrder ? "guest" : "customer", actorId: order.isGuestOrder ? order.guestId : customer._id.toString() },
     metadata: { orderId: order._id.toString() },
   });
 

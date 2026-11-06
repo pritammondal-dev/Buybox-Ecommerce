@@ -24,7 +24,7 @@ const storefrontMediaSchema = new mongoose.Schema(
 
     storageProvider: {
       type: String,
-      enum: ["cloudinary", "s3", "external"],
+      enum: ["cloudinary", "s3", "external", "local"],
       default: "external",
       index: true,
     },

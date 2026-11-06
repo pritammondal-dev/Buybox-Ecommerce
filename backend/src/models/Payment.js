@@ -12,7 +12,15 @@ const paymentSchema = new mongoose.Schema(
     customerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",
-      required: true,
+      required: false,
+      default: null,
+      index: true,
+    },
+
+    guestId: {
+      type: String,
+      default: null,
+      trim: true,
       index: true,
     },
 

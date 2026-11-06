@@ -8,6 +8,7 @@ const createSettlement = async (req, res) => {
     periodEnd: req.body.periodEnd,
     currency: req.body.currency,
     grossSales: req.body.grossSales,
+    platformSubsidy: req.body.platformSubsidy,
     discounts: req.body.discounts,
     refunds: req.body.refunds,
     platformCommission: req.body.platformCommission,
@@ -103,18 +104,43 @@ const getVendorFinanceSummary = async (req, res) => {
   });
 };
 
+const { withDistributedLock } = require("../utils/distributed-lock");
+
 const generateSettlements = async (req, res) => {
-  const settlements = await vendorSettlementService.generateEligibleSettlements({
-    vendorId: req.body.vendorId || null,
-    periodStart: req.body.periodStart || null,
-    periodEnd: req.body.periodEnd || null,
-    adminUserId: req.user.id,
-    idempotencyKey: req.get("Idempotency-Key"),
-  });
+  const lockResult = await withDistributedLock(
+    "vendor-settlement",
+    async () => {
+      const settlements = await vendorSettlementService.generateEligibleSettlements({
+        vendorId: req.body.vendorId || null,
+        periodStart: req.body.periodStart || null,
+        periodEnd: req.body.periodEnd || null,
+        adminUserId: req.user.id,
+        idempotencyKey: req.get("Idempotency-Key"),
+        batchSize: req.body.batchSize || 50,
+        limit: req.body.limit || null,
+      });
+      return settlements;
+    },
+    { ttlMs: 120000 }
+  );
+
+  if (lockResult.skipped) {
+    throw new AppError(
+      "Settlement batch is currently in progress on another worker or administrative session. Please retry shortly.",
+      409,
+      "SETTLEMENT_LOCK_BUSY"
+    );
+  }
+
+  const settlements = lockResult.result || [];
 
   return apiResponse.sendSuccess(res, {
     message: `Generated ${settlements.length} settlement(s) successfully`,
     data: settlements,
+    meta: settlements.summary || {
+      generatedCount: settlements.length,
+      failureCount: settlements.failures?.length || 0,
+    },
   });
 };
 
@@ -157,6 +183,19 @@ const getAdminSettlementById = async (req, res) => {
   });
 };
 
+const getPromotionSubsidyReconciliation = async (req, res) => {
+  const result = await vendorSettlementService.getPromotionSubsidyReconciliation({
+    vendorId: req.query.vendorId,
+    startDate: req.query.startDate,
+    endDate: req.query.endDate,
+  });
+
+  return apiResponse.sendSuccess(res, {
+    message: "Promotion subsidy reconciliation retrieved successfully",
+    data: result,
+  });
+};
+
 module.exports = {
   createSettlement,
   getSettlementById,
@@ -168,6 +207,7 @@ module.exports = {
   markSettlementPaid,
   getAdminSettlements,
   getAdminSettlementById,
+  getPromotionSubsidyReconciliation,
   markProcessing,
   markPayable,
 };

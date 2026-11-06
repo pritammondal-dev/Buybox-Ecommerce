@@ -10,6 +10,7 @@ const SUPPORTED_PROVIDERS = {
   paypal: { category: "payment", name: "PayPal" },
   delhivery: { category: "shipping", name: "Delhivery Logistics" },
   shiprocket: { category: "shipping", name: "Shiprocket" },
+  google_oauth: { category: "auth", name: "Google OAuth" },
 };
 
 class CredentialService {
@@ -42,12 +43,33 @@ class CredentialService {
         }));
 
       if (!record) {
+        // Check if configured via environment variables
+        const envFallback = CredentialService.getEnvMaskedSummary(providerKey);
+        if (envFallback) {
+          return {
+            provider: providerKey,
+            name: config.name,
+            category: config.category,
+            status: "connected",
+            isConfigured: true,
+            source: "environment",
+            maskedSummary: envFallback,
+            maskedValues: envFallback,
+            lastTestedAt: null,
+            lastTestStatus: null,
+            lastTestError: null,
+            updatedAt: null,
+            auditTrail: providerAudits,
+          };
+        }
+
         return {
           provider: providerKey,
           name: config.name,
           category: config.category,
           status: "not_configured",
           isConfigured: false,
+          source: "none",
           maskedSummary: {},
           maskedValues: {},
           lastTestedAt: null,
@@ -64,6 +86,7 @@ class CredentialService {
         category: record.category,
         status: record.status,
         isConfigured: record.status !== "not_configured",
+        source: "database",
         maskedSummary: record.maskedSummary || {},
         maskedValues: record.maskedSummary || {},
         lastTestedAt: record.lastTestedAt,
@@ -76,6 +99,53 @@ class CredentialService {
   }
 
   /**
+   * Helper: Resolves masked summary for environment-configured variables safely.
+   */
+  static getEnvMaskedSummary(provider) {
+    if (provider === "razorpay" && process.env.RAZORPAY_KEY_ID) {
+      return {
+        keyId: maskSecret(process.env.RAZORPAY_KEY_ID),
+        keySecret: process.env.RAZORPAY_KEY_SECRET ? "••••••••••••" : undefined,
+        webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET ? "••••••••••••" : undefined,
+      };
+    }
+    if (provider === "elastic_email" && process.env.ELASTIC_EMAIL_API_KEY) {
+      return {
+        apiKey: maskSecret(process.env.ELASTIC_EMAIL_API_KEY),
+        fromEmail: process.env.ELASTIC_EMAIL_FROM_EMAIL || "info@buybox.test",
+        fromName: process.env.ELASTIC_EMAIL_FROM_NAME || "Buybox",
+      };
+    }
+    if (provider === "google_oauth" && process.env.GOOGLE_CLIENT_ID) {
+      return {
+        clientId: maskSecret(process.env.GOOGLE_CLIENT_ID),
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET ? "••••••••••••" : undefined,
+      };
+    }
+    if (provider === "paypal" && process.env.PAYPAL_CLIENT_ID) {
+      return {
+        clientId: maskSecret(process.env.PAYPAL_CLIENT_ID),
+        clientSecret: process.env.PAYPAL_CLIENT_SECRET ? "••••••••••••" : undefined,
+      };
+    }
+    if (provider === "delhivery" && (process.env.DELHIVERY_API_KEY || process.env.DELHIVERY_CLIENT_SECRET || process.env.DELHIVERY_WEBHOOK_SECRET)) {
+      return {
+        apiKey: process.env.DELHIVERY_API_KEY ? maskSecret(process.env.DELHIVERY_API_KEY) : undefined,
+        clientId: process.env.DELHIVERY_CLIENT_ID || undefined,
+        clientSecret: (process.env.DELHIVERY_CLIENT_SECRET || process.env.DELHIVERY_WEBHOOK_SECRET) ? "••••••••••••" : undefined,
+      };
+    }
+    if (provider === "shiprocket" && (process.env.SHIPROCKET_EMAIL || process.env.SHIPROCKET_PASSWORD || process.env.SHIPROCKET_API_KEY || process.env.SHIPROCKET_WEBHOOK_SECRET)) {
+      return {
+        email: process.env.SHIPROCKET_EMAIL ? maskSecret(process.env.SHIPROCKET_EMAIL) : undefined,
+        password: process.env.SHIPROCKET_PASSWORD ? "••••••••••••" : undefined,
+        apiKey: process.env.SHIPROCKET_API_KEY ? maskSecret(process.env.SHIPROCKET_API_KEY) : undefined,
+      };
+    }
+    return null;
+  }
+
+  /**
    * Internal helper: Decrypts and resolves credentials for a provider.
    * MUST NEVER be returned directly in API endpoints.
    */
@@ -85,15 +155,60 @@ class CredentialService {
     }
 
     const record = await PlatformCredential.findOne({ provider });
-    if (!record || !record.encryptedPayload) {
-      return null;
+    if (record && record.encryptedPayload) {
+      try {
+        const decrypted = decrypt(record.encryptedPayload);
+        if (decrypted) return decrypted;
+      } catch {
+        // Fallback to environment
+      }
     }
 
-    try {
-      return decrypt(record.encryptedPayload);
-    } catch {
-      return null;
+    // Fallback to environment variables
+    if (provider === "elastic_email" && process.env.ELASTIC_EMAIL_API_KEY) {
+      return {
+        apiKey: process.env.ELASTIC_EMAIL_API_KEY,
+        fromEmail: process.env.ELASTIC_EMAIL_FROM_EMAIL || "info@buybox.test",
+        fromName: process.env.ELASTIC_EMAIL_FROM_NAME || "Buybox",
+      };
     }
+    if (provider === "razorpay" && process.env.RAZORPAY_KEY_ID) {
+      return {
+        keyId: process.env.RAZORPAY_KEY_ID,
+        keySecret: process.env.RAZORPAY_KEY_SECRET,
+        webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
+      };
+    }
+    if (provider === "google_oauth" && process.env.GOOGLE_CLIENT_ID) {
+      return {
+        clientId: process.env.GOOGLE_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      };
+    }
+    if (provider === "paypal" && process.env.PAYPAL_CLIENT_ID) {
+      return {
+        clientId: process.env.PAYPAL_CLIENT_ID,
+        clientSecret: process.env.PAYPAL_CLIENT_SECRET,
+      };
+    }
+    if (provider === "delhivery" && (process.env.DELHIVERY_API_KEY || process.env.DELHIVERY_CLIENT_SECRET || process.env.DELHIVERY_WEBHOOK_SECRET)) {
+      return {
+        apiKey: process.env.DELHIVERY_API_KEY,
+        clientId: process.env.DELHIVERY_CLIENT_ID,
+        clientSecret: process.env.DELHIVERY_CLIENT_SECRET || process.env.DELHIVERY_WEBHOOK_SECRET,
+        webhookSecret: process.env.DELHIVERY_WEBHOOK_SECRET || process.env.DELHIVERY_CLIENT_SECRET,
+      };
+    }
+    if (provider === "shiprocket" && (process.env.SHIPROCKET_EMAIL || process.env.SHIPROCKET_PASSWORD || process.env.SHIPROCKET_API_KEY || process.env.SHIPROCKET_WEBHOOK_SECRET)) {
+      return {
+        email: process.env.SHIPROCKET_EMAIL,
+        password: process.env.SHIPROCKET_PASSWORD,
+        apiKey: process.env.SHIPROCKET_API_KEY,
+        webhookSecret: process.env.SHIPROCKET_WEBHOOK_SECRET || process.env.SHIPROCKET_API_KEY,
+      };
+    }
+
+    return null;
   }
 
   /**
@@ -239,6 +354,12 @@ class CredentialService {
         testResult = { success: false, message: "Missing required client or key ID" };
       } else {
         testResult = { success: true, message: `${SUPPORTED_PROVIDERS[provider].name} credentials validated format check.` };
+      }
+    } else if (provider === "google_oauth") {
+      if (!creds.clientId || !creds.clientSecret) {
+        testResult = { success: false, message: "Missing Google Client ID or Client Secret" };
+      } else {
+        testResult = { success: true, message: "Google OAuth credentials format and structure validated." };
       }
     }
 

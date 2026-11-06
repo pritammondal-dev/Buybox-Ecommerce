@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Heart,
   ImageOff,
@@ -14,18 +14,71 @@ import { cn } from "../../../utils/cn.js";
 
 export function ProductGallery({
   product,
+  selectedVariant = null,
   isWishlisted = false,
   onWishlistToggle,
 }) {
-  const images = Array.isArray(product?.images) && product.images.length > 0
-    ? product.images
-    : product?.image
-      ? [{ url: product.image }]
-      : [];
+  const variantImageUrl = useMemo(() => {
+    if (!selectedVariant) return null;
+    if (typeof selectedVariant.image === "string" && selectedVariant.image.trim()) {
+      return selectedVariant.image.trim();
+    }
+    if (selectedVariant.image?.url && typeof selectedVariant.image.url === "string") {
+      return selectedVariant.image.url.trim();
+    }
+    if (Array.isArray(selectedVariant.images) && selectedVariant.images.length > 0) {
+      const first = selectedVariant.images[0];
+      if (typeof first === "string" && first.trim()) return first.trim();
+      if (first?.url && typeof first.url === "string") return first.url.trim();
+    }
+    return null;
+  }, [selectedVariant]);
+
+  const images = useMemo(() => {
+    const rawImages = Array.isArray(product?.images) && product.images.length > 0
+      ? product.images
+      : product?.image
+        ? [{ url: product.image }]
+        : [];
+
+    const baseImages = rawImages.map((img) => {
+      if (typeof img === "string") {
+        return { url: img, altText: product?.name || "Product image" };
+      }
+      return {
+        url: img?.url || "",
+        altText: img?.altText || product?.name || "Product image",
+        isPrimary: img?.isPrimary || false,
+      };
+    }).filter((img) => Boolean(img.url));
+
+    if (variantImageUrl) {
+      const existingIdx = baseImages.findIndex((img) => img.url === variantImageUrl);
+      if (existingIdx > -1) {
+        const copy = [...baseImages];
+        const [found] = copy.splice(existingIdx, 1);
+        return [found, ...copy];
+      }
+      return [
+        {
+          url: variantImageUrl,
+          altText: selectedVariant?.image?.altText || selectedVariant?.name || product?.name,
+        },
+        ...baseImages,
+      ];
+    }
+
+    return baseImages;
+  }, [product, variantImageUrl, selectedVariant]);
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [imageError, setImageError] = useState(false);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+
+  useEffect(() => {
+    setActiveIndex(0);
+    setImageError(false);
+  }, [variantImageUrl, selectedVariant?._id]);
 
   const price = parsePrice(product?.price || 0);
   const compareAtPrice = parsePrice(product?.compareAtPrice);

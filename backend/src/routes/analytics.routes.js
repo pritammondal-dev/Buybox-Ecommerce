@@ -13,6 +13,8 @@ const {
   vendorOverviewQuerySchema,
   vendorTopProductsQuerySchema,
   vendorSalesTrendQuerySchema,
+  vendorProductPerformanceQuerySchema,
+  vendorExportQuerySchema,
 } = require("../validators/analytics/analytics.validator");
 
 const router = express.Router();
@@ -69,6 +71,20 @@ router.get(
   requirePermissions(PERMISSIONS.ANALYTICS_READ_OWN),
   validate(vendorSalesTrendQuerySchema, "query"),
   analyticsController.getVendorSalesTrend
+);
+
+router.get(
+  "/vendor/product-performance",
+  requirePermissions(PERMISSIONS.ANALYTICS_READ_OWN),
+  validate(vendorProductPerformanceQuerySchema, "query"),
+  analyticsController.getVendorProductPerformance
+);
+
+router.get(
+  "/vendor/export",
+  requirePermissions(PERMISSIONS.ANALYTICS_READ_OWN),
+  validate(vendorExportQuerySchema, "query"),
+  analyticsController.exportVendorAnalytics
 );
 
 module.exports = router;

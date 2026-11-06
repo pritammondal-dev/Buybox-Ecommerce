@@ -84,6 +84,12 @@ const processNotification = async (notification) => {
       });
     }
 
+    case "vendor_new_order":
+      return notificationService.sendVendorNewOrderNotification({
+        to: recipient,
+        ...payload,
+      });
+
     default:
       throw new Error(
         `Unsupported notification type: ${type}`

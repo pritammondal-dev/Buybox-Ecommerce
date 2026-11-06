@@ -78,6 +78,13 @@ const moderateReviewSchema = z.object({
     .max(500)
     .nullable()
     .optional(),
+
+  rejectionReason: z
+    .string()
+    .trim()
+    .max(500)
+    .nullable()
+    .optional(),
 });
 
 const vendorResponseSchema = z.object({

@@ -1,9 +1,11 @@
 import { create } from "zustand";
 import { tokenManager } from "../lib/auth/token-manager.js";
+import { vendorTokenManager } from "../lib/auth/vendor-token-manager.js";
 import { authService } from "../services/auth.service.js";
 import { customerService } from "../services/customer.service.js";
 import { vendorService } from "../services/vendor.service.js";
 import { normalizeApiError } from "../lib/api/api-error.js";
+import { useCheckoutStore } from "./checkout.store.js";
 
 /**
  * Zustand Authentication Store
@@ -12,9 +14,25 @@ import { normalizeApiError } from "../lib/api/api-error.js";
  * The backend remains strictly authoritative for roles, permissions, and session validity.
  */
 export const useAuthStore = create((set, get) => {
-  // Synchronize when tokenManager clears the access token (e.g., failed refresh in Axios)
+  // Synchronize when customer tokenManager clears the access token (e.g., failed refresh in Axios)
   tokenManager.subscribe((newToken) => {
-    if (!newToken && get().isAuthenticated) {
+    if (!newToken && get().isAuthenticated && (!get().user?.role || get().user?.role === "customer")) {
+      try {
+        useCheckoutStore.getState().resetCheckout();
+      } catch {
+        // Safe catch if checkout store is not ready
+      }
+      set({
+        isAuthenticated: false,
+        user: null,
+        customerProfile: null,
+      });
+    }
+  });
+
+  // Synchronize when vendorTokenManager clears the access token (e.g., failed vendor refresh in Axios)
+  vendorTokenManager.subscribe((newToken) => {
+    if (!newToken && get().isAuthenticated && get().user?.role === "vendor") {
       set({
         isAuthenticated: false,
         user: null,
@@ -25,7 +43,13 @@ export const useAuthStore = create((set, get) => {
 
   return {
     user: null,
+    customerUser: null,
+    vendorUser: null,
     customerProfile: null,
+    isCustomerAuthenticated: false,
+    isVendorAuthenticated: false,
+    isCustomerInitialized: false,
+    isVendorInitialized: false,
     isAuthenticated: false,
     isLoading: false,
     isInitialized: false,
@@ -109,6 +133,81 @@ export const useAuthStore = create((set, get) => {
       }
     },
 
+        /**
+     * Initialize vendor authentication on Merchant Console mount.
+     * Silently probes the backend vendor refresh endpoint using bb_vendor_session cookie.
+     * Strictly isolated from customer session state.
+     */
+    initializeVendorAuth: async () => {
+      // If already initialized as vendor and vendorTokenManager has access token, avoid redundant calls
+      if (get().isVendorInitialized && get().isVendorAuthenticated && vendorTokenManager.hasAccessToken()) {
+        return;
+      }
+
+      set({ isLoading: true, error: null });
+
+      try {
+        const refreshResponse = await vendorService.refresh();
+        const data = refreshResponse?.data || refreshResponse;
+        const accessToken =
+          data?.accessToken ||
+          data?.data?.accessToken;
+        const user = data?.user || data?.data?.user;
+
+        if (accessToken) {
+          vendorTokenManager.setAccessToken(accessToken);
+
+          let restoredVendorUser = user;
+          if (!restoredVendorUser && typeof window !== "undefined") {
+            try {
+              const saved = localStorage.getItem("buybox_vendor_user") || localStorage.getItem("buybox_auth_user");
+              if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed.role === "vendor" || parsed.roles?.includes("vendor")) {
+                  restoredVendorUser = parsed;
+                }
+              }
+            } catch {}
+          }
+
+          if (restoredVendorUser && typeof window !== "undefined") {
+            try {
+              localStorage.setItem("buybox_vendor_user", JSON.stringify(restoredVendorUser));
+            } catch {}
+          }
+
+          set({
+            vendorUser: restoredVendorUser,
+            user: restoredVendorUser,
+            isVendorAuthenticated: true,
+            isVendorInitialized: true,
+            isAuthenticated: true,
+            isInitialized: true,
+            isLoading: false,
+            error: null,
+          });
+          return;
+        }
+
+        vendorTokenManager.clearAccessToken();
+        set({
+          vendorUser: null,
+          isVendorAuthenticated: false,
+          isVendorInitialized: true,
+          isLoading: false,
+        });
+      } catch {
+        vendorTokenManager.clearAccessToken();
+        set({
+          vendorUser: null,
+          isVendorAuthenticated: false,
+          isVendorInitialized: true,
+          isLoading: false,
+          error: null,
+        });
+      }
+    },
+
     /**
      * User login with email and password
      */
@@ -147,6 +246,59 @@ export const useAuthStore = create((set, get) => {
         set({
           user,
           customerProfile: profile,
+          isAuthenticated: true,
+          isLoading: false,
+          isInitialized: true,
+          error: null,
+        });
+
+        const activeCustomerId = user?.id || user?._id || profile?.id || profile?._id;
+        if (activeCustomerId) {
+          try {
+            useCheckoutStore.getState().validateAndSyncCustomer(activeCustomerId);
+          } catch {
+            // Safe catch
+          }
+        }
+
+        return response;
+      } catch (err) {
+        const normalized = normalizeApiError(err);
+        set({
+          isLoading: false,
+          error: normalized.message,
+        });
+        throw normalized;
+      }
+    },
+
+    /**
+     * Vendor login with email and password via dedicated vendor auth endpoint
+     */
+    vendorLogin: async ({ email, password }) => {
+      set({ isLoading: true, error: null });
+
+      try {
+        const response = await vendorService.login({ email, password });
+        const data = response?.data || response;
+        const user = data?.user || data?.data?.user || null;
+        const accessToken = data?.accessToken || data?.data?.accessToken || null;
+
+        if (accessToken) {
+          vendorTokenManager.setAccessToken(accessToken);
+        }
+
+        if (user && typeof window !== "undefined") {
+          try {
+            localStorage.setItem("buybox_auth_user", JSON.stringify(user));
+          } catch {
+            // Ignore storage write failure
+          }
+        }
+
+        set({
+          user,
+          customerProfile: null,
           isAuthenticated: true,
           isLoading: false,
           isInitialized: true,
@@ -202,6 +354,15 @@ export const useAuthStore = create((set, get) => {
         isInitialized: true,
         error: null,
       });
+
+      const activeCustomerId = user?.id || user?._id || profile?.id || profile?._id;
+      if (activeCustomerId) {
+        try {
+          useCheckoutStore.getState().validateAndSyncCustomer(activeCustomerId);
+        } catch {
+          // Safe catch
+        }
+      }
 
       return response;
     },
@@ -284,50 +445,6 @@ export const useAuthStore = create((set, get) => {
     },
 
     /**
-     * Vendor login with email and password via dedicated vendor auth endpoint
-     */
-    vendorLogin: async ({ email, password }) => {
-      set({ isLoading: true, error: null });
-
-      try {
-        const response = await vendorService.login({ email, password });
-        const data = response?.data || response;
-        const user = data?.user || null;
-        const accessToken = data?.accessToken || null;
-
-        if (accessToken) {
-          tokenManager.setAccessToken(accessToken);
-        }
-
-        if (user && typeof window !== "undefined") {
-          try {
-            localStorage.setItem("buybox_auth_user", JSON.stringify(user));
-          } catch {
-            // Ignore storage write failure
-          }
-        }
-
-        set({
-          user,
-          customerProfile: null,
-          isAuthenticated: true,
-          isLoading: false,
-          isInitialized: true,
-          error: null,
-        });
-
-        return response;
-      } catch (err) {
-        const normalized = normalizeApiError(err);
-        set({
-          isLoading: false,
-          error: normalized.message,
-        });
-        throw normalized;
-      }
-    },
-
-    /**
      * User registration
      */
     register: async ({ email, password, firstName, lastName }) => {
@@ -372,19 +489,73 @@ export const useAuthStore = create((set, get) => {
       }
     },
 
-    /**
-     * Logout current session
+        /**
+     * Dedicated Vendor Logout
+     * Wipes vendor credentials and local storage without affecting customer session
      */
-    logout: async () => {
+    vendorLogout: async () => {
       set({ isLoading: true });
+      try {
+        await vendorService.logout();
+      } catch {}
+      vendorTokenManager.clearAccessToken();
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.removeItem("buybox_vendor_user");
+        } catch {}
+      }
+      const hasCustomer = Boolean(get().isCustomerAuthenticated && get().customerUser);
+      set({
+        vendorUser: null,
+        isVendorAuthenticated: false,
+        user: hasCustomer ? get().customerUser : null,
+        isAuthenticated: hasCustomer,
+        isLoading: false,
+      });
+    },
 
+    /**
+     * Dedicated Customer Logout
+     * Wipes customer credentials and local storage without affecting vendor session
+     */
+    customerLogout: async () => {
+      set({ isLoading: true });
       try {
         await authService.logout();
-      } catch {
-        // Proceed with client cleanup even if network fails
-      } finally {
-        get().clearAuth();
-        set({ isLoading: false });
+      } catch {}
+      tokenManager.clearAccessToken();
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.removeItem("buybox_customer_user");
+          localStorage.removeItem("buybox_auth_user");
+        } catch {}
+      }
+      try {
+        useCheckoutStore.getState().resetCheckout();
+      } catch {}
+      const hasVendor = Boolean(get().isVendorAuthenticated && get().vendorUser);
+      set({
+        customerUser: null,
+        customerProfile: null,
+        isCustomerAuthenticated: false,
+        user: hasVendor ? get().vendorUser : null,
+        isAuthenticated: hasVendor,
+        isLoading: false,
+      });
+    },
+
+    /**
+     * Context-aware logout
+     */
+    logout: async () => {
+      const isVendorScope =
+        (typeof window !== "undefined" && window.location?.pathname?.startsWith("/vendor")) ||
+        get().user?.role === "vendor";
+
+      if (isVendorScope) {
+        await get().vendorLogout();
+      } else {
+        await get().customerLogout();
       }
     },
 
@@ -393,12 +564,18 @@ export const useAuthStore = create((set, get) => {
      */
     clearAuth: () => {
       tokenManager.clearAccessToken();
+      vendorTokenManager.clearAccessToken();
       if (typeof window !== "undefined") {
         try {
           localStorage.removeItem("buybox_auth_user");
         } catch {
           // Ignore removal error
         }
+      }
+      try {
+        useCheckoutStore.getState().resetCheckout();
+      } catch {
+        // Safe catch if checkout store is not ready
       }
       set({
         user: null,

@@ -1,6 +1,7 @@
 const AppError = require("../errors/AppError");
 const Vendor = require("../models/Vendor");
 const { ROLES } = require("../constants/auth.constants");
+const { TOKEN_CONTEXTS } = require("../services/token.service");
 
 /**
  * Resolve the authenticated vendor profile and verify approval status.
@@ -86,7 +87,29 @@ const requireApprovedVendor = async (req, res, next) => {
       return next();
     }
 
+    // Explicitly validate vendor session context
+    if (req.user.context && req.user.context !== TOKEN_CONTEXTS.VENDOR) {
+      throw new AppError(
+        `Cross-context session disallowed. Required: ${TOKEN_CONTEXTS.VENDOR}, found: ${req.user.context}`,
+        403,
+        "INVALID_SESSION_CONTEXT"
+      );
+    }
+
+    // Active role check: possession of vendor role alone is not sufficient proof of active vendor session
     if (req.user.role !== ROLES.VENDOR) {
+      throw new AppError(
+        "Vendor access required for this operation",
+        403,
+        "INVALID_SESSION_CONTEXT"
+      );
+    }
+
+    const isApprovedVendorActor =
+      req.user.role === ROLES.VENDOR &&
+      (!Array.isArray(req.user.roles) || req.user.roles.includes(ROLES.VENDOR));
+
+    if (!isApprovedVendorActor) {
       throw new AppError(
         "Vendor access required for this operation",
         403,
@@ -130,7 +153,29 @@ const requireVendorSession = async (req, res, next) => {
       return next();
     }
 
+    // Explicitly validate vendor session context
+    if (req.user.context && req.user.context !== TOKEN_CONTEXTS.VENDOR) {
+      throw new AppError(
+        `Cross-context session disallowed. Required: ${TOKEN_CONTEXTS.VENDOR}, found: ${req.user.context}`,
+        403,
+        "INVALID_SESSION_CONTEXT"
+      );
+    }
+
+    // Active role check: possession of vendor role alone is not sufficient proof of active vendor session
     if (req.user.role !== ROLES.VENDOR) {
+      throw new AppError(
+        "Vendor access required for this operation",
+        403,
+        "INVALID_SESSION_CONTEXT"
+      );
+    }
+
+    const isVendorActor =
+      req.user.role === ROLES.VENDOR &&
+      (!Array.isArray(req.user.roles) || req.user.roles.includes(ROLES.VENDOR));
+
+    if (!isVendorActor) {
       throw new AppError(
         "Vendor access required for this operation",
         403,

@@ -25,6 +25,12 @@ describe("Product Filter & Identifier Safety Tests", () => {
       await mongoose.connect(TEST_MONGODB_URI);
     }
 
+    await User.deleteMany({ email: "vendor_filter_test@example.com" });
+    await Vendor.deleteMany({ businessSlug: "filter-test-store" });
+    await Category.deleteMany({ slug: "electronics-test" });
+    await Brand.deleteMany({ slug: "brand-test" });
+    await Product.deleteMany({ slug: "test-smartphone-x" });
+
     createdUser = await User.create({
       firstName: "Test",
       lastName: "Vendor",
@@ -141,5 +147,15 @@ describe("Product Filter & Identifier Safety Tests", () => {
 
     expect(res.body.success).toBe(false);
     expect(res.body.code).toBe("PRODUCT_NOT_FOUND");
+  });
+
+  afterAll(async () => {
+    if (mongoose.connection.readyState !== 0) {
+      await User.deleteMany({ email: "vendor_filter_test@example.com" });
+      await Vendor.deleteMany({ businessSlug: "filter-test-store" });
+      await Category.deleteMany({ slug: "electronics-test" });
+      await Brand.deleteMany({ slug: "brand-test" });
+      await Product.deleteMany({ slug: "test-smartphone-x" });
+    }
   });
 });

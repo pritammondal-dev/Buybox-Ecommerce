@@ -1,0 +1,97 @@
+[
+  {
+    "v": 2,
+    "key": {
+      "_id": 1
+    },
+    "name": "_id_"
+  },
+  {
+    "v": 2,
+    "key": {
+      "productId": 1
+    },
+    "name": "productId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "sku": 1
+    },
+    "name": "sku_1",
+    "unique": true
+  },
+  {
+    "v": 2,
+    "key": {
+      "stockStatus": 1
+    },
+    "name": "stockStatus_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "isActive": 1
+    },
+    "name": "isActive_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "deletedAt": 1
+    },
+    "name": "deletedAt_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "productId": 1,
+      "isActive": 1,
+      "deletedAt": 1
+    },
+    "name": "productId_1_isActive_1_deletedAt_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "productId": 1,
+      "stockStatus": 1
+    },
+    "name": "productId_1_stockStatus_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "isDefault": 1
+    },
+    "name": "isDefault_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "isVirtual": 1
+    },
+    "name": "isVirtual_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "isDownloadable": 1
+    },
+    "name": "isDownloadable_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "barcode": 1
+    },
+    "name": "barcode_1",
+    "unique": true,
+    "partialFilterExpression": {
+      "barcode": {
+        "$type": "string"
+      },
+      "deletedAt": null
+    }
+  }
+]

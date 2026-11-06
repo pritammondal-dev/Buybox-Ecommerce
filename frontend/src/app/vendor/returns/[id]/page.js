@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -15,9 +16,16 @@ import {
   CreditCard,
   Loader2,
   X,
+  Truck,
+  RefreshCw,
+  Camera,
+  Eye,
+  Check,
+  Building,
 } from "lucide-react";
 import { toast } from "sonner";
 import { vendorService } from "@/services/vendor.service";
+import { formatCurrency } from "@/utils/formatCurrency";
 
 export default function VendorReturnDetailPage() {
   const params = useParams();
@@ -31,10 +39,32 @@ export default function VendorReturnDetailPage() {
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
 
-  const [restockModalOpen, setRestockModalOpen] = useState(false);
+  const [pickupModalOpen, setPickupModalOpen] = useState(false);
+  const [pickupForm, setPickupForm] = useState({
+    carrier: "DELHIVERY",
+    scheduledDate: "",
+    timeSlot: "10:00 AM - 01:00 PM",
+    notes: "",
+  });
+
+  const [inspectModalOpen, setInspectModalOpen] = useState(false);
+  const [inspectForm, setInspectForm] = useState({
+    outcome: "passed",
+    condition: "unopened",
+    restock: true,
+    warehouseId: "",
+    notes: "",
+  });
+
+  const [exchangeModalOpen, setExchangeModalOpen] = useState(false);
+  const [exchangeForm, setExchangeForm] = useState({
+    carrier: "DELHIVERY",
+    trackingNumber: "",
+    expectedDeliveryDays: 3,
+  });
+
+  const [previewImage, setPreviewImage] = useState(null);
   const [warehouses, setWarehouses] = useState([]);
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
-  const [restockNotes, setRestockNotes] = useState("");
 
   const loadReturn = React.useCallback(async () => {
     if (!returnId) return;
@@ -70,7 +100,7 @@ export default function VendorReturnDetailPage() {
           const whArray = Array.isArray(list) ? list : [];
           setWarehouses(whArray);
           if (whArray.length > 0) {
-            setSelectedWarehouseId(whArray[0]._id || whArray[0].id);
+            setInspectForm((prev) => ({ ...prev, warehouseId: whArray[0]._id || whArray[0].id }));
           }
         }
       } catch (err) {
@@ -124,19 +154,82 @@ export default function VendorReturnDetailPage() {
     }
   };
 
-  const handleRestock = async (e) => {
+  const handleSchedulePickup = async (e) => {
     e.preventDefault();
     try {
       setIsProcessingAction(true);
-      await vendorService.receiveReturnAndRestock(returnReq.secureId || returnReq._id, {
-        warehouseId: selectedWarehouseId || undefined,
-        notes: restockNotes.trim() || undefined,
+      await vendorService.scheduleReturnPickup(returnReq.secureId || returnReq._id, {
+        carrier: pickupForm.carrier,
+        scheduledDate: pickupForm.scheduledDate || undefined,
+        timeSlot: pickupForm.timeSlot,
+        notes: pickupForm.notes.trim() || undefined,
       });
-      toast.success("Return received and items restocked to warehouse");
-      setRestockModalOpen(false);
+      toast.success("Reverse courier pickup scheduled successfully");
+      setPickupModalOpen(false);
       await loadReturn();
     } catch (err) {
-      toast.error("Failed to receive & restock items", {
+      toast.error("Failed to schedule pickup", {
+        description: err.response?.data?.message || err.message,
+      });
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  const handleConfirmPickup = async () => {
+    try {
+      setIsProcessingAction(true);
+      await vendorService.confirmReturnPickup(returnReq.secureId || returnReq._id, {
+        notes: "Doorstep reverse pickup handed over to courier partner",
+      });
+      toast.success("Reverse pickup marked as collected");
+      await loadReturn();
+    } catch (err) {
+      toast.error("Failed to confirm pickup handover", {
+        description: err.response?.data?.message || err.message,
+      });
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  const handleInspect = async (e) => {
+    e.preventDefault();
+    try {
+      setIsProcessingAction(true);
+      await vendorService.inspectReturn(returnReq.secureId || returnReq._id, {
+        outcome: inspectForm.outcome,
+        condition: inspectForm.condition,
+        restock: inspectForm.restock,
+        warehouseId: inspectForm.restock ? inspectForm.warehouseId || undefined : undefined,
+        notes: inspectForm.notes.trim() || undefined,
+      });
+      toast.success("Inspection completed and inventory updated");
+      setInspectModalOpen(false);
+      await loadReturn();
+    } catch (err) {
+      toast.error("Failed to complete inspection", {
+        description: err.response?.data?.message || err.message,
+      });
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  const handleFulfillExchange = async (e) => {
+    e.preventDefault();
+    try {
+      setIsProcessingAction(true);
+      await vendorService.fulfillExchange(returnReq.secureId || returnReq._id, {
+        carrier: exchangeForm.carrier,
+        trackingNumber: exchangeForm.trackingNumber.trim() || undefined,
+        expectedDeliveryDays: Number(exchangeForm.expectedDeliveryDays) || 3,
+      });
+      toast.success("Replacement fulfillment confirmed and dispatched");
+      setExchangeModalOpen(false);
+      await loadReturn();
+    } catch (err) {
+      toast.error("Failed to fulfill exchange", {
         description: err.response?.data?.message || err.message,
       });
     } finally {
@@ -190,9 +283,11 @@ export default function VendorReturnDetailPage() {
 
   const items = returnReq.items || [];
   const status = returnReq.status;
+  const isExchange = returnReq.type === "exchange";
+  const evidencePhotos = returnReq.images || [];
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto p-4 sm:p-6 pb-20">
+    <div className="space-y-6 max-w-5xl mx-auto p-4 sm:p-6 pb-24">
       <div>
         <Link
           href="/vendor/returns"
@@ -208,22 +303,26 @@ export default function VendorReturnDetailPage() {
               <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                 Return #{returnReq.returnNumber || returnReq.secureId}
               </h2>
-              <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-                status === "refunded" || status === "completed"
-                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                  : status === "rejected" || status === "cancelled"
-                  ? "bg-rose-50 text-rose-700 border-rose-200"
-                  : "bg-amber-50 text-amber-700 border-amber-200"
-              }`}>
-                {status}
+              <span
+                className={`inline-flex px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider border ${
+                  status === "refunded" || status === "exchange_completed" || status === "completed"
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                    : status === "rejected" || status === "cancelled"
+                    ? "bg-rose-50 text-rose-700 border-rose-200"
+                    : "bg-blue-50 text-blue-700 border-blue-200"
+                }`}
+              >
+                {status?.replace(/_/g, " ")}
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Order: <span className="font-semibold text-slate-800">{returnReq.orderNumber}</span> • Type: {returnReq.type || "return"} • Filed: {returnReq.createdAt ? new Date(returnReq.createdAt).toLocaleDateString("en-IN") : "N/A"}
+              Order: <span className="font-semibold text-slate-800">#{returnReq.orderNumber}</span> • Type:{" "}
+              <strong className="uppercase text-[#004D38]">{returnReq.type || "return"}</strong> • Filed:{" "}
+              {returnReq.createdAt ? new Date(returnReq.createdAt).toLocaleDateString("en-IN") : "N/A"}
             </p>
           </div>
 
-          {/* Action Buttons */}
+          {/* Workflow Action Buttons */}
           <div className="flex items-center gap-2 flex-wrap">
             {status === "requested" && (
               <>
@@ -231,16 +330,16 @@ export default function VendorReturnDetailPage() {
                   type="button"
                   onClick={handleApprove}
                   disabled={isProcessingAction}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#004D38] hover:bg-[#003828] text-white text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#004D38] hover:bg-[#003828] text-white text-xs font-semibold shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   <CheckCircle2 className="size-3.5" />
-                  <span>Approve Return</span>
+                  <span>Approve Request</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setRejectModalOpen(true)}
                   disabled={isProcessingAction}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-semibold transition-colors disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   <XCircle className="size-3.5" />
                   <span>Reject</span>
@@ -248,67 +347,182 @@ export default function VendorReturnDetailPage() {
               </>
             )}
 
-            {["approved", "pickup_scheduled"].includes(status) && (
+            {status === "approved" && (
               <button
                 type="button"
-                onClick={() => setRestockModalOpen(true)}
+                onClick={() => setPickupModalOpen(true)}
                 disabled={isProcessingAction}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
               >
-                <Boxes className="size-3.5" />
-                <span>Receive & Restock</span>
+                <Truck className="size-3.5" />
+                <span>Schedule Reverse Pickup</span>
               </button>
             )}
 
-            {["received", "approved"].includes(status) && status !== "refunded" && (
+            {status === "pickup_scheduled" && (
+              <button
+                type="button"
+                onClick={handleConfirmPickup}
+                disabled={isProcessingAction}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                <Package className="size-3.5" />
+                <span>Confirm Handover (Picked Up)</span>
+              </button>
+            )}
+
+            {["picked_up", "item_received"].includes(status) && (
+              <button
+                type="button"
+                onClick={() => setInspectModalOpen(true)}
+                disabled={isProcessingAction}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                <Boxes className="size-3.5" />
+                <span>Technical Quality Inspection</span>
+              </button>
+            )}
+
+            {status === "inspected" && isExchange && (
+              <button
+                type="button"
+                onClick={() => setExchangeModalOpen(true)}
+                disabled={isProcessingAction}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#004D38] hover:bg-[#003828] text-white text-xs font-semibold shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                <RefreshCw className="size-3.5" />
+                <span>Fulfill Exchange &amp; Dispatch</span>
+              </button>
+            )}
+
+            {["inspected", "refund_pending"].includes(status) && !isExchange && (
               <button
                 type="button"
                 onClick={handleRefund}
                 disabled={isProcessingAction}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
               >
                 <CreditCard className="size-3.5" />
-                <span>Issue Refund</span>
+                <span>Disburse Customer Refund</span>
               </button>
             )}
           </div>
         </div>
       </div>
 
-      {/* Customer Reason Card */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
-        <h3 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">
-          Customer Reason & Notes
-        </h3>
-        <p className="text-xs text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-200/60">
-          {returnReq.customerNotes || returnReq.reason || "Standard customer return request."}
-        </p>
-
-        {returnReq.resolutionNotes && (
-          <div className="pt-2">
-            <h4 className="text-xs font-bold text-slate-900 mb-1">Merchant Resolution Notes:</h4>
-            <p className="text-xs text-slate-600 bg-amber-50/60 p-3 rounded-xl border border-amber-200/60">
-              {returnReq.resolutionNotes}
-            </p>
+      {/* Grid: Reason & Reverse Pickup Summary */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Customer Reason Card */}
+        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
+          <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500">
+            Customer Stated Reason &amp; Notes
+          </h3>
+          <p className="text-xs text-slate-800 leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-200/60">
+            {returnReq.customerNotes || returnReq.reason || "Standard customer return request."}
+          </p>
+          <div className="text-[11px] text-slate-500 flex items-center justify-between pt-1">
+            <span>Eligibility Deadline:</span>
+            <span className="font-semibold text-slate-800">
+              {returnReq.eligibilityDeadline
+                ? new Date(returnReq.eligibilityDeadline).toLocaleDateString("en-IN")
+                : "7-day window"}
+            </span>
           </div>
-        )}
+        </div>
+
+        {/* Reverse Logistics / Pickup Card */}
+        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
+          <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+            <Truck className="size-4 text-blue-600" />
+            Reverse Logistics &amp; Doorstep Address
+          </h3>
+          {returnReq.reversePickupSchedule ? (
+            <div className="bg-blue-50/60 p-4 rounded-2xl border border-blue-200/60 space-y-2 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">Carrier:</span>
+                <strong className="text-slate-900">{returnReq.reversePickupSchedule.carrier}</strong>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">Pickup Token:</span>
+                <strong className="font-mono text-blue-800">{returnReq.reversePickupSchedule.pickupToken}</strong>
+              </div>
+              {returnReq.reversePickupSchedule.trackingNumber && (
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Reverse AWB:</span>
+                  <strong className="font-mono">{returnReq.reversePickupSchedule.trackingNumber}</strong>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500 italic bg-slate-50 p-4 rounded-2xl">
+              Reverse pickup has not yet been scheduled. Click &quot;Schedule Reverse Pickup&quot; after approval.
+            </p>
+          )}
+
+          {returnReq.pickupAddress && (
+            <div className="text-[11px] text-slate-600 pt-1">
+              <strong>Pickup Location: </strong>
+              {returnReq.pickupAddress.street || returnReq.pickupAddress.addressLine1},{" "}
+              {returnReq.pickupAddress.city}, {returnReq.pickupAddress.state} - {returnReq.pickupAddress.postalCode}
+              {returnReq.pickupAddress.phone && ` (Ph: ${returnReq.pickupAddress.phone})`}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Returned Items */}
+      {/* Customer Defect Photographs Gallery */}
+      {evidencePhotos.length > 0 && (
+        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+              <Camera className="size-4 text-slate-400" /> Customer Defect Photographs ({evidencePhotos.length})
+            </h3>
+            <span className="text-[11px] text-slate-400">Click any image to enlarge and inspect</span>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            {evidencePhotos.map((photo, pIdx) => {
+              const url = typeof photo === "string" ? photo : photo.url;
+              return (
+                <div
+                  key={pIdx}
+                  onClick={() => setPreviewImage(url)}
+                  className="relative size-24 rounded-2xl border border-slate-200 overflow-hidden bg-slate-50 cursor-pointer hover:opacity-90 transition-opacity group"
+                >
+                  <Image src={url} alt={`Evidence ${pIdx + 1}`} fill className="object-cover" sizes="96px" />
+                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Eye className="size-5 text-white" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Returned Items Table */}
       <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
-        <div className="p-6 border-b border-slate-200/80">
-          <h3 className="text-sm font-bold text-slate-900">Returned Items</h3>
-          <p className="text-xs text-slate-500">Products subjected to inspection and restocking</p>
+        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">Returned Items &amp; Valuation</h3>
+            <p className="text-xs text-slate-500">Products subjected to inspection and restocking</p>
+          </div>
+          <div className="text-right">
+            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Total Refund</span>
+            <span className="text-sm font-black text-slate-900">
+              {formatCurrency(Number(returnReq.refundAmount?.toString?.() || 0))}
+            </span>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200/80">
+            <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-100">
               <tr>
                 <th className="px-6 py-3.5">Item</th>
                 <th className="px-6 py-3.5 text-center">Quantity</th>
                 <th className="px-6 py-3.5">Condition</th>
-                <th className="px-6 py-3.5 text-right">Refund Value</th>
+                <th className="px-6 py-3.5 text-right">Value</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -327,7 +541,7 @@ export default function VendorReturnDetailPage() {
                     {item.condition || "unopened"}
                   </td>
                   <td className="px-6 py-4 text-right font-bold text-slate-900">
-                    ₹{Number(item.itemPrice || 0).toFixed(2)}
+                    {formatCurrency(Number(item.itemPrice?.toString?.() || 0) * (item.quantity || 1))}
                   </td>
                 </tr>
               ))}
@@ -335,6 +549,41 @@ export default function VendorReturnDetailPage() {
           </table>
         </div>
       </div>
+
+      {/* Customer Bank / COD Details */}
+      {returnReq.bankDetails && (
+        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
+          <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+            <CreditCard className="size-4 text-emerald-600" /> Customer Bank Details for Refund Disbursement
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs bg-slate-50 p-4 rounded-2xl">
+            {returnReq.bankDetails.accountHolderName && (
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Account Holder</span>
+                <strong className="text-slate-900">{returnReq.bankDetails.accountHolderName}</strong>
+              </div>
+            )}
+            {returnReq.bankDetails.accountNumberMasked && (
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Account Number</span>
+                <strong className="font-mono text-slate-900">{returnReq.bankDetails.accountNumberMasked}</strong>
+              </div>
+            )}
+            {returnReq.bankDetails.ifscCode && (
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">IFSC Code</span>
+                <strong className="font-mono text-slate-900">{returnReq.bankDetails.ifscCode}</strong>
+              </div>
+            )}
+            {returnReq.bankDetails.upiId && (
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">UPI ID</span>
+                <strong className="font-mono text-slate-900">{returnReq.bankDetails.upiId}</strong>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Reject Modal */}
       {rejectModalOpen && (
@@ -345,7 +594,7 @@ export default function VendorReturnDetailPage() {
               <button
                 type="button"
                 onClick={() => setRejectModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
               >
                 <X className="size-4" />
               </button>
@@ -377,7 +626,7 @@ export default function VendorReturnDetailPage() {
                 <button
                   type="submit"
                   disabled={isProcessingAction}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   {isProcessingAction && <Loader2 className="size-3.5 animate-spin" />}
                   <span>Confirm Rejection</span>
@@ -388,31 +637,153 @@ export default function VendorReturnDetailPage() {
         </div>
       )}
 
-      {/* Restock Modal */}
-      {restockModalOpen && (
+      {/* Schedule Reverse Pickup Modal */}
+      {pickupModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-xl max-w-md w-full p-6 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-slate-900">Receive & Restock Items</h3>
+              <h3 className="font-bold text-slate-900 flex items-center gap-1.5">
+                <Truck className="size-4 text-blue-600" /> Schedule Reverse Pickup
+              </h3>
               <button
                 type="button"
-                onClick={() => setRestockModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+                onClick={() => setPickupModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
               >
                 <X className="size-4" />
               </button>
             </div>
 
-            <form onSubmit={handleRestock} className="space-y-4">
-              {warehouses.length > 0 && (
+            <form onSubmit={handleSchedulePickup} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Carrier Partner</label>
+                <select
+                  value={pickupForm.carrier}
+                  onChange={(e) => setPickupForm({ ...pickupForm, carrier: e.target.value })}
+                  className="w-full p-2.5 rounded-xl border bg-white"
+                >
+                  <option value="DELHIVERY">Delhivery Logistics</option>
+                  <option value="BLUEDART">Blue Dart Express</option>
+                  <option value="EKART">Ekart Logistics</option>
+                  <option value="SHADOWFAX">Shadowfax Reverse</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Pickup Date</label>
+                <input
+                  type="date"
+                  value={pickupForm.scheduledDate}
+                  onChange={(e) => setPickupForm({ ...pickupForm, scheduledDate: e.target.value })}
+                  className="w-full p-2.5 rounded-xl border bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Time Slot</label>
+                <select
+                  value={pickupForm.timeSlot}
+                  onChange={(e) => setPickupForm({ ...pickupForm, timeSlot: e.target.value })}
+                  className="w-full p-2.5 rounded-xl border bg-white"
+                >
+                  <option value="10:00 AM - 01:00 PM">Morning (10:00 AM - 01:00 PM)</option>
+                  <option value="02:00 PM - 06:00 PM">Afternoon (02:00 PM - 06:00 PM)</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setPickupModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border text-slate-700 font-semibold hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isProcessingAction}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-xs disabled:opacity-50 cursor-pointer"
+                >
+                  {isProcessingAction && <Loader2 className="size-3.5 animate-spin" />}
+                  <span>Generate Pickup Token</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Quality Inspection Modal */}
+      {inspectModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="font-bold text-slate-900 flex items-center gap-1.5">
+                <Boxes className="size-4 text-purple-600" /> Technical Quality Inspection
+              </h3>
+              <button
+                type="button"
+                onClick={() => setInspectModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleInspect} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Inspection Outcome</label>
+                <select
+                  value={inspectForm.outcome}
+                  onChange={(e) =>
+                    setInspectForm({
+                      ...inspectForm,
+                      outcome: e.target.value,
+                      restock: e.target.value === "passed",
+                    })
+                  }
+                  className="w-full p-2.5 rounded-xl border bg-white"
+                >
+                  <option value="passed">Passed (Resellable condition)</option>
+                  <option value="failed">Failed (Damaged / defective, Quarantine)</option>
+                  <option value="partial">Partial Pass</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Verified Condition</label>
+                <select
+                  value={inspectForm.condition}
+                  onChange={(e) => setInspectForm({ ...inspectForm, condition: e.target.value })}
+                  className="w-full p-2.5 rounded-xl border bg-white"
+                >
+                  <option value="unopened">Unopened / Sealed box</option>
+                  <option value="opened_unused">Opened but unused</option>
+                  <option value="defective">Defective / Malfunctioning</option>
+                  <option value="damaged">Damaged / Scratched</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 border">
+                <input
+                  type="checkbox"
+                  id="restockCheck"
+                  checked={inspectForm.restock}
+                  onChange={(e) => setInspectForm({ ...inspectForm, restock: e.target.checked })}
+                  className="rounded text-[#004D38] focus:ring-[#004D38]"
+                />
+                <label htmlFor="restockCheck" className="text-slate-800 font-semibold cursor-pointer">
+                  Restock resellable units to warehouse sellable inventory
+                </label>
+              </div>
+
+              {inspectForm.restock && warehouses.length > 0 && (
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Destination Warehouse
-                  </label>
+                  <label className="block font-semibold text-slate-700 mb-1">Restock Destination Warehouse</label>
                   <select
-                    value={selectedWarehouseId}
-                    onChange={(e) => setSelectedWarehouseId(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-[#004D38] focus:outline-hidden bg-white"
+                    value={inspectForm.warehouseId}
+                    onChange={(e) => setInspectForm({ ...inspectForm, warehouseId: e.target.value })}
+                    className="w-full p-2.5 rounded-xl border bg-white"
                   >
                     {warehouses.map((wh) => (
                       <option key={wh._id || wh.id} value={wh._id || wh.id}>
@@ -424,36 +795,128 @@ export default function VendorReturnDetailPage() {
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Inspection Notes
-                </label>
+                <label className="block font-semibold text-slate-700 mb-1">Inspector Notes</label>
                 <textarea
                   rows={2}
-                  value={restockNotes}
-                  onChange={(e) => setRestockNotes(e.target.value)}
-                  placeholder="Goods condition, serial number verification, etc..."
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-[#004D38] focus:outline-hidden resize-none"
+                  value={inspectForm.notes}
+                  onChange={(e) => setInspectForm({ ...inspectForm, notes: e.target.value })}
+                  placeholder="Verification details, serial numbers, seal checks..."
+                  className="w-full p-2.5 rounded-xl border bg-white resize-none"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setRestockModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50 transition-colors"
+                  onClick={() => setInspectModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border text-slate-700 font-semibold hover:bg-slate-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isProcessingAction}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold shadow-xs disabled:opacity-50 cursor-pointer"
                 >
                   {isProcessingAction && <Loader2 className="size-3.5 animate-spin" />}
-                  <span>Restock Inventory</span>
+                  <span>Record Inspection</span>
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Fulfill Exchange Modal */}
+      {exchangeModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="font-bold text-slate-900 flex items-center gap-1.5">
+                <RefreshCw className="size-4 text-[#004D38]" /> Fulfill Replacement Shipment
+              </h3>
+              <button
+                type="button"
+                onClick={() => setExchangeModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleFulfillExchange} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Carrier Partner</label>
+                <select
+                  value={exchangeForm.carrier}
+                  onChange={(e) => setExchangeForm({ ...exchangeForm, carrier: e.target.value })}
+                  className="w-full p-2.5 rounded-xl border bg-white"
+                >
+                  <option value="DELHIVERY">Delhivery Logistics</option>
+                  <option value="BLUEDART">Blue Dart Express</option>
+                  <option value="EKART">Ekart Logistics</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Tracking Number / AWB</label>
+                <input
+                  type="text"
+                  placeholder="e.g. DEL-EX-998271"
+                  value={exchangeForm.trackingNumber}
+                  onChange={(e) => setExchangeForm({ ...exchangeForm, trackingNumber: e.target.value })}
+                  className="w-full p-2.5 rounded-xl border bg-white font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Estimated Delivery Days</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={14}
+                  value={exchangeForm.expectedDeliveryDays}
+                  onChange={(e) => setExchangeForm({ ...exchangeForm, expectedDeliveryDays: e.target.value })}
+                  className="w-full p-2.5 rounded-xl border bg-white"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setExchangeModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border text-slate-700 font-semibold hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isProcessingAction}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#004D38] hover:bg-[#003828] text-white font-semibold shadow-xs disabled:opacity-50 cursor-pointer"
+                >
+                  {isProcessingAction && <Loader2 className="size-3.5 animate-spin" />}
+                  <span>Dispatch Replacement</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox Modal for Photo Inspection */}
+      {previewImage && (
+        <div
+          onClick={() => setPreviewImage(null)}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
+        >
+          <div className="relative max-w-2xl max-h-[85vh] w-full h-[70vh] bg-black rounded-3xl overflow-hidden p-2">
+            <Image src={previewImage} alt="Defect preview" fill className="object-contain" />
+            <button
+              onClick={() => setPreviewImage(null)}
+              className="absolute top-4 right-4 p-2 rounded-full bg-white/20 text-white hover:bg-white/40"
+            >
+              <X className="size-5" />
+            </button>
           </div>
         </div>
       )}

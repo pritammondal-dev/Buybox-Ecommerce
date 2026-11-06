@@ -13,6 +13,7 @@ import {
   Package,
 } from "lucide-react";
 import { adminInventoryService } from "@/services/admin/admin.service.js";
+import { toast } from "sonner";
 
 export default function AdminInventoryAdjustmentsPage() {
   const [items, setItems] = useState([]);
@@ -54,7 +55,7 @@ export default function AdminInventoryAdjustmentsPage() {
     if (!selectedItem) return;
     const qty = Number(deltaQuantity);
     if (isNaN(qty) || qty === 0) {
-      alert("Please enter a valid non-zero adjustment quantity.");
+      toast.error("Please enter a valid non-zero adjustment quantity.");
       return;
     }
 
@@ -67,6 +68,7 @@ export default function AdminInventoryAdjustmentsPage() {
         qty,
         adjustmentReason.trim() || "Manual operational correction"
       );
+      toast.success(`Inventory adjusted by ${qty > 0 ? `+${qty}` : qty} units successfully`);
       setSuccess(`Inventory adjusted by ${qty > 0 ? `+${qty}` : qty} units successfully`);
       setTimeout(() => setSuccess(null), 4000);
       setSelectedItem(null);
@@ -74,11 +76,9 @@ export default function AdminInventoryAdjustmentsPage() {
       setAdjustmentReason("");
       fetchInventory();
     } catch (err) {
-      setError(
-        err?.response?.data?.message ||
-          err?.message ||
-          "Failed to process inventory adjustment"
-      );
+      const msg = err?.response?.data?.message || err?.message || "Failed to process inventory adjustment";
+      toast.error(msg);
+      setError(msg);
     } finally {
       setSubmitting(false);
     }

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { toast } from "sonner";
 import { taskService, staffService } from "@/services/admin/admin.service.js";
 
 export default function TaskDetailPage() {
@@ -27,7 +28,7 @@ export default function TaskDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await taskService.getTaskById(taskId);
+      const res = await taskService.get(taskId);
       const data = res?.task || res?.data || res;
       setTask(data);
       if (data) {
@@ -37,7 +38,9 @@ export default function TaskDetailPage() {
       }
     } catch (err) {
       console.error("Failed to fetch task:", err);
-      setError(err?.response?.data?.message || err?.message || "Failed to load task details");
+      const msg = err?.response?.data?.message || err?.message || "Failed to load task details";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -45,8 +48,8 @@ export default function TaskDetailPage() {
 
   const fetchStaff = async () => {
     try {
-      const res = await staffService.listStaff({ limit: 100 });
-      const items = res?.employees || res?.data || res || [];
+      const res = await staffService.list({ limit: 100 });
+      const items = res?.employees || res?.data || (Array.isArray(res) ? res : []);
       if (Array.isArray(items)) setStaffList(items);
     } catch (err) {
       console.warn("Could not load staff list:", err);
@@ -65,16 +68,19 @@ export default function TaskDetailPage() {
     setSaving(true);
     setActionSuccess(null);
     try {
-      await taskService.updateTask(taskId, {
+      await taskService.update(taskId, {
         status,
         priority,
         assignedTo: assignedTo || null,
       });
       setActionSuccess("Task updated successfully!");
+      toast.success("Task updated successfully!");
       fetchTask();
     } catch (err) {
       console.error("Failed to update task:", err);
-      setError(err?.response?.data?.message || err?.message || "Failed to update task");
+      const msg = err?.response?.data?.message || err?.message || "Failed to update task";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -85,12 +91,15 @@ export default function TaskDetailPage() {
     if (!newComment.trim()) return;
     setCommenting(true);
     try {
-      await taskService.addNote(taskId, { content: newComment.trim() });
+      await taskService.addNote(taskId, newComment.trim());
       setNewComment("");
+      toast.success("Note added successfully!");
       fetchTask();
     } catch (err) {
       console.error("Failed to add comment:", err);
-      setError(err?.response?.data?.message || err?.message || "Failed to add comment");
+      const msg = err?.response?.data?.message || err?.message || "Failed to add comment";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setCommenting(false);
     }

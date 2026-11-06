@@ -1,7 +1,7 @@
 const express = require("express");
 
 const warehouseController = require("../controllers/warehouse.controller");
-const authenticate = require("../middlewares/authentication.middleware");
+const { authenticate, authenticateVendor } = require("../middlewares/authentication.middleware");
 const validate = require("../middlewares/validate.middleware");
 const validateObjectId = require("../middlewares/validate-object-id.middleware");
 const {
@@ -31,12 +31,14 @@ router.use(authenticate);
 // Vendor-scoped warehouse endpoints (must precede /:id)
 router.get(
   "/vendor/my",
+  authenticateVendor,
   requireRoles(ROLES.VENDOR),
   warehouseController.getMyVendorWarehouses
 );
 
 router.get(
   "/vendor/my/:warehouseId",
+  authenticateVendor,
   requireRoles(ROLES.VENDOR),
   warehouseController.getMyVendorWarehouseById
 );

@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const inventoryRepository = require("../repositories/inventory.repository");
 const warehouseRepository = require("../repositories/warehouse.repository");
 const inventoryTransactionRepository = require("../repositories/inventory-transaction.repository");
@@ -6,10 +7,110 @@ const inventoryTransactionService = require("./inventory-transaction.service");
 const ProductVariant = require("../models/ProductVariant");
 const Product = require("../models/Product");
 const Inventory = require("../models/Inventory");
+const Warehouse = require("../models/Warehouse");
 const AppError = require("../errors/AppError");
 const withTransaction = require("../utils/withTransaction");
 const { resolveApprovedVendor } = require("../middlewares/vendor.middleware");
 const { encodeSecureId } = require("../utils/secure-id.util");
+
+/**
+ * Calculates authoritative stock across eligible active warehouses.
+ * Available quantity = max(0, onHand - reserved) per active warehouse.
+ */
+const calculateAuthoritativeStock = async (productVariantId, session = null) => {
+  if (!productVariantId || mongoose.connection.readyState !== 1) {
+    return { totalAvailable: 0, totalOnHand: 0, totalReserved: 0, warehouseCount: 0, details: [] };
+  }
+
+  let whQuery = Warehouse.find({ isActive: true, deletedAt: null }).select("_id name code").lean();
+  if (session) whQuery = whQuery.session(session);
+  const activeWarehouses = await whQuery;
+  const activeWarehouseMap = new Map((activeWarehouses || []).map((w) => [w._id.toString(), w]));
+  const activeWarehouseIds = Array.from(activeWarehouseMap.keys());
+
+  if (activeWarehouseIds.length === 0) {
+    return { totalAvailable: 0, totalOnHand: 0, totalReserved: 0, warehouseCount: 0, details: [] };
+  }
+
+  let invQuery = Inventory.find({
+    productVariantId,
+    warehouseId: { $in: activeWarehouseIds },
+    deletedAt: null,
+  }).lean();
+  if (session) invQuery = invQuery.session(session);
+  const inventories = await invQuery;
+
+  let totalAvailable = 0;
+  let totalOnHand = 0;
+  let totalReserved = 0;
+  let totalDamaged = 0;
+  let totalDefective = 0;
+  let totalExpired = 0;
+  let totalNonSellable = 0;
+  const details = [];
+
+  for (const inv of (inventories || [])) {
+    const onHand = Number(inv.onHand) || 0;
+    const reserved = Number(inv.reserved) || 0;
+    const damaged = Number(inv.damaged) || 0;
+    const defective = Number(inv.defective) || 0;
+    const expired = Number(inv.expired) || 0;
+    const nonSellable = damaged + defective + expired;
+    const available = Math.max(0, onHand - reserved - nonSellable);
+
+    totalOnHand += onHand;
+    totalReserved += reserved;
+    totalDamaged += damaged;
+    totalDefective += defective;
+    totalExpired += expired;
+    totalNonSellable += nonSellable;
+    totalAvailable += available;
+
+    const wh = activeWarehouseMap.get(inv.warehouseId.toString());
+    details.push({
+      warehouseId: inv.warehouseId,
+      warehouseCode: wh?.code || "",
+      onHand,
+      reserved,
+      damaged,
+      defective,
+      expired,
+      nonSellable,
+      available,
+    });
+  }
+
+  return {
+    totalAvailable,
+    totalOnHand,
+    totalReserved,
+    totalDamaged,
+    totalDefective,
+    totalExpired,
+    totalNonSellable,
+    warehouseCount: (inventories || []).length,
+    details,
+  };
+};
+
+const syncVariantStockMirror = async (productVariantId, session = null) => {
+  if (!productVariantId || mongoose.connection.readyState !== 1) return;
+  try {
+    const { totalAvailable } = await calculateAuthoritativeStock(productVariantId, session);
+
+    const updateQuery = ProductVariant.findByIdAndUpdate(
+      productVariantId,
+      {
+        stockQuantity: totalAvailable,
+        stockStatus: totalAvailable > 0 ? "in_stock" : "out_of_stock",
+      }
+    );
+    if (session) updateQuery = updateQuery.session(session);
+    await updateQuery;
+  } catch (err) {
+    // Non-blocking mirror sync
+  }
+};
 
 const createInventory = async ({
   productVariantId,
@@ -63,7 +164,7 @@ const createInventory = async ({
   }
 
   try {
-    return await inventoryRepository.create({
+    const createdInv = await inventoryRepository.create({
       productVariantId,
       warehouseId,
       onHand,
@@ -71,6 +172,8 @@ const createInventory = async ({
       lowStockThreshold,
       lastStockUpdateAt: new Date(),
     });
+    await syncVariantStockMirror(productVariantId);
+    return createdInv;
   } catch (error) {
     if (error?.code === 11000) {
       throw new AppError(
@@ -182,19 +285,44 @@ const adjustStock = async (
       const onHandBefore = inventory.onHand;
       const reservedBefore = inventory.reserved;
 
-      const updatedInventory =
-        await inventoryRepository.adjustStock(
+      let updatedInventory;
+      let txType = "adjustment";
+
+      if (transactionContext.condition && ["damaged", "defective", "expired"].includes(transactionContext.condition)) {
+        txType = "condition_change";
+        const disposition = transactionContext.disposition || transactionContext.action || "mark_condition";
+        updatedInventory = await inventoryRepository.adjustStockCondition(
           inventoryId,
-          quantity,
+          {
+            condition: transactionContext.condition,
+            quantity: Math.abs(quantity),
+            disposition,
+          },
           { session }
         );
 
-      if (!updatedInventory) {
-        throw new AppError(
-          "Stock adjustment would reduce on-hand stock below reserved stock",
-          409,
-          "INVALID_STOCK_ADJUSTMENT"
-        );
+        if (!updatedInventory) {
+          throw new AppError(
+            `Condition adjustment (${transactionContext.condition}) failed due to insufficient available or condition stock`,
+            409,
+            "INVALID_STOCK_CONDITION_ADJUSTMENT"
+          );
+        }
+      } else {
+        updatedInventory =
+          await inventoryRepository.adjustStock(
+            inventoryId,
+            quantity,
+            { session }
+          );
+
+        if (!updatedInventory) {
+          throw new AppError(
+            "Stock adjustment would reduce on-hand stock below reserved and non-sellable stock",
+            409,
+            "INVALID_STOCK_ADJUSTMENT"
+          );
+        }
       }
 
       await inventoryTransactionService.createTransaction({
@@ -202,14 +330,14 @@ const adjustStock = async (
           updatedInventory.productVariantId,
         warehouseId:
           updatedInventory.warehouseId,
-        type: "adjustment",
+        type: txType,
         quantity,
         onHandBefore,
         onHandAfter: updatedInventory.onHand,
         reservedBefore,
         reservedAfter: updatedInventory.reserved,
         referenceType:
-          transactionContext.referenceType || null,
+          transactionContext.referenceType || "adjustment",
         referenceId:
           transactionContext.referenceId || null,
         idempotencyKey:
@@ -217,9 +345,11 @@ const adjustStock = async (
         actorUserId:
           transactionContext.actorUserId || null,
         notes:
-          transactionContext.notes || null,
+          transactionContext.notes || transactionContext.reason || null,
         session,
       });
+
+      await syncVariantStockMirror(updatedInventory.productVariantId, session);
 
       return updatedInventory;
     });
@@ -348,6 +478,8 @@ const reserveStockInTransaction = async (
 
     session,
   });
+
+  await syncVariantStockMirror(reservedInventory.productVariantId, session);
 
   return reservedInventory;
 };
@@ -530,6 +662,8 @@ const releaseStockInTransaction = async (
     session,
   });
 
+  await syncVariantStockMirror(releasedInventory.productVariantId, session);
+
   return releasedInventory;
 };
 
@@ -681,6 +815,8 @@ const deductReservedStockInTransaction = async (
     session,
   });
 
+  await syncVariantStockMirror(deductedInventory.productVariantId, session);
+
   return deductedInventory;
 };
 
@@ -735,7 +871,11 @@ const getMyVendorInventory = async ({ userId, query = {} }) => {
   const items = inventories.map((inv) => {
     const variant = variantMap.get(inv.productVariantId.toString());
     const product = variant ? productMap.get(variant.productId?.toString()) : null;
-    const available = Math.max((inv.onHand || 0) - (inv.reserved || 0), 0);
+    const damaged = inv.damaged || 0;
+    const defective = inv.defective || 0;
+    const expired = inv.expired || 0;
+    const nonSellable = damaged + defective + expired;
+    const available = Math.max((inv.onHand || 0) - (inv.reserved || 0) - nonSellable, 0);
     const isLowStock = available <= (inv.lowStockThreshold || 5);
 
     return {
@@ -766,6 +906,10 @@ const getMyVendorInventory = async ({ userId, query = {} }) => {
         : null,
       onHand: inv.onHand || 0,
       reserved: inv.reserved || 0,
+      damaged,
+      defective,
+      expired,
+      nonSellable,
       available,
       lowStockThreshold: inv.lowStockThreshold || 5,
       isLowStock,
@@ -817,7 +961,11 @@ const listAllInventory = async ({ page = 1, limit = 20, isLowStock } = {}) => {
   const items = docs.map((inv) => {
     const onHand = inv.onHand || 0;
     const reserved = inv.reserved || 0;
-    const available = Math.max(0, onHand - reserved);
+    const damaged = inv.damaged || 0;
+    const defective = inv.defective || 0;
+    const expired = inv.expired || 0;
+    const nonSellable = damaged + defective + expired;
+    const available = Math.max(0, onHand - reserved - nonSellable);
     const lowStockThreshold = inv.lowStockThreshold || 5;
 
     return {
@@ -826,6 +974,10 @@ const listAllInventory = async ({ page = 1, limit = 20, isLowStock } = {}) => {
       warehouse: inv.warehouseId,
       onHand,
       reserved,
+      damaged,
+      defective,
+      expired,
+      nonSellable,
       available,
       lowStockThreshold,
       isLowStock: available <= lowStockThreshold,
@@ -1018,17 +1170,29 @@ const getInventorySummary = async ({ vendorId = null } = {}) => {
 
   let totalUnitsOnHand = 0;
   let totalUnitsReserved = 0;
+  let totalUnitsDamaged = 0;
+  let totalUnitsDefective = 0;
+  let totalUnitsExpired = 0;
+  let totalUnitsNonSellable = 0;
   let lowStockCount = 0;
   let outOfStockCount = 0;
 
   for (const inv of records) {
     const onHand = inv.onHand || 0;
     const reserved = inv.reserved || 0;
-    const available = Math.max(0, onHand - reserved);
+    const damaged = inv.damaged || 0;
+    const defective = inv.defective || 0;
+    const expired = inv.expired || 0;
+    const nonSellable = damaged + defective + expired;
+    const available = Math.max(0, onHand - reserved - nonSellable);
     const threshold = inv.lowStockThreshold || 5;
 
     totalUnitsOnHand += onHand;
     totalUnitsReserved += reserved;
+    totalUnitsDamaged += damaged;
+    totalUnitsDefective += defective;
+    totalUnitsExpired += expired;
+    totalUnitsNonSellable += nonSellable;
 
     if (available === 0) {
       outOfStockCount++;
@@ -1037,13 +1201,17 @@ const getInventorySummary = async ({ vendorId = null } = {}) => {
     }
   }
 
-  const totalUnitsAvailable = Math.max(0, totalUnitsOnHand - totalUnitsReserved);
+  const totalUnitsAvailable = Math.max(0, totalUnitsOnHand - totalUnitsReserved - totalUnitsNonSellable);
 
   return {
     totalRecords: records.length,
     totalSkus: records.length,
     totalUnitsOnHand,
     totalUnitsReserved,
+    totalUnitsDamaged,
+    totalUnitsDefective,
+    totalUnitsExpired,
+    totalUnitsNonSellable,
     totalUnitsAvailable,
     lowStockCount,
     outOfStockCount,
@@ -1067,4 +1235,6 @@ module.exports = {
   listAllInventory,
   transferStock,
   getInventorySummary,
+  syncVariantStockMirror,
+  calculateAuthoritativeStock,
 };

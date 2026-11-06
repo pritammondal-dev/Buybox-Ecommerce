@@ -61,6 +61,12 @@ const vendorSettlementSchema = new Schema(
       default: "0.00",
     },
 
+    platformSubsidy: {
+      type: Schema.Types.Decimal128,
+      required: true,
+      default: "0.00",
+    },
+
     discounts: {
       type: Schema.Types.Decimal128,
       required: true,

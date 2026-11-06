@@ -10,6 +10,9 @@ const User = require("../models/User");
 const razorpayRefundProvider = require(
   "../integrations/payments/razorpay-refund.provider"
 );
+const paypalProvider = require(
+  "../integrations/payments/paypal.provider"
+);
 
 const notificationService = require("./notification");
 
@@ -164,7 +167,7 @@ const validateRefundRequest = ({
   order,
   refundAmount,
 }) => {
-  if (payment.gateway !== PAYMENT_GATEWAY) {
+  if (!["razorpay", "paypal"].includes(payment.gateway)) {
     throw new AppError(
       "Unsupported payment gateway",
       409,
@@ -184,7 +187,10 @@ const validateRefundRequest = ({
     );
   }
 
-  if (order.status === "cancelled") {
+  if (
+    order.status === "cancelled" &&
+    !["captured", "partially_refunded"].includes(payment.status)
+  ) {
     throw new AppError(
       "Refund cannot be created for this order",
       409,
@@ -311,6 +317,23 @@ const synchronizePaymentRefundState = async ({
       500,
       "ORDER_REFUND_STATE_UPDATE_FAILED"
     );
+  }
+
+  if (orderPaymentStatus === "refunded") {
+    try {
+      const digitalEntitlementService = require("./digital-entitlement.service");
+      await digitalEntitlementService.revokeEntitlementsForOrder(
+        order._id,
+        "Order fully refunded",
+        null,
+        options
+      );
+    } catch (revokeErr) {
+      logger.error("Failed to revoke digital entitlements on order refund", {
+        orderId: order._id,
+        error: revokeErr.message,
+      });
+    }
   }
 
   return {
@@ -468,7 +491,7 @@ const createRefund = async ({
 
   if (!payment.gatewayPaymentId) {
     throw new AppError(
-      "Captured payment is missing Razorpay payment ID",
+      `Captured payment is missing ${payment.gateway === "paypal" ? "PayPal" : "Razorpay"} payment ID`,
       409,
       "PAYMENT_GATEWAY_ID_MISSING"
     );
@@ -487,9 +510,11 @@ const createRefund = async ({
       requestedAmount
     );
 
+  const gateway = payment.gateway || PAYMENT_GATEWAY;
+
   let refund =
     await refundRepository.findByIdempotencyKey(
-      PAYMENT_GATEWAY,
+      gateway,
       normalizedIdempotencyKey
     );
 
@@ -530,22 +555,27 @@ const createRefund = async ({
 
     /*
      * Reconcile a failed local refund that
-     * already has a Razorpay refund ID.
+     * already has a gateway refund ID.
      */
     if (
       refund.status === "failed" &&
       refund.gatewayRefundId
     ) {
       let gatewayRefund;
+      const gwName = gateway === "paypal" ? "PayPal" : "Razorpay";
 
       try {
-        gatewayRefund =
-          await razorpayRefundProvider.fetchRefund(
-            refund.gatewayRefundId
-          );
+        if (gateway === "paypal") {
+          gatewayRefund = await paypalProvider.fetchRefund(refund.gatewayRefundId);
+        } else {
+          gatewayRefund =
+            await razorpayRefundProvider.fetchRefund(
+              refund.gatewayRefundId
+            );
+        }
       } catch (error) {
         throw new AppError(
-          "Unable to reconcile previous Razorpay refund",
+          `Unable to reconcile previous ${gwName} refund`,
           502,
           "REFUND_RECONCILIATION_FAILED"
         );
@@ -557,7 +587,7 @@ const createRefund = async ({
           refund.gatewayRefundId
       ) {
         throw new AppError(
-          "Previous Razorpay refund could not be reconciled",
+          `Previous ${gwName} refund could not be reconciled`,
           409,
           "REFUND_RECONCILIATION_REQUIRED"
         );
@@ -569,29 +599,34 @@ const createRefund = async ({
           payment.gatewayPaymentId
       ) {
         throw new AppError(
-          "Previous Razorpay refund belongs to a different payment",
+          `Previous ${gwName} refund belongs to a different payment`,
           409,
           "REFUND_PAYMENT_MISMATCH"
         );
       }
 
+      const gatewayStatus =
+        gateway === "paypal"
+          ? (gatewayRefund.status === "COMPLETED" ? "processed" : (gatewayRefund.status === "FAILED" ? "failed" : "pending"))
+          : (gatewayRefund.status === "processed" ? "processed" : (gatewayRefund.status === "failed" ? "failed" : "pending"));
+
       if (
         gatewayRefund.amount !==
           undefined &&
+        gateway !== "paypal" &&
         Number(
           gatewayRefund.amount
         ) !== requestedAmount
       ) {
         throw new AppError(
-          "Previous Razorpay refund amount does not match",
+          `Previous ${gwName} refund amount does not match`,
           409,
           "REFUND_AMOUNT_MISMATCH"
         );
       }
 
       if (
-        gatewayRefund.status ===
-        "processed"
+        gatewayStatus === "processed"
       ) {
         const session =
           await mongoose.startSession();
@@ -661,24 +696,20 @@ const createRefund = async ({
       }
 
       if (
-        gatewayRefund.status ===
-          "pending" ||
-        gatewayRefund.status ===
-          "created"
+        gatewayStatus === "pending"
       ) {
         throw new AppError(
-          "Previous Razorpay refund is still being processed",
+          `Previous ${gwName} refund is still being processed`,
           409,
           "REFUND_ALREADY_IN_PROGRESS"
         );
       }
 
       if (
-        gatewayRefund.status !==
-        "failed"
+        gatewayStatus !== "failed"
       ) {
         throw new AppError(
-          "Previous Razorpay refund requires reconciliation",
+          `Previous ${gwName} refund requires reconciliation`,
           409,
           "REFUND_RECONCILIATION_REQUIRED"
         );
@@ -712,8 +743,7 @@ const createRefund = async ({
           orderId: order._id,
           customerId:
             order.customerId,
-          gateway:
-            PAYMENT_GATEWAY,
+          gateway,
           amount:
             requestedAmountDecimal,
           currency:
@@ -727,7 +757,7 @@ const createRefund = async ({
       if (error?.code === 11000) {
         const concurrentRefund =
           await refundRepository.findByIdempotencyKey(
-            PAYMENT_GATEWAY,
+            gateway,
             normalizedIdempotencyKey
           );
 
@@ -791,21 +821,44 @@ const createRefund = async ({
     }
 
     /*
-     * Create refund at Razorpay.
+     * Create refund at Gateway (Razorpay or PayPal).
      */
-    const razorpayRefund =
-      await razorpayRefundProvider.createRefund({
-        paymentId:
-          payment.gatewayPaymentId,
-        amount:
-          requestedAmount,
-        notes: {
-          orderId:
-            order._id.toString(),
-          refundId:
-            refund._id.toString(),
-        },
-      });
+    let razorpayRefund;
+    if (gateway === "paypal") {
+      const paypalResult = await paypalProvider.refundCapture(
+        payment.gatewayPaymentId,
+        {
+          amount: requestedAmountDecimal,
+          currency: payment.currency || "INR",
+          note: reason || `Refund for order ${order.orderNumber || order._id}`,
+        }
+      );
+      razorpayRefund = {
+        id: paypalResult?.id,
+        payment_id: payment.gatewayPaymentId,
+        amount: requestedAmount,
+        status:
+          paypalResult?.status === "COMPLETED"
+            ? "processed"
+            : paypalResult?.status === "FAILED"
+            ? "failed"
+            : "pending",
+      };
+    } else {
+      razorpayRefund =
+        await razorpayRefundProvider.createRefund({
+          paymentId:
+            payment.gatewayPaymentId,
+          amount:
+            requestedAmount,
+          notes: {
+            orderId:
+              order._id.toString(),
+            refundId:
+              refund._id.toString(),
+          },
+        });
+    }
 
     gatewayRequestCompleted = true;
 
@@ -814,9 +867,9 @@ const createRefund = async ({
       !razorpayRefund.id
     ) {
       throw new AppError(
-        "Razorpay did not return a refund ID",
+        `${gateway === "paypal" ? "PayPal" : "Razorpay"} did not return a refund ID`,
         502,
-        "RAZORPAY_REFUND_RESPONSE_INVALID"
+        `${gateway === "paypal" ? "PAYPAL" : "RAZORPAY"}_REFUND_RESPONSE_INVALID`
       );
     }
 
@@ -1016,6 +1069,21 @@ const createRefund = async ({
         } catch {
           // Non-blocking reward adjustment
         }
+
+        try {
+          // Phase VW-03: Post refund reversal double-entry journal
+          const financialLedgerService = require("./financial-ledger.service");
+          const isSettled = Boolean(order.items?.some((it) => it.settlementId));
+          const primaryVendorId = order.items?.[0]?.vendorId;
+          await financialLedgerService.postRefundReversalJournal(updatedRefund, {
+            orderDoc: order,
+            vendorId: primaryVendorId,
+            isSettled,
+            actorId: userId,
+          });
+        } catch {
+          // Non-blocking ledger reversal
+        }
       }
 
       return {
@@ -1043,29 +1111,58 @@ const createRefund = async ({
     /*
      * If Razorpay did NOT accept the refund request,
      * release our reservation.
+     *
+     * EXCEPTION: If the error was a gateway timeout or network error, the gateway outcome
+     * is uncertain (the refund may have been created or is pending on the gateway).
+     * DO NOT release the reservation, and keep the refund in pending state to prevent
+     * double-refunding or exceeding the refundable limit.
      */
     if (!gatewayRequestCompleted) {
-      try {
-        await releaseRefundReservation({
-          paymentId: payment._id,
-          amount:
-            requestedAmountDecimal,
-        });
-      } catch (releaseError) {
-        // Reconciliation will handle
-        // an unreleased reservation.
-      }
+      const isUncertainTimeout =
+        Boolean(error?.isTimeout) ||
+        error?.errorCode === "GATEWAY_TIMEOUT" ||
+        error?.statusCode === 504 ||
+        /timeout|timed out|network/i.test(error?.message || "");
 
-      if (
-        refund.status !==
-        "processed"
-      ) {
+      if (!isUncertainTimeout) {
+        try {
+          await releaseRefundReservation({
+            paymentId: payment._id,
+            amount:
+              requestedAmountDecimal,
+          });
+        } catch (releaseError) {
+          // Reconciliation will handle
+          // an unreleased reservation.
+        }
+
+        if (
+          refund.status !==
+          "processed"
+        ) {
+          try {
+            await refundRepository.updateById(
+              refund._id,
+              {
+                status: "failed",
+                failureReason:
+                  error.message,
+              }
+            );
+          } catch (persistenceError) {
+            // Preserve original error.
+          }
+        }
+      } else {
+        // Uncertain outcome / timeout:
+        // Hold reservation intact and mark pending for reconciliation
         try {
           await refundRepository.updateById(
             refund._id,
             {
-              status: "failed",
+              status: "pending",
               failureReason:
+                "Gateway timeout during refund creation; reservation held for reconciliation: " +
                 error.message,
             }
           );

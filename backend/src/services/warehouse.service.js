@@ -35,6 +35,61 @@ const listWarehouses = async () => {
   return warehouseRepository.findAll();
 };
 
+const validateWarehouseCanBeDeactivatedOrDeleted = async (warehouseId) => {
+  const mongoose = require("mongoose");
+  if (mongoose.connection.readyState !== 1) return;
+
+  const Inventory = require("../models/Inventory");
+  const Order = require("../models/Order");
+
+  // 1. Check for on-hand or reserved stock
+  const activeStock = await Inventory.findOne({
+    warehouseId,
+    $or: [{ onHand: { $gt: 0 } }, { reserved: { $gt: 0 } }],
+  });
+
+  if (activeStock) {
+    throw new AppError(
+      "Cannot deactivate or delete warehouse with active on-hand or reserved stock. Transfer or write off inventory first.",
+      409,
+      "WAREHOUSE_HAS_ACTIVE_INVENTORY"
+    );
+  }
+
+  // 2. Check for active unfulfilled orders assigned to this warehouse
+  const activeOrder = await Order.findOne({
+    status: { $in: ["pending", "confirmed", "processing"] },
+    "items.warehouseId": warehouseId,
+  });
+
+  if (activeOrder) {
+    throw new AppError(
+      `Cannot deactivate or delete warehouse associated with active unfulfilled order ${activeOrder.orderNumber}.`,
+      409,
+      "WAREHOUSE_HAS_ACTIVE_ORDERS"
+    );
+  }
+
+  // 3. Check for in-transit stock transfers
+  try {
+    const StockTransfer = require("../models/StockTransfer");
+    const activeTransfer = await StockTransfer.findOne({
+      $or: [{ sourceWarehouseId: warehouseId }, { destinationWarehouseId: warehouseId }],
+      status: { $in: ["dispatched", "partially_received"] },
+    });
+
+    if (activeTransfer) {
+      throw new AppError(
+        `Cannot deactivate or delete warehouse with in-transit transfer ${activeTransfer.transferNumber}.`,
+        409,
+        "WAREHOUSE_HAS_ACTIVE_TRANSFERS"
+      );
+    }
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+  }
+};
+
 const updateWarehouse = async (id, data) => {
   const warehouse =
     await warehouseRepository.findById(id);
@@ -45,6 +100,21 @@ const updateWarehouse = async (id, data) => {
       404,
       "WAREHOUSE_NOT_FOUND"
     );
+  }
+
+  if (data.code && data.code.toUpperCase() !== warehouse.code.toUpperCase()) {
+    const existingCode = await warehouseRepository.findByCode(data.code);
+    if (existingCode && existingCode._id.toString() !== id.toString()) {
+      throw new AppError(
+        "Warehouse code is already in use",
+        409,
+        "WAREHOUSE_CODE_ALREADY_EXISTS"
+      );
+    }
+  }
+
+  if (data.isActive === false && warehouse.isActive === true) {
+    await validateWarehouseCanBeDeactivatedOrDeleted(id);
   }
 
   return warehouseRepository.updateById(
@@ -64,6 +134,8 @@ const deleteWarehouse = async (id) => {
       "WAREHOUSE_NOT_FOUND"
     );
   }
+
+  await validateWarehouseCanBeDeactivatedOrDeleted(id);
 
   return warehouseRepository.softDeleteById(id);
 };

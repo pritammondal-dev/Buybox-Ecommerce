@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Package,
   Search,
@@ -11,6 +12,8 @@ import {
   Clock,
   ShieldCheck,
   Eye,
+  Plus,
+  Edit,
 } from "lucide-react";
 import apiClient from "@/lib/api/axios.js";
 
@@ -102,8 +105,17 @@ export default function AdminProductsPage() {
           </p>
         </div>
 
-        <div className="text-xs text-slate-500 font-semibold bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200">
-          Products Found: <span className="text-slate-900 font-bold">{pagination.total}</span>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/admin/catalog/products/create"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors"
+          >
+            <Plus className="size-4" />
+            <span>Add New Product</span>
+          </Link>
+          <div className="text-xs text-slate-500 font-semibold bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200">
+            Products Found: <span className="text-slate-900 font-bold">{pagination.total}</span>
+          </div>
         </div>
       </div>
 
@@ -210,6 +222,14 @@ export default function AdminProductsPage() {
                     </td>
 
                     <td className="px-6 py-4 text-right space-x-2">
+                      <Link
+                        href={`/admin/catalog/products/${p._id}`}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-medium transition-colors"
+                      >
+                        <Edit className="size-3" />
+                        <span>Edit</span>
+                      </Link>
+
                       {p.status === "pending_approval" && (
                         <>
                           <button

@@ -5,17 +5,6 @@ import Link from "next/link";
 import { Store, ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
 import { brandService } from "../../../services/brand.service.js";
 
-const DEFAULT_MOCKUP_BRANDS = [
-  { name: "SAMSUNG", slug: "samsung", style: "font-black tracking-widest text-blue-700 text-sm sm:text-base" },
-  { name: " Apple", slug: "apple", style: "font-bold text-slate-900 text-sm sm:text-base" },
-  { name: "Lenovo", slug: "lenovo", style: "font-black text-white bg-red-600 px-2 py-0.5 rounded text-xs tracking-wider" },
-  { name: "hp", slug: "hp", style: "font-black italic text-blue-600 text-base sm:text-lg border-2 border-blue-600 rounded-full px-2" },
-  { name: "ASUS", slug: "asus", style: "font-black tracking-wider text-slate-800 text-sm sm:text-base" },
-  { name: "boAt", slug: "boat", style: "font-black text-red-600 tracking-tight text-sm sm:text-base" },
-  { name: "realme", slug: "realme", style: "font-bold text-slate-900 bg-amber-400 px-2 py-0.5 rounded text-xs" },
-  { name: "intel", slug: "intel", style: "font-bold text-blue-600 tracking-tight text-sm sm:text-base" },
-];
-
 export function FeaturedBrands({ initialBrands = [] }) {
   const [brands, setBrands] = useState(initialBrands);
   const scrollRef = useRef(null);
@@ -40,16 +29,18 @@ export function FeaturedBrands({ initialBrands = [] }) {
   }, [initialBrands.length]);
 
   const displayBrands = React.useMemo(() => {
-    if (brands.length >= 6) {
+    if (brands.length > 0) {
       return brands.map((b) => ({
         name: b.name,
         slug: b.slug || b._id,
-        logo: b.logo?.url || null,
+        logo: b.logo?.url || b.logoUrl || null,
         style: "font-black tracking-wide text-slate-800 text-xs sm:text-sm",
       }));
     }
-    return DEFAULT_MOCKUP_BRANDS;
+    return [];
   }, [brands]);
+
+  if (displayBrands.length === 0) return null;
 
   const scroll = (direction) => {
     if (scrollRef.current) {

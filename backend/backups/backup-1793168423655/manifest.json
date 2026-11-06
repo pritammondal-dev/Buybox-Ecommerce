@@ -1,0 +1,685 @@
+{
+  "timestamp": "2026-10-28T06:20:23.655Z",
+  "dryRun": false,
+  "sourceDatabase": "buybox",
+  "sourceUriMasked": "mongodb://127.0.0.1:27017/buybox?replicaSet=rs0",
+  "targetDir": "D:\\MERN Stack\\Buybox-Ecommerce\\backend\\backups\\backup-1793168423655",
+  "collections": {
+    "supporttickets": {
+      "count": 5,
+      "bytes": 2547,
+      "sha256": "17f167fbb446e20030fd49f3db7dbdeca393d5f86dca7396bb5e459c9de947de",
+      "indexCount": 12,
+      "dataFile": "supporttickets.json",
+      "indexFile": "supporttickets.indexes.json"
+    },
+    "taxrules": {
+      "count": 1,
+      "bytes": 453,
+      "sha256": "b82f0cf660e8555e593fb83f2ca96f6b9b318148d104e7f3b9e0ba87c9084f53",
+      "indexCount": 4,
+      "dataFile": "taxrules.json",
+      "indexFile": "taxrules.indexes.json"
+    },
+    "storefrontmenus": {
+      "count": 1,
+      "bytes": 816,
+      "sha256": "d3a6708256ac2ea1aa95735d732f668aa1c9c9334b706306ad798c2bea973f26",
+      "indexCount": 6,
+      "dataFile": "storefrontmenus.json",
+      "indexFile": "storefrontmenus.indexes.json"
+    },
+    "roles": {
+      "count": 5,
+      "bytes": 1500,
+      "sha256": "0de7fb001b5f6b5571c23c266d5e8f2674950ef415cda307c9d0ff284ed48f90",
+      "indexCount": 5,
+      "dataFile": "roles.json",
+      "indexFile": "roles.indexes.json"
+    },
+    "storefrontredirects": {
+      "count": 1,
+      "bytes": 358,
+      "sha256": "79fe731e31cf0859d6172486f2d0535e704a384cc0cd3f3d650db1ea75ce8165",
+      "indexCount": 5,
+      "dataFile": "storefrontredirects.json",
+      "indexFile": "storefrontredirects.indexes.json"
+    },
+    "platformcredentials": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 4,
+      "dataFile": "platformcredentials.json",
+      "indexFile": "platformcredentials.indexes.json"
+    },
+    "emaillogs": {
+      "count": 68,
+      "bytes": 32187,
+      "sha256": "721e85b3b879791e79f8e093fc7daf7bc5de744d49bb971cf56370f75f44b210",
+      "indexCount": 5,
+      "dataFile": "emaillogs.json",
+      "indexFile": "emaillogs.indexes.json"
+    },
+    "shipments": {
+      "count": 6,
+      "bytes": 4927,
+      "sha256": "6dfcaa64d813323961f1ad4a8dfd4dac9aec6099d282baadbb0e289b5cf420f5",
+      "indexCount": 12,
+      "dataFile": "shipments.json",
+      "indexFile": "shipments.indexes.json"
+    },
+    "inventories": {
+      "count": 45,
+      "bytes": 20901,
+      "sha256": "51efc285cd02fc0e6e8179612f0518f3c69a71167f47298def612477cc1a83df",
+      "indexCount": 4,
+      "dataFile": "inventories.json",
+      "indexFile": "inventories.indexes.json"
+    },
+    "coupons": {
+      "count": 3,
+      "bytes": 2075,
+      "sha256": "b1a804f31bb94b4ade777f79be351dd2ab90d85474d74c99adc59b7cc4d5079b",
+      "indexCount": 7,
+      "dataFile": "coupons.json",
+      "indexFile": "coupons.indexes.json"
+    },
+    "employees": {
+      "count": 11,
+      "bytes": 4437,
+      "sha256": "0a99bbe8f9da5e4374cf1c84b97505f2d4787894c8420f059815ca7599e7c136",
+      "indexCount": 5,
+      "dataFile": "employees.json",
+      "indexFile": "employees.indexes.json"
+    },
+    "campaigns": {
+      "count": 3,
+      "bytes": 2044,
+      "sha256": "153680980e5b2431aa32aceaee388372d9fb17d79702289bdfbafdbf1359c05a",
+      "indexCount": 10,
+      "dataFile": "campaigns.json",
+      "indexFile": "campaigns.indexes.json"
+    },
+    "vendors": {
+      "count": 15,
+      "bytes": 11671,
+      "sha256": "0dcf6703a0800a9d66ab000e93bec1818dc7f0d9c6372b2455241510cd907b07",
+      "indexCount": 8,
+      "dataFile": "vendors.json",
+      "indexFile": "vendors.indexes.json"
+    },
+    "cmspages": {
+      "count": 1,
+      "bytes": 563,
+      "sha256": "3f38c077645d7b3199aaf07de94925d31792dbb72d72953673cce14ef75bfe25",
+      "indexCount": 7,
+      "dataFile": "cmspages.json",
+      "indexFile": "cmspages.indexes.json"
+    },
+    "storefrontannouncementbars": {
+      "count": 1,
+      "bytes": 469,
+      "sha256": "0f8f66e64291bfcabe092d7471302612fc1011e126dd2d4886af035b227cfc10",
+      "indexCount": 8,
+      "dataFile": "storefrontannouncementbars.json",
+      "indexFile": "storefrontannouncementbars.indexes.json"
+    },
+    "storefrontpublications": {
+      "count": 1,
+      "bytes": 517,
+      "sha256": "3c47bfb2082d38081d6f2528d186d3b975b5f43c2783a8d99d6582be8ce4fcbe",
+      "indexCount": 10,
+      "dataFile": "storefrontpublications.json",
+      "indexFile": "storefrontpublications.indexes.json"
+    },
+    "giftcardtransactions": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 4,
+      "dataFile": "giftcardtransactions.json",
+      "indexFile": "giftcardtransactions.indexes.json"
+    },
+    "paymentmethods": {
+      "count": 7,
+      "bytes": 3881,
+      "sha256": "8f9c79191676722d8b0bffe050ccb58bfd4a6bf6b12dee0796f95a4644a2ab92",
+      "indexCount": 10,
+      "dataFile": "paymentmethods.json",
+      "indexFile": "paymentmethods.indexes.json"
+    },
+    "storefrontseos": {
+      "count": 1,
+      "bytes": 862,
+      "sha256": "fb279474a3a8af1e485e2f69752a7207d51cebb3ce97bd6a8b7f08afd07bf790",
+      "indexCount": 3,
+      "dataFile": "storefrontseos.json",
+      "indexFile": "storefrontseos.indexes.json"
+    },
+    "wishlists": {
+      "count": 10,
+      "bytes": 2121,
+      "sha256": "38eb7e3f1548f9a5802810ee30e904696bf7bac7415d83fe23af53e542474c3d",
+      "indexCount": 2,
+      "dataFile": "wishlists.json",
+      "indexFile": "wishlists.indexes.json"
+    },
+    "skuregistries": {
+      "count": 25,
+      "bytes": 8032,
+      "sha256": "6f6139fc93f70e74c9f7419025568024f7d97bf44ce546b684994203ed871f6c",
+      "indexCount": 6,
+      "dataFile": "skuregistries.json",
+      "indexFile": "skuregistries.indexes.json"
+    },
+    "financialledgerentries": {
+      "count": 1,
+      "bytes": 612,
+      "sha256": "31aa3084784abcdbb2902f3838496f997ea3ddf859dfd20259744a3c6b7fd611",
+      "indexCount": 12,
+      "dataFile": "financialledgerentries.json",
+      "indexFile": "financialledgerentries.indexes.json"
+    },
+    "shipmentwebhookevents": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 5,
+      "dataFile": "shipmentwebhookevents.json",
+      "indexFile": "shipmentwebhookevents.indexes.json"
+    },
+    "rolepermissions": {
+      "count": 347,
+      "bytes": 91956,
+      "sha256": "c6844fc7ebc98c30bc0872ac94e4a8eaa1863c21064b0d791e161a4ea422ec3f",
+      "indexCount": 4,
+      "dataFile": "rolepermissions.json",
+      "indexFile": "rolepermissions.indexes.json"
+    },
+    "brands": {
+      "count": 21,
+      "bytes": 9755,
+      "sha256": "a6799e999ba9e25fa9ed8d6cf059c47ac1051832850ffcc01b5538a7139a0d64",
+      "indexCount": 5,
+      "dataFile": "brands.json",
+      "indexFile": "brands.indexes.json"
+    },
+    "passwordresettokens": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 4,
+      "dataFile": "passwordresettokens.json",
+      "indexFile": "passwordresettokens.indexes.json"
+    },
+    "storefrontcontentblocks": {
+      "count": 1,
+      "bytes": 561,
+      "sha256": "b39e63635ae45ae5534038463746ba0fae1136ebce4804aa71e0de9cc614d8b4",
+      "indexCount": 10,
+      "dataFile": "storefrontcontentblocks.json",
+      "indexFile": "storefrontcontentblocks.indexes.json"
+    },
+    "inventorytransactions": {
+      "count": 80,
+      "bytes": 51202,
+      "sha256": "0a4d6de44ab767da57947841638c79e4057e4b76351e5ac5be8740c535a11df5",
+      "indexCount": 9,
+      "dataFile": "inventorytransactions.json",
+      "indexFile": "inventorytransactions.indexes.json"
+    },
+    "reviews": {
+      "count": 1,
+      "bytes": 760,
+      "sha256": "b69e7d518aa955de884ca9402851f1b97b037d750498361c1c44f649579f2b3b",
+      "indexCount": 9,
+      "dataFile": "reviews.json",
+      "indexFile": "reviews.indexes.json"
+    },
+    "otps": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 9,
+      "dataFile": "otps.json",
+      "indexFile": "otps.indexes.json"
+    },
+    "workassignments": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 6,
+      "dataFile": "workassignments.json",
+      "indexFile": "workassignments.indexes.json"
+    },
+    "customers": {
+      "count": 35,
+      "bytes": 13975,
+      "sha256": "bf4534f2be862d4e84362ebc0964fb97dfcf2f5ee799d48bd8f32881eeca1429",
+      "indexCount": 4,
+      "dataFile": "customers.json",
+      "indexFile": "customers.indexes.json"
+    },
+    "productvariants": {
+      "count": 46,
+      "bytes": 34361,
+      "sha256": "76d8edf7cba030f187156385d5e33a9f1d377ad6eb005198e7bc2b4f161915a4",
+      "indexCount": 12,
+      "dataFile": "productvariants.json",
+      "indexFile": "productvariants.indexes.json"
+    },
+    "attributes": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 9,
+      "dataFile": "attributes.json",
+      "indexFile": "attributes.indexes.json"
+    },
+    "specialeventpages": {
+      "count": 1,
+      "bytes": 2009,
+      "sha256": "4354cb038f87a360d819aee81c6318a105a98634787a9123513dfa26acfeb019",
+      "indexCount": 9,
+      "dataFile": "specialeventpages.json",
+      "indexFile": "specialeventpages.indexes.json"
+    },
+    "productquestions": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 6,
+      "dataFile": "productquestions.json",
+      "indexFile": "productquestions.indexes.json"
+    },
+    "refreshtokens": {
+      "count": 858,
+      "bytes": 486179,
+      "sha256": "fffc3e7e683b74b789b51106836f9384cfc6ba3b8fc1ad03204c3c6278dd5d32",
+      "indexCount": 5,
+      "dataFile": "refreshtokens.json",
+      "indexFile": "refreshtokens.indexes.json"
+    },
+    "emailverificationtokens": {
+      "count": 21,
+      "bytes": 7262,
+      "sha256": "3ceebccdb66ba59d4f2028d9234df5a418966c5a06d2b1182533b9ca53dc2c47",
+      "indexCount": 4,
+      "dataFile": "emailverificationtokens.json",
+      "indexFile": "emailverificationtokens.indexes.json"
+    },
+    "employeepermissionrestrictions": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 6,
+      "dataFile": "employeepermissionrestrictions.json",
+      "indexFile": "employeepermissionrestrictions.indexes.json"
+    },
+    "addresses": {
+      "count": 21,
+      "bytes": 9127,
+      "sha256": "82e12daae5f9da2f17134a7f3f25ee9f3e77773bd40ce049cf2d9621f7358e82",
+      "indexCount": 6,
+      "dataFile": "addresses.json",
+      "indexFile": "addresses.indexes.json"
+    },
+    "supporttickethistories": {
+      "count": 6,
+      "bytes": 2178,
+      "sha256": "83077350405e8fe48d4367cff462fbe86bb73fa61ec04b4f967e96dedc82e764",
+      "indexCount": 5,
+      "dataFile": "supporttickethistories.json",
+      "indexFile": "supporttickethistories.indexes.json"
+    },
+    "rewardtransactions": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 4,
+      "dataFile": "rewardtransactions.json",
+      "indexFile": "rewardtransactions.indexes.json"
+    },
+    "stocktransfers": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 10,
+      "dataFile": "stocktransfers.json",
+      "indexFile": "stocktransfers.indexes.json"
+    },
+    "giftcards": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 4,
+      "dataFile": "giftcards.json",
+      "indexFile": "giftcards.indexes.json"
+    },
+    "analyticsevents": {
+      "count": 20,
+      "bytes": 11982,
+      "sha256": "d979ecc152a1e0c305004af2919d810bb47c3f78b3f58ca237e15d91acbda2c1",
+      "indexCount": 13,
+      "dataFile": "analyticsevents.json",
+      "indexFile": "analyticsevents.indexes.json"
+    },
+    "jobroles": {
+      "count": 8,
+      "bytes": 10040,
+      "sha256": "ae7c162793771042a9e0720a089447f540f8229aa0b4ad77606b76f597e4b07c",
+      "indexCount": 8,
+      "dataFile": "jobroles.json",
+      "indexFile": "jobroles.indexes.json"
+    },
+    "stockreceivings": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 7,
+      "dataFile": "stockreceivings.json",
+      "indexFile": "stockreceivings.indexes.json"
+    },
+    "returnrequests": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 10,
+      "dataFile": "returnrequests.json",
+      "indexFile": "returnrequests.indexes.json"
+    },
+    "warehouselocations": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 5,
+      "dataFile": "warehouselocations.json",
+      "indexFile": "warehouselocations.indexes.json"
+    },
+    "vendorpayouts": {
+      "count": 1,
+      "bytes": 669,
+      "sha256": "1de9aa564dfe132efb61a13d39a7b89306d2e1bed2ebe52b274a54c34a815a2b",
+      "indexCount": 6,
+      "dataFile": "vendorpayouts.json",
+      "indexFile": "vendorpayouts.indexes.json"
+    },
+    "campaignperformances": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 5,
+      "dataFile": "campaignperformances.json",
+      "indexFile": "campaignperformances.indexes.json"
+    },
+    "importexportjobs": {
+      "count": 11,
+      "bytes": 15039,
+      "sha256": "e2412998adcb7722dccc93ebaca149cee318dc7cddeeb0ac7b1f2f768d46071c",
+      "indexCount": 9,
+      "dataFile": "importexportjobs.json",
+      "indexFile": "importexportjobs.indexes.json"
+    },
+    "carts": {
+      "count": 37,
+      "bytes": 30703,
+      "sha256": "5f172fc4909e38febc5e174b7c049d21a20a1871a22ef7535bb2425645c4e3f1",
+      "indexCount": 10,
+      "dataFile": "carts.json",
+      "indexFile": "carts.indexes.json"
+    },
+    "categories": {
+      "count": 20,
+      "bytes": 10291,
+      "sha256": "78654559e3d10a39be9d5000163a7b68ad748e7d3a3ceefda7dc05f69b188c0e",
+      "indexCount": 7,
+      "dataFile": "categories.json",
+      "indexFile": "categories.indexes.json"
+    },
+    "employeepermissiongrants": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 6,
+      "dataFile": "employeepermissiongrants.json",
+      "indexFile": "employeepermissiongrants.indexes.json"
+    },
+    "tests": {
+      "count": 1,
+      "bytes": 103,
+      "sha256": "fe29c13290bae59c9dbc0494f593e6d6538a58ee7e0a5dad1d9f1e5f84aa28f7",
+      "indexCount": 1,
+      "dataFile": "tests.json",
+      "indexFile": "tests.indexes.json"
+    },
+    "authentication_policies": {
+      "count": 1,
+      "bytes": 459,
+      "sha256": "4893938c1997b168f823b22589ca778161968eb0eb541d927c2c14256e43f92c",
+      "indexCount": 1,
+      "dataFile": "authentication_policies.json",
+      "indexFile": "authentication_policies.indexes.json"
+    },
+    "rewardaccounts": {
+      "count": 3,
+      "bytes": 1132,
+      "sha256": "b8e6e1ec8bb32690f284bfafeb29a9b5b3e848a290e4573b2ddc9e49d57a0879",
+      "indexCount": 3,
+      "dataFile": "rewardaccounts.json",
+      "indexFile": "rewardaccounts.indexes.json"
+    },
+    "orders": {
+      "count": 28,
+      "bytes": 87800,
+      "sha256": "de698b1e43b48523bf2c356b24f73180519095e3e92e3e23e2e2af33a59fa960",
+      "indexCount": 24,
+      "dataFile": "orders.json",
+      "indexFile": "orders.indexes.json"
+    },
+    "digitalentitlements": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 13,
+      "dataFile": "digitalentitlements.json",
+      "indexFile": "digitalentitlements.indexes.json"
+    },
+    "vendorsettlements": {
+      "count": 1,
+      "bytes": 811,
+      "sha256": "8e45655ba162a72680f0e7cecb1d53ec9f4e508e8d8076a4f898ffce13846107",
+      "indexCount": 7,
+      "dataFile": "vendorsettlements.json",
+      "indexFile": "vendorsettlements.indexes.json"
+    },
+    "warehouses": {
+      "count": 1,
+      "bytes": 483,
+      "sha256": "86f3a7158c4c85ef9939127fbbe92da826b842046e89cf5ba6229bca882b28d9",
+      "indexCount": 6,
+      "dataFile": "warehouses.json",
+      "indexFile": "warehouses.indexes.json"
+    },
+    "savedviews": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 4,
+      "dataFile": "savedviews.json",
+      "indexFile": "savedviews.indexes.json"
+    },
+    "users": {
+      "count": 54,
+      "bytes": 25064,
+      "sha256": "3e77e050be088d10dfb84203ae3d6948d52f60d905dc641fdce6b80c70898a66",
+      "indexCount": 9,
+      "dataFile": "users.json",
+      "indexFile": "users.indexes.json"
+    },
+    "permissions": {
+      "count": 170,
+      "bytes": 51448,
+      "sha256": "85468459c16f8110daa1e9ea9b2085800fa39023ab15521e36d3175f267b80df",
+      "indexCount": 5,
+      "dataFile": "permissions.json",
+      "indexFile": "permissions.indexes.json"
+    },
+    "stockcounts": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 6,
+      "dataFile": "stockcounts.json",
+      "indexFile": "stockcounts.indexes.json"
+    },
+    "employeeroles": {
+      "count": 6,
+      "bytes": 2268,
+      "sha256": "eeb87ef70a1481cca7a12ab42a0a43ee9dda8e2db1c4ed8fb1ecc05ff80a02ec",
+      "indexCount": 6,
+      "dataFile": "employeeroles.json",
+      "indexFile": "employeeroles.indexes.json"
+    },
+    "couponredemptions": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 5,
+      "dataFile": "couponredemptions.json",
+      "indexFile": "couponredemptions.indexes.json"
+    },
+    "storefrontmedias": {
+      "count": 7,
+      "bytes": 3502,
+      "sha256": "9e6a5beab9d8b830272369afb4088dd7cc43503806f09243119f6eb556c6dac9",
+      "indexCount": 7,
+      "dataFile": "storefrontmedias.json",
+      "indexFile": "storefrontmedias.indexes.json"
+    },
+    "storefrontbanners": {
+      "count": 9,
+      "bytes": 5031,
+      "sha256": "a67521e2e966a861c6bceea3665eea084982af7d713c87a7efe1dbed2ea7b7fa",
+      "indexCount": 12,
+      "dataFile": "storefrontbanners.json",
+      "indexFile": "storefrontbanners.indexes.json"
+    },
+    "supportticketmessages": {
+      "count": 3,
+      "bytes": 1039,
+      "sha256": "0d0c09a3403f7e7d8c5622599f20e289355fe64d3ed4a35c783dda0f41ada449",
+      "indexCount": 5,
+      "dataFile": "supportticketmessages.json",
+      "indexFile": "supportticketmessages.indexes.json"
+    },
+    "customernotifications": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 6,
+      "dataFile": "customernotifications.json",
+      "indexFile": "customernotifications.indexes.json"
+    },
+    "paymentwebhookevents": {
+      "count": 9,
+      "bytes": 6397,
+      "sha256": "60509be8b1485052af59b0ba2e60e2b843cfeac276584427a2d3870100933ba8",
+      "indexCount": 6,
+      "dataFile": "paymentwebhookevents.json",
+      "indexFile": "paymentwebhookevents.indexes.json"
+    },
+    "fulfillmentexceptions": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 11,
+      "dataFile": "fulfillmentexceptions.json",
+      "indexFile": "fulfillmentexceptions.indexes.json"
+    },
+    "notificationoutboxes": {
+      "count": 45,
+      "bytes": 25435,
+      "sha256": "3b57a707a3c7f07f0cb0ac5224ad4ab590e392c724054177456446bc5ae97a0f",
+      "indexCount": 7,
+      "dataFile": "notificationoutboxes.json",
+      "indexFile": "notificationoutboxes.indexes.json"
+    },
+    "products": {
+      "count": 42,
+      "bytes": 68837,
+      "sha256": "1393f13a51581bdec83eb520ad31d0c93337abbf598d961244e0f8d4264289c6",
+      "indexCount": 20,
+      "dataFile": "products.json",
+      "indexFile": "products.indexes.json"
+    },
+    "refunds": {
+      "count": 8,
+      "bytes": 4682,
+      "sha256": "1c2272ef34672d031b1619735332a9d7cf179cc7cfa70f7ca28d79f6fab7cb7e",
+      "indexCount": 12,
+      "dataFile": "refunds.json",
+      "indexFile": "refunds.indexes.json"
+    },
+    "tasks": {
+      "count": 2,
+      "bytes": 2264,
+      "sha256": "cd156029c2d28b703ee7400bdec07bdc2ac00f96aa888d16d323dffcb1efb5d8",
+      "indexCount": 7,
+      "dataFile": "tasks.json",
+      "indexFile": "tasks.indexes.json"
+    },
+    "storefrontsections": {
+      "count": 5,
+      "bytes": 3312,
+      "sha256": "688c41189a7c1fefe3bc8c1cb6c420ce604431525b19cee4950c6c33457167ee",
+      "indexCount": 8,
+      "dataFile": "storefrontsections.json",
+      "indexFile": "storefrontsections.indexes.json"
+    },
+    "storefrontsettings": {
+      "count": 1,
+      "bytes": 1530,
+      "sha256": "45ca56f14183c95ca42e42693c008f28e3ac23218f3102728d8bb25695fb090f",
+      "indexCount": 2,
+      "dataFile": "storefrontsettings.json",
+      "indexFile": "storefrontsettings.indexes.json"
+    },
+    "productdiscounts": {
+      "count": 0,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "indexCount": 14,
+      "dataFile": "productdiscounts.json",
+      "indexFile": "productdiscounts.indexes.json"
+    },
+    "storefronthomepages": {
+      "count": 1,
+      "bytes": 463,
+      "sha256": "545072abc926d4baddcd891e89696bcf17287515d24e8a9f11c80f22175c2ab3",
+      "indexCount": 5,
+      "dataFile": "storefronthomepages.json",
+      "indexFile": "storefronthomepages.indexes.json"
+    },
+    "payments": {
+      "count": 20,
+      "bytes": 14734,
+      "sha256": "8062d053874e5b87b3d306bf4d09194f30585293fe442919fda46a6c2d2f5d83",
+      "indexCount": 16,
+      "dataFile": "payments.json",
+      "indexFile": "payments.indexes.json"
+    },
+    "auditlogs": {
+      "count": 136,
+      "bytes": 101071,
+      "sha256": "5f562005d5bf9ea2a9e22516a9a022849bf6249b6539c98fc85dc51bfdb8db07",
+      "indexCount": 10,
+      "dataFile": "auditlogs.json",
+      "indexFile": "auditlogs.indexes.json"
+    }
+  },
+  "totalCollections": 84,
+  "totalDocuments": 2299,
+  "totalBytes": 1296935,
+  "durationMs": 2820
+}

@@ -30,24 +30,33 @@ describe("Phase 1G / Batch 2D — Campaign Operational Route Authorization (PBAC
   // Helper to create test user + employee profile
   async function createTestEmployee(options = {}) {
     const status = options.status || "active";
-    const user = await User.create({
-      firstName: "Batch2D",
-      lastName: "Staff",
-      email: `staff_${Date.now()}_${Math.random().toString(36).substring(7)}@test-batch2d.com`,
-      password: "Password123!",
-      role: options.userRole || "manager",
-      isActive: true,
-      authVersion: 1,
-      permissionVersion: 1,
-    });
+    let user;
+    if (options.userRole === ROLES.SUPER_ADMIN) {
+      user = await User.findOne({ role: ROLES.SUPER_ADMIN, isActive: true });
+    }
+    if (!user) {
+      user = await User.create({
+        firstName: "Batch2D",
+        lastName: "Staff",
+        email: `staff_${Date.now()}_${Math.random().toString(36).substring(7)}@test-batch2d.com`,
+        password: "Password123!",
+        role: options.userRole || "manager",
+        isActive: true,
+        authVersion: 1,
+        permissionVersion: 1,
+      });
+    }
 
-    const employee = await Employee.create({
-      userId: user._id,
-      employeeNumber: `EMP_${Date.now()}_${Math.random().toString(36).substring(7).toUpperCase()}`,
-      jobTitle: "Campaign Marketing Lead",
-      department: "Marketing",
-      status,
-    });
+    let employee = await Employee.findOne({ userId: user._id });
+    if (!employee) {
+      employee = await Employee.create({
+        userId: user._id,
+        employeeNumber: `EMP_${Date.now()}_${Math.random().toString(36).substring(7).toUpperCase()}`,
+        jobTitle: "Campaign Marketing Lead",
+        department: "Marketing",
+        status,
+      });
+    }
 
     const token = generateAccessToken({
       sub: user._id.toString(),

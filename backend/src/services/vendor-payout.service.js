@@ -9,6 +9,8 @@ const {
 } = require("../models/VendorPayout");
 
 const { VendorSettlement } = require("../models/VendorSettlement");
+const Vendor = require("../models/Vendor");
+const AuditLog = require("../models/AuditLog");
 
 const vendorPayoutRepository = require("../repositories/vendor-payout.repository");
 
@@ -62,6 +64,7 @@ const createPayout = async ({
   provider = PAYMENT_GATEWAYS.RAZORPAY,
   idempotencyKey = null,
   metadata = {},
+  actorId = null,
 }) => {
   if (!mongoose.isValidObjectId(settlementId)) {
     throw new AppError(
@@ -161,22 +164,175 @@ const createPayout = async ({
         return;
       }
 
+      // 1. Validate Vendor Eligibility for Payouts
+      const vendor = await Vendor.findById(settlement.vendorId).session(session);
+      if (!vendor) {
+        throw new AppError("Vendor not found", 404, "VENDOR_NOT_FOUND");
+      }
+
+      if (
+        !vendor.isActive ||
+        (vendor.onboardingStatus && vendor.onboardingStatus !== "approved") ||
+        vendor.onboardingStatus === "suspended" ||
+        vendor.onboardingStatus === "rejected"
+      ) {
+        throw new AppError(
+          "Vendor is not eligible for payouts",
+          400,
+          "VENDOR_NOT_ELIGIBLE_FOR_PAYOUT"
+        );
+      }
+
+      // 2. Validate Active Approved Bank Account Destination
+      const VendorBankAccount = mongoose.model("VendorBankAccount");
+      const activeBank = await VendorBankAccount.findOne({
+        vendorId: settlement.vendorId,
+        isActive: true,
+        status: "approved",
+        deletedAt: null,
+      }).session(session);
+
+      if (!activeBank) {
+        const anyBank = await VendorBankAccount.findOne({
+          vendorId: settlement.vendorId,
+          deletedAt: null,
+        }).session(session);
+
+        let errorCode = "NO_ACTIVE_BANK_ACCOUNT";
+        let errorMessage = "Vendor has no active approved bank account for payouts";
+
+        if (anyBank) {
+          if (anyBank.status === "pending" || anyBank.status === "under_review") {
+            errorCode = "BANK_ACCOUNT_PENDING_APPROVAL";
+            errorMessage = "Vendor bank account is pending approval";
+          } else if (anyBank.status === "rejected") {
+            errorCode = "BANK_ACCOUNT_REJECTED";
+            errorMessage = "Vendor bank account has been rejected";
+          }
+        } else {
+          errorMessage = "Vendor has no bank account configured for payouts";
+        }
+
+        await AuditLog.create([
+          {
+            actorId: actorId || vendor.userId,
+            targetId: settlement._id,
+            action: "PAYOUT_DESTINATION_VALIDATION_FAILED",
+            entityType: "vendor_payout",
+            beforeState: null,
+            afterState: {
+              vendorId: String(settlement.vendorId),
+              settlementId: String(settlement._id),
+              reason: errorMessage,
+              errorCode,
+            },
+          },
+        ]).catch(() => {});
+
+        throw new AppError(errorMessage, 400, errorCode);
+      }
+
+      // 3. If explicit bankAccountId provided in metadata, verify it strictly matches activeBank
+      if (metadata?.bankAccountId && String(metadata.bankAccountId) !== String(activeBank._id)) {
+        const requestedBank = await VendorBankAccount.findById(metadata.bankAccountId).session(session);
+        if (!requestedBank || String(requestedBank.vendorId) !== String(settlement.vendorId)) {
+          throw new AppError(
+            "Specified bank account does not belong to this vendor",
+            400,
+            "BANK_ACCOUNT_MISMATCH"
+          );
+        }
+        if (requestedBank.deletedAt) {
+          throw new AppError(
+            "Specified bank account is archived",
+            400,
+            "BANK_ACCOUNT_ARCHIVED"
+          );
+        }
+        if (requestedBank.status !== "approved") {
+          throw new AppError(
+            "Specified bank account is not approved",
+            400,
+            "BANK_ACCOUNT_NOT_APPROVED"
+          );
+        }
+        if (!requestedBank.isActive) {
+          throw new AppError(
+            "Specified bank account is not the active payout destination",
+            400,
+            "BANK_ACCOUNT_NOT_ACTIVE"
+          );
+        }
+      }
+
+      // 4. Validate complete destination details
+      if (
+        !activeBank.bankName ||
+        !activeBank.accountHolderName ||
+        !activeBank.accountNumberMasked ||
+        !activeBank.ifscCode
+      ) {
+        throw new AppError(
+          "Bank account destination data is incomplete",
+          400,
+          "INCOMPLETE_DESTINATION_DATA"
+        );
+      }
+
+      const snapshotTimestamp = new Date().toISOString();
+      const payoutMetadata = { ...(metadata || {}) };
+      payoutMetadata.bankAccountId = String(activeBank._id);
+      payoutMetadata.vendorId = String(activeBank.vendorId);
+      payoutMetadata.beneficiaryName = String(activeBank.accountHolderName);
+      payoutMetadata.accountHolderName = String(activeBank.accountHolderName);
+      payoutMetadata.bankName = String(activeBank.bankName);
+      payoutMetadata.ifscCode = String(activeBank.ifscCode);
+      payoutMetadata.accountNumberMasked = String(activeBank.accountNumberMasked);
+      payoutMetadata.accountType = String(activeBank.accountType || "current");
+      payoutMetadata.snapshotAt = snapshotTimestamp;
+
       const amount = calculatePayoutAmount(settlement);
 
       payout = await vendorPayoutRepository.create(
         {
           settlementId: settlement._id,
           vendorId: settlement.vendorId,
+          bankAccountId: activeBank._id,
           payoutNumber: generatePayoutNumber(),
           provider,
           amount: toDecimal128(amount),
           currency: normalizeCurrency(settlement.currency),
           status: VENDOR_PAYOUT_STATUSES.PENDING,
           idempotencyKey,
-          metadata,
+          metadata: payoutMetadata,
         },
         { session }
       );
+
+      // Phase VW-03: Atomically reserve available funds in double-entry ledger
+      const financialLedgerService = require("./financial-ledger.service");
+      await financialLedgerService.postPayoutReservationJournal(payout, { session, actorId });
+
+      await AuditLog.create([
+        {
+          actorId: actorId || vendor.userId || vendor._id,
+          targetId: payout._id,
+          action: "PAYOUT_CREATED",
+          entityType: "vendor_payout",
+          beforeState: null,
+          afterState: {
+            payoutNumber: payout.payoutNumber,
+            amount: String(amount),
+            currency: normalizeCurrency(settlement.currency),
+            status: VENDOR_PAYOUT_STATUSES.PENDING,
+            bankAccountId: String(activeBank._id),
+            bankName: String(activeBank.bankName),
+            accountNumberMasked: String(activeBank.accountNumberMasked),
+            ifscCode: String(activeBank.ifscCode),
+            snapshotAt: snapshotTimestamp,
+          },
+        },
+      ], { session }).catch(() => {});
     });
 
     return payout;
@@ -209,6 +365,9 @@ const transitionPayoutStatus = async ({
   nextStatus,
   providerReference = null,
   failureReason = null,
+  actorId = null,
+  ipAddress = null,
+  userAgent = null,
 }) => {
   if (!mongoose.isValidObjectId(payoutId)) {
     throw new AppError(
@@ -272,6 +431,24 @@ const transitionPayoutStatus = async ({
         );
       }
 
+      // Enforce snapshot preservation: payout must possess valid destination data
+      const snapshotBankId =
+        payout.bankAccountId ||
+        (payout.metadata?.get
+          ? payout.metadata.get("bankAccountId")
+          : payout.metadata?.bankAccountId);
+
+      if (!snapshotBankId) {
+        throw new AppError(
+          "Payout cannot be processed without an authoritative destination snapshot",
+          400,
+          "INVALID_PAYOUT_SNAPSHOT"
+        );
+      }
+
+      const previousStatus = payout.status;
+      const previousRetryCount = payout.retryCount;
+
       const update = {
         status: nextStatus,
       };
@@ -279,8 +456,8 @@ const transitionPayoutStatus = async ({
       if (nextStatus === VENDOR_PAYOUT_STATUSES.PROCESSING) {
         update.processedAt = new Date();
 
-        if (payout.status === VENDOR_PAYOUT_STATUSES.FAILED) {
-          update.retryCount = payout.retryCount + 1;
+        if (previousStatus === VENDOR_PAYOUT_STATUSES.FAILED) {
+          update.retryCount = previousRetryCount + 1;
         }
       }
 
@@ -308,7 +485,68 @@ const transitionPayoutStatus = async ({
         { session }
       );
 
+      // Audit status transition
+      let resolvedActorId = actorId;
+      if (!resolvedActorId) {
+        const vendor = await Vendor.findById(payout.vendorId).session(session);
+        resolvedActorId = vendor?.userId || payout.vendorId;
+      }
+
+      let actionName = "PAYOUT_STATUS_CHANGED";
+      if (nextStatus === VENDOR_PAYOUT_STATUSES.PROCESSING) {
+        actionName =
+          previousStatus === VENDOR_PAYOUT_STATUSES.FAILED
+            ? "PAYOUT_RETRY"
+            : "PAYOUT_PROCESSING";
+      } else if (nextStatus === VENDOR_PAYOUT_STATUSES.PAID) {
+        actionName = "PAYOUT_PAID";
+      } else if (nextStatus === VENDOR_PAYOUT_STATUSES.FAILED) {
+        actionName = "PAYOUT_FAILED";
+      } else if (nextStatus === VENDOR_PAYOUT_STATUSES.CANCELLED) {
+        actionName = "PAYOUT_CANCELLED";
+      }
+
+      await AuditLog.create([
+        {
+          actorId: resolvedActorId,
+          targetId: payout._id,
+          action: actionName,
+          entityType: "vendor_payout",
+          beforeState: {
+            status: payout.status,
+            retryCount: payout.retryCount,
+          },
+          afterState: {
+            status: nextStatus,
+            retryCount:
+              update.retryCount !== undefined
+                ? update.retryCount
+                : payout.retryCount,
+            providerReference:
+              update.providerReference || payout.providerReference,
+            failureReason: update.failureReason || null,
+            bankAccountId: String(snapshotBankId),
+          },
+          reason: failureReason || null,
+          ipAddress: ipAddress || null,
+          userAgent: userAgent || null,
+        },
+      ], { session }).catch(() => {});
+
+      if (
+        nextStatus === VENDOR_PAYOUT_STATUSES.PROCESSING &&
+        previousStatus === VENDOR_PAYOUT_STATUSES.FAILED
+      ) {
+        // Phase VW-03: Re-reserve funds on payout retry
+        const financialLedgerService = require("./financial-ledger.service");
+        await financialLedgerService.postPayoutReservationJournal(payout, { session, actorId });
+      }
+
       if (nextStatus === VENDOR_PAYOUT_STATUSES.PAID) {
+        // Phase VW-03: Post payout disbursement double-entry journal
+        const financialLedgerService = require("./financial-ledger.service");
+        await financialLedgerService.postPayoutDisbursementJournal(payout, { session, actorId });
+
         const settlement = await vendorSettlementRepository.findById(
           payout.settlementId,
           { session }
@@ -328,10 +566,20 @@ const transitionPayoutStatus = async ({
             {
               status: "paid",
               paidAt: new Date(),
+              payoutReference: payout.providerReference || payout.payoutNumber,
             },
             { session }
           );
         }
+      }
+
+      if (
+        nextStatus === VENDOR_PAYOUT_STATUSES.FAILED ||
+        nextStatus === VENDOR_PAYOUT_STATUSES.CANCELLED
+      ) {
+        // Phase VW-03: Restore reserved payout funds back to available balance
+        const financialLedgerService = require("./financial-ledger.service");
+        await financialLedgerService.postPayoutReleaseJournal(payout, { session, actorId });
       }
     });
 
@@ -370,8 +618,12 @@ const markFailed = async ({
   });
 };
 
-const retryPayout = async (payoutId) => {
-  return markProcessing(payoutId);
+const retryPayout = async (payoutId, options = {}) => {
+  return transitionPayoutStatus({
+    payoutId,
+    nextStatus: VENDOR_PAYOUT_STATUSES.PROCESSING,
+    actorId: options.actorId,
+  });
 };
 
 const getPayoutById = async (payoutId) => {

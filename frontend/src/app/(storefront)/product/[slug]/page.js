@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { productService } from "../../../../services/product.service.js";
 import { categoryService } from "../../../../services/category.service.js";
 import { brandService } from "../../../../services/brand.service.js";
+import { getCategoryId, getBrandId } from "../../../../utils/category.util.js";
 import { ProductDetailView } from "../../../../components/storefront/product/ProductDetailView.jsx";
 
 export async function generateMetadata({ params }) {
@@ -73,9 +74,23 @@ export default async function ProductDetailPage({ params }) {
     notFound();
   }
 
-  // Resolve brand, category, same-category products, and all categories concurrently
-  const categoryId = product.categoryId || product.category?._id;
-  const brandId = product.brandId || product.brand?._id;
+  // Safely extract string IDs and populated fallbacks (populated by product repository)
+  const categoryId = getCategoryId(product.categoryId || product.category);
+  const brandId = getBrandId(product.brandId || product.brand);
+
+  const populatedCategory =
+    typeof product.categoryId === "object" && product.categoryId !== null
+      ? product.categoryId
+      : typeof product.category === "object" && product.category !== null
+      ? product.category
+      : null;
+
+  const populatedBrand =
+    typeof product.brandId === "object" && product.brandId !== null
+      ? product.brandId
+      : typeof product.brand === "object" && product.brand !== null
+      ? product.brand
+      : null;
 
   const [categoryResult, brandResult, sameCategoryResult, allCategoriesResult] =
     await Promise.allSettled([
@@ -88,14 +103,14 @@ export default async function ProductDetailPage({ params }) {
     ]);
 
   const category =
-    categoryResult.status === "fulfilled"
-      ? categoryResult.value?.data?.category || categoryResult.value?.data || null
-      : null;
+    categoryResult.status === "fulfilled" && categoryResult.value?.data
+      ? categoryResult.value?.data?.category || categoryResult.value?.data || populatedCategory
+      : populatedCategory;
 
   const brand =
-    brandResult.status === "fulfilled"
-      ? brandResult.value?.data?.brand || brandResult.value?.data || null
-      : null;
+    brandResult.status === "fulfilled" && brandResult.value?.data
+      ? brandResult.value?.data?.brand || brandResult.value?.data || populatedBrand
+      : populatedBrand;
 
   const allCategories =
     allCategoriesResult.status === "fulfilled"

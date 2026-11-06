@@ -100,6 +100,7 @@ describe("Part 2 — Complete Operational Admin Control Plane Test Suite", () =>
         department: "catalog",
         tier: 5,
         permissions: [
+          "dashboard.view",
           "products.view",
           "products.edit",
           "categories.view",
@@ -443,7 +444,7 @@ describe("Part 2 — Complete Operational Admin Control Plane Test Suite", () =>
       const restoreRes = await request(app)
         .patch(`/api/v1/admin/customers/${testCustomer._id}/status`)
         .set("Authorization", `Bearer ${superadminToken}`)
-        .send({ isActive: true });
+        .send({ isActive: true, reason: "Administrative restoration test" });
 
       expect(restoreRes.status).toBe(200);
       expect(restoreRes.body.data.isActive).toBe(true);

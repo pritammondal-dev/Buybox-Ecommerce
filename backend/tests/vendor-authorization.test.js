@@ -466,6 +466,7 @@ describe("Phase B — Vendor Operations & Scope Authorization", () => {
     });
 
     test("Super Admin operates globally across vendors without scope restriction", async () => {
+      await User.deleteMany({ role: ROLES.SUPER_ADMIN });
       const { token } = await createTestEmployee({
         permissions: [PERMISSIONS.VENDORS_READ, PERMISSIONS.VENDORS_MANAGE],
         userRole: ROLES.SUPER_ADMIN,

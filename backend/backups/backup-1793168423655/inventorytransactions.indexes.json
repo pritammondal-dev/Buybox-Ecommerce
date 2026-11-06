@@ -1,0 +1,75 @@
+[
+  {
+    "v": 2,
+    "key": {
+      "_id": 1
+    },
+    "name": "_id_"
+  },
+  {
+    "v": 2,
+    "key": {
+      "productVariantId": 1
+    },
+    "name": "productVariantId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "warehouseId": 1
+    },
+    "name": "warehouseId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "type": 1
+    },
+    "name": "type_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "actorUserId": 1
+    },
+    "name": "actorUserId_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "productVariantId": 1,
+      "warehouseId": 1,
+      "createdAt": -1
+    },
+    "name": "productVariantId_1_warehouseId_1_createdAt_-1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "warehouseId": 1,
+      "createdAt": -1
+    },
+    "name": "warehouseId_1_createdAt_-1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "idempotencyKey": 1,
+      "type": 1
+    },
+    "name": "idempotencyKey_1_type_1"
+  },
+  {
+    "v": 2,
+    "key": {
+      "idempotencyKey": 1
+    },
+    "name": "inventoryTransaction_idempotencyKey_unique",
+    "unique": true,
+    "partialFilterExpression": {
+      "idempotencyKey": {
+        "$type": "string"
+      }
+    }
+  }
+]

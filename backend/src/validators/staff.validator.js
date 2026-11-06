@@ -6,11 +6,11 @@ const createStaffSchema = z
     password: z.string().min(8, "Password must be at least 8 characters").max(100),
     firstName: z.string().trim().min(1, "First name is required").max(50),
     lastName: z.string().trim().min(1, "Last name is required").max(50),
-    phone: z.string().trim().max(20).optional(),
+    phone: z.string().trim().max(30).optional().nullable(),
     role: z.enum(["admin", "editor", "manager", "support", "staff"]).optional().default("editor"),
-    jobRoleId: z.string().optional(),
-    jobTitle: z.string().trim().max(100).optional(),
-    department: z.string().trim().max(100).optional(),
+    jobRoleId: z.string().optional().nullable(),
+    jobTitle: z.string().trim().max(100).optional().nullable(),
+    department: z.string().trim().max(100).optional().nullable(),
   })
   .strict();
 
@@ -18,9 +18,9 @@ const updateStaffSchema = z
   .object({
     firstName: z.string().trim().min(1).max(50).optional(),
     lastName: z.string().trim().min(1).max(50).optional(),
-    phone: z.string().trim().max(20).nullable().optional(),
+    phone: z.string().trim().max(30).optional().nullable(),
     role: z.enum(["super_admin", "admin", "editor", "manager", "support", "staff"]).optional(),
-    jobRoleId: z.string().optional(),
+    jobRoleId: z.string().optional().nullable(),
     jobTitle: z.string().trim().max(100).nullable().optional(),
     department: z.string().trim().max(100).nullable().optional(),
     status: z.enum(["active", "suspended"]).optional(),

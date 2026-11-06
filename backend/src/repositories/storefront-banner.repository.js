@@ -4,12 +4,17 @@ const create = (data, options = {}) =>
   StorefrontBanner.create([data], options).then((docs) => docs[0]);
 
 const findById = (bannerId, options = {}) =>
-  StorefrontBanner.findById(bannerId).session(options.session || null);
+  StorefrontBanner.findOne({
+    _id: bannerId,
+    deletedAt: null,
+  }).session(options.session || null);
 
-const findMany = (filter = {}, options = {}) =>
-  StorefrontBanner.find(filter)
+const findMany = (filter = {}, options = {}) => {
+  const effectiveFilter = { deletedAt: null, ...filter };
+  return StorefrontBanner.find(effectiveFilter)
     .sort({ displayOrder: 1, createdAt: -1 })
     .session(options.session || null);
+};
 
 const updateById = (bannerId, update, options = {}) =>
   StorefrontBanner.findByIdAndUpdate(bannerId, update, {

@@ -118,44 +118,97 @@ const uploadMedia = async (req, res, next) => {
 
     const { originalname, mimetype, size, buffer } = req.file;
 
-    // Validate image MIME type
-    const allowedMimes = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"];
-    if (!allowedMimes.includes(mimetype.toLowerCase())) {
+    const ext = path.extname(originalname).toLowerCase();
+    const normalizedMime = mimetype ? mimetype.toLowerCase() : "";
+
+    // Security: Strict rejection of SVG uploads to prevent stored cross-site scripting (XSS)
+    if (
+      normalizedMime === "image/svg+xml" ||
+      ext === ".svg" ||
+      (buffer && buffer.slice(0, 100).toString("utf8").toLowerCase().includes("<svg"))
+    ) {
       throw new AppError(
-        "Invalid file type. Only JPEG, PNG, WEBP, GIF, and SVG images are allowed.",
+        "SVG uploads are not permitted for security reasons (XSS risk). Please upload PNG, WebP, JPEG, or ICO.",
+        400,
+        "SVG_NOT_ALLOWED"
+      );
+    }
+
+    // Conservative file size limit (2 MB)
+    const MAX_BRAND_ASSET_SIZE = 2 * 1024 * 1024; // 2 MB
+    if (size > MAX_BRAND_ASSET_SIZE) {
+      throw new AppError(
+        "File size exceeds 2MB limit. Please upload an image smaller than 2MB.",
+        400,
+        "FILE_TOO_LARGE"
+      );
+    }
+
+    // Validate image MIME type (supporting standard raster formats + ICO for favicons)
+    const allowedMimes = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/gif",
+      "image/avif",
+      "image/x-icon",
+      "image/vnd.microsoft.icon",
+    ];
+    if (!allowedMimes.includes(normalizedMime)) {
+      throw new AppError(
+        "Invalid file type. Allowed formats: PNG, WebP, JPEG, GIF, AVIF, and ICO.",
         400,
         "INVALID_FILE_TYPE"
       );
     }
 
     // Verify extension
-    const ext = path.extname(originalname).toLowerCase();
-    const allowedExts = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"];
+    const allowedExts = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".ico"];
     if (!allowedExts.includes(ext)) {
-      throw new AppError("Invalid file extension.", 400, "INVALID_FILE_EXTENSION");
+      throw new AppError(
+        "Invalid file extension. Allowed formats: JPG, JPEG, PNG, WEBP, GIF, AVIF, ICO.",
+        400,
+        "INVALID_FILE_EXTENSION"
+      );
     }
 
-    // Ensure uploads directory exists in both backend and frontend public
-    const backendUploadsDir = path.resolve(__dirname, "../../public/uploads");
-    const frontendUploadsDir = path.resolve(__dirname, "../../../frontend/public/uploads");
+    // Content verification: validate magic bytes to prevent renamed executables or scripts
+    const isMagicBytesValid = (buf) => {
+      if (!buf || buf.length < 4) return false;
+      // PNG: 89 50 4E 47
+      if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) return true;
+      // JPEG: FF D8 FF
+      if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) return true;
+      // GIF: 47 49 46 ('GIF')
+      if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return true;
+      // WEBP: RIFF....WEBP
+      if (buf.length >= 12 && buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP") return true;
+      // ICO: 00 00 01 00
+      if (buf[0] === 0x00 && buf[1] === 0x00 && buf[2] === 0x01 && buf[3] === 0x00) return true;
+      // AVIF / ISO BMFF ftyp
+      if (buf.length >= 12 && buf.toString("ascii", 4, 8) === "ftyp") return true;
+      return false;
+    };
 
-    if (!fs.existsSync(backendUploadsDir)) {
-      fs.mkdirSync(backendUploadsDir, { recursive: true });
-    }
-    if (!fs.existsSync(frontendUploadsDir)) {
-      fs.mkdirSync(frontendUploadsDir, { recursive: true });
+    if (!isMagicBytesValid(buffer)) {
+      throw new AppError(
+        "Corrupted or invalid image content. File signature does not match expected image format.",
+        400,
+        "CORRUPT_OR_INVALID_IMAGE"
+      );
     }
 
+    const storageService = require("../services/storage");
     const safeFilename = `media_${Date.now()}_${crypto.randomBytes(4).toString("hex")}${ext}`;
-    const backendFilePath = path.join(backendUploadsDir, safeFilename);
-    const frontendFilePath = path.join(frontendUploadsDir, safeFilename);
 
-    fs.writeFileSync(backendFilePath, buffer);
-    try {
-      fs.writeFileSync(frontendFilePath, buffer);
-    } catch {}
+    const storageResult = await storageService.uploadPublicMedia({
+      filename: safeFilename,
+      buffer,
+      mimeType: mimetype,
+      prefix: "uploads",
+    });
 
-    const fileUrl = `/uploads/${safeFilename}`;
+    const fileUrl = storageResult.url;
 
     // Optionally create StorefrontMedia record for catalog tracking
     const media = await storefrontMediaService
@@ -164,7 +217,8 @@ const uploadMedia = async (req, res, next) => {
           title: originalname.replace(ext, ""),
           type: "image",
           url: fileUrl,
-          storageProvider: "external",
+          storageProvider: storageResult.storageProvider,
+          storageKey: storageResult.key,
           mimeType: mimetype,
           fileSize: size,
           altText: originalname.replace(ext, ""),
@@ -182,6 +236,7 @@ const uploadMedia = async (req, res, next) => {
         size,
         mimeType: mimetype,
         mediaId: media?._id || null,
+        storageProvider: storageResult.storageProvider,
       },
     });
   } catch (error) {

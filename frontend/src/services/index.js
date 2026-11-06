@@ -14,3 +14,4 @@ export { couponService } from "./coupon.service.js";
 export { shipmentService } from "./shipment.service.js";
 export { cmsService } from "./cms.service.js";
 export { storefrontService } from "./storefront.service.js";
+export { eventPageService } from "./event-page.service.js";
