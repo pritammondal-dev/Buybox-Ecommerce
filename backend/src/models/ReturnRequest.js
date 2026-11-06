@@ -48,6 +48,10 @@ const returnItemSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Decimal128,
       default: 0,
     },
+    shippingRefund: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: 0,
+    },
     customerPaidAmount: {
       type: mongoose.Schema.Types.Decimal128,
       default: null,
@@ -272,6 +276,14 @@ const returnRequestSchema = new mongoose.Schema(
       default: null,
     },
     taxRefundTotal: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: 0,
+    },
+    shippingRefundTotal: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: 0,
+    },
+    customerDeductionsTotal: {
       type: mongoose.Schema.Types.Decimal128,
       default: 0,
     },

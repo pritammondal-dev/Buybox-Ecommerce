@@ -17,6 +17,20 @@ const checkEligibility = async (req, res) => {
   });
 };
 
+const previewRefund = async (req, res) => {
+  const { orderId, items } = req.body;
+  const result = await returnRequestService.previewReturnRefund({
+    orderId,
+    userId: req.user.id || req.user._id,
+    items,
+  });
+
+  return apiResponse.sendSuccess(res, {
+    message: "Refund preview calculated successfully",
+    data: result,
+  });
+};
+
 const uploadEvidence = async (req, res) => {
   const rawFiles = [];
   if (req.files) {
@@ -425,6 +439,7 @@ const cancelReturn = async (req, res) => {
 
 module.exports = {
   checkEligibility,
+  previewRefund,
   uploadEvidence,
   createReturn,
   getCustomerReturnById,

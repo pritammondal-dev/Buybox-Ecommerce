@@ -5,6 +5,10 @@ export const returnService = {
     return apiClient.get(`/returns/eligibility/${orderId}`);
   },
 
+  async previewRefund(data) {
+    return apiClient.post("/returns/preview", data);
+  },
+
   async uploadEvidence(formData) {
     return apiClient.post("/returns/upload-evidence", formData);
   },

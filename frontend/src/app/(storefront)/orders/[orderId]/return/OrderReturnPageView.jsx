@@ -83,6 +83,10 @@ export function OrderReturnPageView({ orderId }) {
   // Active or submitted return to display timeline
   const [activeReturn, setActiveReturn] = useState(null);
 
+  // Authoritative backend refund preview
+  const [refundPreview, setRefundPreview] = useState(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+
   // Form state
   const [returnType, setReturnType] = useState("return"); // "return" (refund) or "exchange" (replacement)
   const [selectedItems, setSelectedItems] = useState({});
@@ -142,6 +146,8 @@ export function OrderReturnPageView({ orderId }) {
         if (eligibleItems.length > 0) {
           const first = eligibleItems[0];
           const itemKey = first.orderItemId || first.productId;
+          const effUnit = first.effectiveUnitPaid !== undefined ? Number(first.effectiveUnitPaid) : Number(first.unitPrice || 0);
+          const itemTotal = first.itemCustomerPaidTotal !== undefined ? Number(first.itemCustomerPaidTotal) : undefined;
           setSelectedItems({
             [itemKey]: {
               orderItemId: first.orderItemId,
@@ -149,8 +155,14 @@ export function OrderReturnPageView({ orderId }) {
               productVariantId: first.productVariantId,
               quantity: 1,
               maxQuantity: first.remainingReturnableQuantity || 1,
+              orderedQuantity: first.orderedQuantity,
               name: first.name,
               unitPrice: Number(first.unitPrice || 0),
+              effectiveUnitPaid: effUnit,
+              itemCustomerPaidTotal: itemTotal,
+              productAmountUnit: first.productAmountUnit !== undefined ? Number(first.productAmountUnit) : undefined,
+              taxRefundUnit: first.taxRefundUnit !== undefined ? Number(first.taxRefundUnit) : undefined,
+              shippingAllocatedUnit: first.shippingAllocatedUnit !== undefined ? Number(first.shippingAllocatedUnit) : undefined,
               image: first.imageUrl,
             },
           });
@@ -188,6 +200,46 @@ export function OrderReturnPageView({ orderId }) {
     };
   }, [orderId]);
 
+  // Fetch backend-authoritative refund preview whenever selection or return type changes
+  useEffect(() => {
+    if (returnType !== "return" || !orderId || Object.keys(selectedItems).length === 0) {
+      setRefundPreview(null);
+      return;
+    }
+
+    let isMounted = true;
+    const fetchPreview = async () => {
+      setLoadingPreview(true);
+      try {
+        const itemsPayload = Object.values(selectedItems).map((it) => ({
+          orderItemId: it.orderItemId,
+          productId: it.productId,
+          productVariantId: it.productVariantId || undefined,
+          quantity: it.quantity || 1,
+        }));
+
+        const res = await returnService.previewRefund({
+          orderId,
+          items: itemsPayload,
+        });
+
+        const data = res?.data?.data || res?.data || res;
+        if (isMounted && data) {
+          setRefundPreview(data);
+        }
+      } catch {
+        // Retain client-side authoritative fallback on network latency
+      } finally {
+        if (isMounted) setLoadingPreview(false);
+      }
+    };
+
+    fetchPreview();
+    return () => {
+      isMounted = false;
+    };
+  }, [orderId, selectedItems, returnType]);
+
   const handleToggleItem = (item) => {
     const itemKey = item.orderItemId || item.productId;
     setSelectedItems((prev) => {
@@ -208,6 +260,9 @@ export function OrderReturnPageView({ orderId }) {
           unitPrice: Number(item.unitPrice || 0),
           effectiveUnitPaid: effUnit,
           itemCustomerPaidTotal: itemTotal,
+          productAmountUnit: item.productAmountUnit !== undefined ? Number(item.productAmountUnit) : undefined,
+          taxRefundUnit: item.taxRefundUnit !== undefined ? Number(item.taxRefundUnit) : undefined,
+          shippingAllocatedUnit: item.shippingAllocatedUnit !== undefined ? Number(item.shippingAllocatedUnit) : undefined,
           image: item.imageUrl,
         };
       }
@@ -292,6 +347,9 @@ export function OrderReturnPageView({ orderId }) {
   };
 
   const calculateTotalRefund = () => {
+    if (refundPreview?.estimatedRefundTotal !== undefined) {
+      return Number(refundPreview.estimatedRefundTotal);
+    }
     return Object.values(selectedItems).reduce((sum, it) => {
       if (
         it.itemCustomerPaidTotal !== undefined &&
@@ -823,6 +881,16 @@ export function OrderReturnPageView({ orderId }) {
                               {" • "}Ordered: {item.orderedQuantity}
                               {item.returnedQuantity > 0 && ` (${item.returnedQuantity} already returned)`}
                             </p>
+                            {isChecked && (
+                              <p className="text-[11px] text-emerald-800 font-semibold mt-1">
+                                Refund for {selectedItems[itemKey]?.quantity || 1} unit(s):{" "}
+                                {formatCurrency(
+                                  selectedItems[itemKey]?.quantity === item.orderedQuantity && item.itemCustomerPaidTotal !== undefined
+                                    ? Number(item.itemCustomerPaidTotal)
+                                    : Number(item.effectiveUnitPaid !== undefined ? item.effectiveUnitPaid : item.unitPrice || 0) * (selectedItems[itemKey]?.quantity || 1)
+                                )}
+                              </p>
+                            )}
                             {!isEligible && (
                               <span className="inline-flex px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 text-[10px] font-semibold mt-1">
                                 {item.ineligibilityReason || "Not returnable"}
@@ -1192,17 +1260,95 @@ export function OrderReturnPageView({ orderId }) {
             )}
 
             {/* Estimated Refund Summary Banner */}
-            {returnType === "return" && (
-              <div className="rounded-2xl bg-slate-900 text-white p-4 space-y-1.5 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-200">Estimated Total Refund:</span>
-                  <span className="text-lg font-black text-emerald-400">
-                    {formatCurrency(calculateTotalRefund())}
-                  </span>
+            {returnType === "return" && Object.keys(selectedItems).length > 0 && (
+              <div className="rounded-2xl bg-slate-900 text-white p-5 space-y-3.5 shadow-md border border-slate-800">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div>
+                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 block">
+                      100% Customer Refund Guarantee
+                    </span>
+                    <span className="text-sm font-semibold text-slate-200">Estimated Total Refund</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-2xl font-black text-emerald-400">
+                      {formatCurrency(calculateTotalRefund())}
+                    </span>
+                    {loadingPreview && (
+                      <span className="block text-[10px] text-slate-400">Updating preview...</span>
+                    )}
+                  </div>
                 </div>
-                <p className="text-[11px] text-slate-400 leading-tight">
-                  Includes product price, applicable GST, and allocated delivery charges. Zero deductions applied.
-                </p>
+
+                {/* Authoritative Financial Breakdown */}
+                <div className="space-y-1.5 pt-1 text-xs text-slate-300">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400">Product Amount:</span>
+                    <span className="font-semibold text-white">
+                      {formatCurrency(
+                        refundPreview?.productAmountTotal !== undefined
+                          ? Number(refundPreview.productAmountTotal)
+                          : Object.values(selectedItems).reduce(
+                              (acc, it) =>
+                                acc +
+                                Number(
+                                  it.productAmountUnit !== undefined
+                                    ? it.productAmountUnit
+                                    : it.unitPrice || 0
+                                ) * (it.quantity || 1),
+                              0
+                            )
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400">GST &amp; Applicable Taxes:</span>
+                    <span className="font-semibold text-white">
+                      {formatCurrency(
+                        refundPreview?.taxRefundTotal !== undefined
+                          ? Number(refundPreview.taxRefundTotal)
+                          : Object.values(selectedItems).reduce(
+                              (acc, it) =>
+                                acc +
+                                Number(it.taxRefundUnit !== undefined ? it.taxRefundUnit : 0) * (it.quantity || 1),
+                              0
+                            )
+                      )}
+                    </span>
+                  </div>
+                  {(refundPreview?.shippingRefundTotal !== undefined && Number(refundPreview.shippingRefundTotal) > 0) ||
+                  Object.values(selectedItems).some((it) => Number(it.shippingAllocatedUnit || 0) > 0) ? (
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400">Allocated Delivery Charges:</span>
+                      <span className="font-semibold text-white">
+                        {formatCurrency(
+                          refundPreview?.shippingRefundTotal !== undefined
+                            ? Number(refundPreview.shippingRefundTotal)
+                            : Object.values(selectedItems).reduce(
+                                (acc, it) =>
+                                  acc +
+                                  Number(it.shippingAllocatedUnit !== undefined ? it.shippingAllocatedUnit : 0) *
+                                    (it.quantity || 1),
+                                0
+                              )
+                        )}
+                      </span>
+                    </div>
+                  ) : null}
+                  <div className="flex justify-between items-center text-emerald-300 pt-1.5 border-t border-slate-800">
+                    <span className="flex items-center gap-1.5 text-[11px] font-medium">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 inline" /> Customer Deductions:
+                    </span>
+                    <span className="font-bold">₹0.00</span>
+                  </div>
+                </div>
+
+                <div className="rounded-xl bg-slate-800/70 p-3 border border-slate-700/60 flex items-start gap-2.5">
+                  <Info className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    You will receive <strong className="text-white">100% of the actual amount paid</strong> for the returned items.
+                    No restocking fees, handling charges, or tax deductions will be subtracted.
+                  </p>
+                </div>
               </div>
             )}
 

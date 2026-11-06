@@ -9,6 +9,7 @@ const {
 const validate = require("../middlewares/validate.middleware");
 const {
   createReturnRequestSchema,
+  previewReturnRefundSchema,
   rejectReturnSchema,
   schedulePickupSchema,
   fulfillExchangeSchema,
@@ -69,6 +70,13 @@ router.post(
 router.get(
   "/eligibility/:orderId",
   returnRequestController.checkEligibility
+);
+
+// Order Refund Preview
+router.post(
+  "/preview",
+  validate(previewReturnRefundSchema),
+  returnRequestController.previewRefund
 );
 
 // Admin returns management (must precede generic routes)

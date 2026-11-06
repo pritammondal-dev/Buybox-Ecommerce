@@ -120,12 +120,15 @@ const getReturnSlaStatus = (ret, options = {}) => {
  * Issues formal GST Credit Note for a finalized return refund.
  * Preserves original tax invoices and generates immutable audit records.
  */
-const generateCreditNoteForReturn = async ({
-  returnDoc,
-  orderDoc,
-  refundDoc = null,
-  session = null,
-}) => {
+const generateCreditNoteForReturn = async (arg1, arg2, arg3) => {
+  let returnDoc, orderDoc, refundDoc, session;
+  if (arg1 && (arg1.returnDoc || arg1.orderDoc)) {
+    ({ returnDoc, orderDoc, refundDoc = null, session = null } = arg1);
+  } else {
+    returnDoc = arg1;
+    orderDoc = arg2;
+    refundDoc = arg3 || null;
+  }
   if (!returnDoc || !orderDoc) return null;
 
   const CreditNote = require("../models/CreditNote");
@@ -147,9 +150,12 @@ const generateCreditNoteForReturn = async ({
   }
 
   // Check if credit note already exists (idempotent)
-  const existing = await CreditNote.findOne({
+  const existingQuery = CreditNote.findOne({
     returnRequestId: returnDoc._id,
-  }).session(session || null);
+  });
+  const existing = existingQuery && typeof existingQuery.session === "function"
+    ? await existingQuery.session(session || null)
+    : await existingQuery;
 
   if (existing) {
     return existing;
@@ -170,9 +176,25 @@ const generateCreditNoteForReturn = async ({
     igstMinor += igst;
   }
 
-  const taxableAmount = returnDoc.netItemRefundTotal || returnDoc.refundAmount;
-  const taxAmount = returnDoc.taxRefundTotal || mongoose.Types.Decimal128.fromString("0.00");
+  const taxAmount = returnDoc.taxRefundTotal ||
+    (cgstMinor + sgstMinor + igstMinor > 0
+      ? mongoose.Types.Decimal128.fromString(((cgstMinor + sgstMinor + igstMinor) / 100).toFixed(2))
+      : mongoose.Types.Decimal128.fromString("0.00"));
   const totalAmount = returnDoc.refundAmount;
+  const taxableAmount = returnDoc.netItemRefundTotal ||
+    (returnDoc.items?.[0]?.productAmount ? returnDoc.items[0].productAmount : null) ||
+    (totalAmount && taxAmount
+      ? mongoose.Types.Decimal128.fromString(
+          Math.max(
+            0,
+            (
+              Math.round(Number(totalAmount.toString()) * 100) -
+              Math.round(Number(taxAmount.toString()) * 100) -
+              Math.round(Number((returnDoc.shippingRefundTotal || 0).toString()) * 100)
+            ) / 100
+          ).toFixed(2)
+        )
+      : totalAmount);
 
   const creditNoteData = {
     creditNoteNumber,
@@ -469,6 +491,15 @@ const checkOrderReturnEligibility = async ({ orderId, userId }) => {
     const itemCustomerPaidMinor = alloc.itemCustomerPaidTotalMinor;
     const effectiveUnitPaidMinor = item.quantity > 0 ? Math.round(itemCustomerPaidMinor / item.quantity) : alloc.lineTotalMinor;
 
+    const allocProductBaseMinor = alloc.pricingMode === "tax_inclusive"
+      ? Math.max(0, (alloc.lineTotalMinor - alloc.discountTotalMinor) - alloc.itemTotalTaxMinor)
+      : Math.max(0, alloc.lineTotalMinor - alloc.discountTotalMinor);
+    const allocShippingMinor = Math.max(0, itemCustomerPaidMinor - (allocProductBaseMinor + alloc.itemTotalTaxMinor));
+
+    const unitProductBaseMinor = item.quantity > 0 ? Math.round(allocProductBaseMinor / item.quantity) : allocProductBaseMinor;
+    const unitTaxMinor = item.quantity > 0 ? Math.round(alloc.itemTotalTaxMinor / item.quantity) : alloc.itemTotalTaxMinor;
+    const unitShippingMinor = item.quantity > 0 ? Math.round(allocShippingMinor / item.quantity) : allocShippingMinor;
+
     itemsEligibility.push({
       orderItemId: item._id,
       productId: item.productId,
@@ -487,6 +518,10 @@ const checkOrderReturnEligibility = async ({ orderId, userId }) => {
       taxTotal: (alloc.itemTotalTaxMinor / 100).toFixed(2),
       discountTotal: (alloc.discountTotalMinor / 100).toFixed(2),
       pricingMode: alloc.pricingMode,
+      productAmountUnit: (unitProductBaseMinor / 100).toFixed(2),
+      taxRefundUnit: (unitTaxMinor / 100).toFixed(2),
+      shippingAllocatedUnit: (unitShippingMinor / 100).toFixed(2),
+      customerDeductions: "0.00",
       vendorId: item.vendorId || null,
       isDelivered,
       deliveredAt,
@@ -517,6 +552,217 @@ const checkOrderReturnEligibility = async ({ orderId, userId }) => {
       ? null
       : (itemsEligibility[0]?.ineligibilityReason || "No items in this order are eligible for return."),
     items: itemsEligibility,
+  };
+};
+
+/**
+ * Calculates backend-authoritative refund preview for selected return items and quantities.
+ * Ensures 100% gross customer-paid amount is refunded including product, GST, and allocated delivery charges.
+ * Customer deductions remain strictly 0.00.
+ */
+const previewReturnRefund = async ({ orderId, userId, items }) => {
+  const customer = await Customer.findOne({ userId });
+  if (!customer) {
+    throw new AppError("Customer profile not found", 404, "CUSTOMER_NOT_FOUND");
+  }
+
+  const resolvedOrderId = decodeSecureId(orderId, "order", { strict: false });
+  const order = await Order.findById(resolvedOrderId).lean();
+  if (!order) {
+    throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
+  }
+
+  const orderCustId = order.customerId?._id ? order.customerId._id.toString() : order.customerId?.toString();
+  if (!orderCustId || orderCustId !== customer._id.toString()) {
+    throw new AppError("You do not have permission to access this order", 403, "FORBIDDEN");
+  }
+
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new AppError("At least one eligible item must be selected for refund preview", 400, "NO_ITEMS_SELECTED");
+  }
+
+  const priorReturns = await ReturnRequest.find({
+    orderId: order._id,
+    status: { $nin: ["rejected", "cancelled"] },
+  }).lean();
+
+  const allocationMap = buildOrderItemFinancialAllocationMap(order);
+
+  let totalRefundMinor = 0;
+  let totalProductMinor = 0;
+  let totalTaxMinor = 0;
+  let totalShippingMinor = 0;
+  const itemsBreakdown = [];
+
+  for (const item of items) {
+    const orderItem = (order.items || []).find(
+      (oi) =>
+        (item.orderItemId && oi._id.toString() === item.orderItemId.toString()) ||
+        (oi.productId.toString() === item.productId?.toString() &&
+          (!item.productVariantId || (oi.productVariantId && oi.productVariantId.toString() === item.productVariantId.toString())))
+    );
+
+    if (!orderItem) {
+      throw new AppError(`Item ${item.productId || item.orderItemId} was not part of this order`, 400, "INVALID_RETURN_ITEM");
+    }
+
+    if (orderItem.fulfillmentStatus === "cancelled") {
+      throw new AppError(
+        `Item '${orderItem.productName || orderItem.sku}' was cancelled and cannot be returned`,
+        400,
+        "ITEM_ALREADY_CANCELLED"
+      );
+    }
+
+    const returnQty = Math.max(1, parseInt(item.quantity, 10) || 1);
+
+    let alreadyReturnedQty = 0;
+    let priorRefundedItemMinor = 0;
+    let priorRefundedTaxMinor = 0;
+    for (const pr of priorReturns) {
+      for (const pri of pr.items || []) {
+        const matchProduct = pri.productId?.toString() === orderItem.productId.toString();
+        const matchVariant =
+          (!orderItem.productVariantId && !pri.productVariantId) ||
+          (orderItem.productVariantId &&
+            pri.productVariantId &&
+            orderItem.productVariantId.toString() === pri.productVariantId.toString());
+        const matchOrderItem =
+          orderItem._id && pri.orderItemId && pri.orderItemId.toString() === orderItem._id.toString();
+        if (matchOrderItem || (matchProduct && matchVariant)) {
+          alreadyReturnedQty += pri.quantity || 0;
+          const priPaid = pri.customerPaidAmount
+            ? Math.round(Number(pri.customerPaidAmount.toString()) * 100)
+            : Math.round(Number(pri.itemPrice?.toString() || 0) * (pri.quantity || 1) * 100);
+          const priTax = pri.taxRefund
+            ? Math.round(Number(pri.taxRefund.toString()) * 100)
+            : 0;
+          priorRefundedItemMinor += priPaid;
+          priorRefundedTaxMinor += priTax;
+        }
+      }
+    }
+
+    const remainingReturnableQty = Math.max(0, orderItem.quantity - alreadyReturnedQty);
+    if (returnQty > remainingReturnableQty) {
+      throw new AppError(
+        `Return quantity (${returnQty}) cannot exceed ordered quantity (remaining returnable quantity: ${remainingReturnableQty}) for ${orderItem.productName}`,
+        400,
+        "QUANTITY_EXCEEDED"
+      );
+    }
+
+    const allocKey = orderItem._id ? orderItem._id.toString() : null;
+    const fallbackKey = `${orderItem.productId?.toString()}_${orderItem.productVariantId?.toString() || ""}`;
+    const alloc = (allocKey && allocationMap.get(allocKey)) || allocationMap.get(fallbackKey) || {
+      itemCustomerPaidTotalMinor: Math.round(Number(orderItem.lineTotal?.toString() || 0) * 100),
+      itemTotalTaxMinor: Math.round(Number(orderItem.taxTotal?.toString() || 0) * 100),
+      pricingMode: orderItem.taxDetails?.pricingMode || order.taxSummary?.pricingMode || "tax_exclusive",
+      lineTotalMinor: Math.round(Number(orderItem.lineTotal?.toString() || 0) * 100),
+      discountTotalMinor: Math.round(Number(orderItem.discountTotal?.toString() || 0) * 100),
+    };
+
+    const remainingItemPaidMinor = Math.max(0, alloc.itemCustomerPaidTotalMinor - priorRefundedItemMinor);
+    const remainingItemTaxMinor = Math.max(0, alloc.itemTotalTaxMinor - priorRefundedTaxMinor);
+
+    let itemRefundMinor = 0;
+    let itemTaxRefundMinor = 0;
+
+    if (returnQty === remainingReturnableQty) {
+      itemRefundMinor = remainingItemPaidMinor;
+      itemTaxRefundMinor = remainingItemTaxMinor;
+    } else {
+      itemRefundMinor = Math.min(
+        remainingItemPaidMinor,
+        Math.round((alloc.itemCustomerPaidTotalMinor * returnQty) / orderItem.quantity)
+      );
+      itemTaxRefundMinor = Math.min(
+        remainingItemTaxMinor,
+        Math.round((alloc.itemTotalTaxMinor * returnQty) / orderItem.quantity)
+      );
+    }
+
+    const netBaseItemMinor = alloc.pricingMode === "tax_inclusive"
+      ? Math.max(0, alloc.lineTotalMinor - alloc.discountTotalMinor - alloc.itemTotalTaxMinor)
+      : Math.max(0, alloc.lineTotalMinor - alloc.discountTotalMinor);
+
+    const itemProductMinor = Math.round((netBaseItemMinor * returnQty) / orderItem.quantity);
+    const itemShippingMinor = Math.max(0, itemRefundMinor - itemProductMinor - itemTaxRefundMinor);
+
+    // Intra vs Inter-state tax breakdown
+    const destState = order.shippingAddress?.state?.trim()?.toUpperCase() || null;
+    let originState = orderItem.taxDetails?.jurisdictionState?.trim()?.toUpperCase() || null;
+    if (!originState && orderItem.vendorId) {
+      try {
+        const Vendor = require("../models/Vendor");
+        const vDoc = await Vendor.findById(orderItem.vendorId).select("businessAddress").lean();
+        originState = vDoc?.businessAddress?.state?.trim()?.toUpperCase() || null;
+      } catch {
+        // fallback
+      }
+    }
+
+    const isIntraState = Boolean(originState && destState && originState === destState);
+    let cgstMinor = 0;
+    let sgstMinor = 0;
+    let igstMinor = 0;
+
+    if (itemTaxRefundMinor > 0) {
+      if (isIntraState) {
+        cgstMinor = Math.floor(itemTaxRefundMinor / 2);
+        sgstMinor = itemTaxRefundMinor - cgstMinor;
+      } else {
+        igstMinor = itemTaxRefundMinor;
+      }
+    }
+
+    totalRefundMinor += itemRefundMinor;
+    totalProductMinor += itemProductMinor;
+    totalTaxMinor += itemTaxRefundMinor;
+    totalShippingMinor += itemShippingMinor;
+
+    const unitCustomerPaidMinor = orderItem.quantity > 0
+      ? Math.round(alloc.itemCustomerPaidTotalMinor / orderItem.quantity)
+      : itemRefundMinor;
+
+    itemsBreakdown.push({
+      orderItemId: orderItem._id,
+      productId: orderItem.productId,
+      productVariantId: orderItem.productVariantId || null,
+      name: orderItem.productName,
+      sku: orderItem.sku,
+      quantity: returnQty,
+      orderedQuantity: orderItem.quantity,
+      remainingReturnableQuantity: remainingReturnableQty,
+      unitPrice: orderItem.unitPrice?.toString?.() || "0.00",
+      unitCustomerPaid: (unitCustomerPaidMinor / 100).toFixed(2),
+      customerPaidTotal: (itemRefundMinor / 100).toFixed(2),
+      productAmount: (itemProductMinor / 100).toFixed(2),
+      taxRefund: (itemTaxRefundMinor / 100).toFixed(2),
+      shippingRefund: (itemShippingMinor / 100).toFixed(2),
+      customerDeductions: "0.00",
+      deductions: "0.00",
+      taxBreakdown: {
+        taxRate: (orderItem.taxDetails?.taxRate?.toString() || "0.00"),
+        pricingMode: alloc.pricingMode,
+        cgst: (cgstMinor / 100).toFixed(2),
+        sgst: (sgstMinor / 100).toFixed(2),
+        igst: (igstMinor / 100).toFixed(2),
+      },
+    });
+  }
+
+  return {
+    orderId: order._id,
+    orderNumber: order.orderNumber,
+    currency: order.currency || "INR",
+    estimatedRefundTotal: (totalRefundMinor / 100).toFixed(2),
+    productAmountTotal: (totalProductMinor / 100).toFixed(2),
+    taxRefundTotal: (totalTaxMinor / 100).toFixed(2),
+    shippingRefundTotal: (totalShippingMinor / 100).toFixed(2),
+    customerDeductionsTotal: "0.00",
+    policyNotice: "Customer refund equals 100% of actual captured payment allocated to returned quantity with zero deductions.",
+    items: itemsBreakdown,
   };
 };
 
@@ -563,7 +809,8 @@ const createReturnRequest = async ({
   }
 
   const resolvedOrderId = decodeSecureId(orderId, "order", { strict: false });
-  const order = await Order.findById(resolvedOrderId);
+  const orderQuery = Order.findById(resolvedOrderId);
+  const order = orderQuery && typeof orderQuery.lean === "function" ? await orderQuery.lean() : await orderQuery;
   if (!order) {
     throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
   }
@@ -798,6 +1045,12 @@ const createReturnRequest = async ({
       ? item.images.map((img) => (typeof img === "string" ? { url: img } : img))
       : [];
 
+    const netBaseItemMinor = pricingMode === "tax_inclusive"
+      ? Math.max(0, lineTotalMinor - discountTotalMinor - taxTotalMinor)
+      : Math.max(0, lineTotalMinor - discountTotalMinor);
+    const itemProductMinor = Math.round((netBaseItemMinor * returnQty) / orderItem.quantity);
+    const itemShippingMinor = Math.max(0, itemRefundMinor - itemProductMinor - itemTaxRefundMinor);
+
     validatedItems.push({
       orderItemId: orderItem._id,
       productId: orderItem.productId,
@@ -810,6 +1063,7 @@ const createReturnRequest = async ({
       originalUnitPrice: orderItem.unitPrice || orderItem.originalUnitPrice || mongoose.Types.Decimal128.fromString("0.00"),
       allocatedDiscount: mongoose.Types.Decimal128.fromString((itemAllocatedDiscountMinor / 100).toFixed(2)),
       taxRefund: mongoose.Types.Decimal128.fromString((itemTaxRefundMinor / 100).toFixed(2)),
+      shippingRefund: mongoose.Types.Decimal128.fromString((itemShippingMinor / 100).toFixed(2)),
       customerPaidAmount: mongoose.Types.Decimal128.fromString((itemRefundMinor / 100).toFixed(2)),
       taxBreakdown: {
         taxRate: orderItem.taxDetails?.taxRate || mongoose.Types.Decimal128.fromString("0.00"),
@@ -969,14 +1223,17 @@ const createReturnRequest = async ({
     let vendorRefundMinor = 0;
     let vendorTaxRefundMinor = 0;
     let vendorDiscountDeductedMinor = 0;
+    let vendorShippingRefundMinor = 0;
 
     for (const vi of vendorItemsList) {
       const itemPaidMinor = Math.round(Number(vi.customerPaidAmount?.toString() || 0) * 100);
       const taxMinor = Math.round(Number(vi.taxRefund?.toString() || 0) * 100);
       const discMinor = Math.round(Number(vi.allocatedDiscount?.toString() || 0) * 100);
+      const shipMinor = Math.round(Number(vi.shippingRefund?.toString() || 0) * 100);
       vendorRefundMinor += itemPaidMinor;
       vendorTaxRefundMinor += taxMinor;
       vendorDiscountDeductedMinor += discMinor;
+      vendorShippingRefundMinor += shipMinor;
     }
 
     if (type === "exchange") {
@@ -985,10 +1242,12 @@ const createReturnRequest = async ({
         const taxRateNum = Number(vendorItemsList[0]?.taxBreakdown?.taxRate?.toString() || 0.18);
         vendorTaxRefundMinor = Math.round((vendorRefundMinor * taxRateNum) / (1 + taxRateNum));
         vendorDiscountDeductedMinor = 0;
+        vendorShippingRefundMinor = 0;
       } else {
         vendorRefundMinor = 0;
         vendorTaxRefundMinor = 0;
         vendorDiscountDeductedMinor = 0;
+        vendorShippingRefundMinor = 0;
       }
     } else {
       if (vendorRefundMinor > remainingOrderBalanceMinor) {
@@ -999,6 +1258,7 @@ const createReturnRequest = async ({
 
     const refundAmountStr = (vendorRefundMinor / 100).toFixed(2);
     const taxRefundTotalStr = (vendorTaxRefundMinor / 100).toFixed(2);
+    const shippingRefundTotalStr = (vendorShippingRefundMinor / 100).toFixed(2);
     const discountDeductedTotalStr = (vendorDiscountDeductedMinor / 100).toFixed(2);
     const netItemRefundTotalStr = Math.max(0, (vendorRefundMinor - vendorTaxRefundMinor) / 100).toFixed(2);
     const returnNumber = generateReturnNumber();
@@ -1029,6 +1289,8 @@ const createReturnRequest = async ({
       customerNotes: customerNotes ? customerNotes.trim() : null,
       refundAmount: mongoose.Types.Decimal128.fromString(refundAmountStr),
       taxRefundTotal: mongoose.Types.Decimal128.fromString(taxRefundTotalStr),
+      shippingRefundTotal: mongoose.Types.Decimal128.fromString(shippingRefundTotalStr),
+      customerDeductionsTotal: mongoose.Types.Decimal128.fromString("0.00"),
       discountDeductedTotal: mongoose.Types.Decimal128.fromString(discountDeductedTotalStr),
       netItemRefundTotal: mongoose.Types.Decimal128.fromString(netItemRefundTotalStr),
       idempotencyKey: idempotencyKey ? idempotencyKey.trim() : null,
@@ -2218,6 +2480,7 @@ const fulfillExchangeRequest = async ({
 const processReturnRefund = async ({
   userId,
   returnId,
+  returnRequestId,
   notes = null,
   bankReference = null,
   strict = false,
@@ -2225,7 +2488,8 @@ const processReturnRefund = async ({
   userAgent = null,
   isAdmin = false,
 }) => {
-  const resolvedReturnId = decodeSecureId(returnId, "return", { strict });
+  const rawReturnId = returnId || returnRequestId;
+  const resolvedReturnId = decodeSecureId(rawReturnId, "return", { strict });
   const ret = await ReturnRequest.findById(resolvedReturnId);
   if (!ret) {
     throw new AppError("Return request not found", 404, "RETURN_NOT_FOUND");
@@ -2581,6 +2845,7 @@ module.exports = {
   calculateBusinessDaysFrom,
   getReturnSlaStatus,
   checkOrderReturnEligibility,
+  previewReturnRefund,
   createReturnRequest,
   getCustomerReturns,
   getCustomerReturnById,

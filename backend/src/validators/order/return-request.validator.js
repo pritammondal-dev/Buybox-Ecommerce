@@ -146,8 +146,23 @@ const cancelReturnSchema = z.object({
   notes: z.string().trim().max(500).optional().nullable(),
 });
 
+const previewReturnRefundSchema = z.object({
+  orderId: z.string().trim().min(1, "Order ID is required"),
+  items: z
+    .array(
+      z.object({
+        orderItemId: z.string().trim().optional().nullable(),
+        productId: z.string().trim().optional().nullable(),
+        productVariantId: z.string().trim().optional().nullable(),
+        quantity: z.coerce.number().int().positive("Quantity must be at least 1"),
+      })
+    )
+    .min(1, "At least one item is required for preview"),
+});
+
 module.exports = {
   createReturnRequestSchema,
+  previewReturnRefundSchema,
   rejectReturnSchema,
   schedulePickupSchema,
   fulfillExchangeSchema,
