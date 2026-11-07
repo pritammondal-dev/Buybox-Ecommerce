@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-describe("Hero Showcase Banner Overlay Removal & Regression Contract", () => {
+describe("Hero Showcase Option A Split-Layout & Regression Contract Tests", () => {
   const heroSectionPath = path.resolve(__dirname, "../../src/components/storefront/home/HeroSection.jsx");
   const heroSectionContent = fs.readFileSync(heroSectionPath, "utf-8");
 
@@ -20,47 +20,46 @@ describe("Hero Showcase Banner Overlay Removal & Regression Contract", () => {
     );
   });
 
-  test("2. Hero Showcase banner with image does NOT render overlay badge, title, description, or CTA button", () => {
-    // When current.bannerImage is present, it must render clean <Link> with <img> and NO text overlay elements
-    const bannerImageBranch = heroSectionContent.slice(
-      heroSectionContent.indexOf("{current.bannerImage ? ("),
-      heroSectionContent.indexOf(") : (")
-    );
-
-    // Verify clean image rendering
+  test("2. Option A Split-Layout: Left Content Zone renders badge, headline, subtitle, and primary CTA button", () => {
+    // Left Content Zone checks
     assert.ok(
-      bannerImageBranch.includes("<img"),
-      "Banner image branch must render the banner image"
+      heroSectionContent.includes("current.badge"),
+      "HeroSection must render discount badge"
     );
     assert.ok(
-      bannerImageBranch.includes("current.bannerImage"),
-      "Banner image branch must reference current.bannerImage"
-    );
-
-    // Verify absence of badge, visible title heading, subtitle, CTA button, and gradient overlay within image branch
-    assert.ok(
-      !bannerImageBranch.includes("current.badge"),
-      "Banner image branch must not render current.badge"
+      heroSectionContent.includes("<h1"),
+      "HeroSection must render main headline <h1"
     );
     assert.ok(
-      !bannerImageBranch.includes("<h1"),
-      "Banner image branch must not render <h1 heading"
+      heroSectionContent.includes("current.title"),
+      "HeroSection must reference current.title"
     );
     assert.ok(
-      !bannerImageBranch.includes("current.subtitle"),
-      "Banner image branch must not render current.subtitle"
+      heroSectionContent.includes("current.subtitle"),
+      "HeroSection must render supporting description"
     );
     assert.ok(
-      !bannerImageBranch.includes("current.cta"),
-      "Banner image branch must not render current.cta button text"
-    );
-    assert.ok(
-      !bannerImageBranch.includes("linear-gradient"),
-      "Banner image branch must not render linear-gradient overlay"
+      heroSectionContent.includes("current.cta"),
+      "HeroSection must render primary CTA button"
     );
   });
 
-  test("3. Hero Showcase carousel navigation controls are preserved", () => {
+  test("3. Option A Split-Layout: Right Artwork Zone renders product/banner artwork safely contained", () => {
+    assert.ok(
+      heroSectionContent.includes("current.bannerImage"),
+      "HeroSection must render bannerImage"
+    );
+    assert.ok(
+      heroSectionContent.includes("<img"),
+      "HeroSection must render <img> tag for artwork"
+    );
+    assert.ok(
+      heroSectionContent.includes("object-contain") || heroSectionContent.includes("object-cover"),
+      "HeroSection artwork must use appropriate object-fit containment"
+    );
+  });
+
+  test("4. Hero Showcase carousel navigation controls are preserved", () => {
     // Carousel arrows
     assert.ok(
       heroSectionContent.includes("aria-label=\"Previous slide\""),
@@ -71,11 +70,11 @@ describe("Hero Showcase Banner Overlay Removal & Regression Contract", () => {
       "HeroSection must preserve Next slide button"
     );
     assert.ok(
-      heroSectionContent.includes("prevSlide();"),
+      heroSectionContent.includes("prevSlide"),
       "HeroSection must preserve prevSlide handler"
     );
     assert.ok(
-      heroSectionContent.includes("nextSlide();"),
+      heroSectionContent.includes("nextSlide"),
       "HeroSection must preserve nextSlide handler"
     );
 
@@ -90,7 +89,7 @@ describe("Hero Showcase Banner Overlay Removal & Regression Contract", () => {
     );
   });
 
-  test("4. Autoplay and pause on hover behaviors are preserved", () => {
+  test("5. Autoplay and pause on hover behaviors are preserved", () => {
     assert.ok(
       heroSectionContent.includes("setInterval"),
       "HeroSection must preserve carousel timer"
@@ -105,7 +104,7 @@ describe("Hero Showcase Banner Overlay Removal & Regression Contract", () => {
     );
   });
 
-  test("5. Side cards and other banners remain separate and intact", () => {
+  test("6. Side promotional cards support two-area split with headings and artwork", () => {
     assert.ok(
       heroSectionContent.includes("activeSideCards"),
       "HeroSection must maintain activeSideCards logic"
@@ -121,6 +120,10 @@ describe("Hero Showcase Banner Overlay Removal & Regression Contract", () => {
     assert.ok(
       heroSectionContent.includes("heroBrandDeals"),
       "HeroSection must maintain heroBrandDeals hook"
+    );
+    assert.ok(
+      heroSectionContent.includes("theme.title") || heroSectionContent.includes("card.slot.title"),
+      "HeroSection promo cards must render heading title without clipping"
     );
   });
 });
