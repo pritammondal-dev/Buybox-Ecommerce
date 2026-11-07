@@ -451,7 +451,9 @@ export default function AdminVendorsPage() {
                             <span className="font-bold text-slate-800 block">
                               {applicantName}
                             </span>
-
+                            {applicant._id && (
+                              <span className="text-[10px] font-mono text-slate-400 bg-slate-50 px-1 rounded border border-slate-200" title={`Linked User ID: ${applicant._id}`}>
+                                User: {String(applicant._id).slice(-6)}
                               </span>
                             )}
                           </div>
