@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-describe("Hero Showcase Option A Split-Layout & Regression Contract Tests", () => {
+describe("Hero Showcase Image-Only Banner Redesign & Regression Contract Tests", () => {
   const heroSectionPath = path.resolve(__dirname, "../../src/components/storefront/home/HeroSection.jsx");
   const heroSectionContent = fs.readFileSync(heroSectionPath, "utf-8");
 
@@ -20,46 +20,46 @@ describe("Hero Showcase Option A Split-Layout & Regression Contract Tests", () =
     );
   });
 
-  test("2. Option A Split-Layout: Left Content Zone renders badge, headline, subtitle, and primary CTA button", () => {
-    // Left Content Zone checks
+  test("2. Hero Showcase banner renders pure image-only without title, subtitle, badge, or CTA overlay", () => {
+    // Isolate the main hero banner block
+    const mainHeroStart = heroSectionContent.indexOf("{/* Main Hero Banner:");
+    const mainHeroEnd = heroSectionContent.indexOf("{/* Active Side Promo Cards");
+    const mainHeroBlock = heroSectionContent.slice(mainHeroStart, mainHeroEnd);
+
+    // Verify clean image rendering
     assert.ok(
-      heroSectionContent.includes("current.badge"),
-      "HeroSection must render discount badge"
+      mainHeroBlock.includes("<img"),
+      "Main hero banner must render the banner image"
     );
     assert.ok(
-      heroSectionContent.includes("<h1"),
-      "HeroSection must render main headline <h1"
+      mainHeroBlock.includes("current.bannerImage"),
+      "Main hero banner must reference current.bannerImage"
+    );
+
+    // Verify absence of badge, title heading, subtitle, CTA button, and text overlays in main hero banner
+    assert.ok(
+      !mainHeroBlock.includes("<h1"),
+      "Main hero banner must not render <h1 heading"
     );
     assert.ok(
-      heroSectionContent.includes("current.title"),
-      "HeroSection must reference current.title"
+      !mainHeroBlock.includes("current.badge"),
+      "Main hero banner must not render current.badge"
     );
     assert.ok(
-      heroSectionContent.includes("current.subtitle"),
-      "HeroSection must render supporting description"
+      !mainHeroBlock.includes("current.subtitle"),
+      "Main hero banner must not render current.subtitle"
     );
     assert.ok(
-      heroSectionContent.includes("current.cta"),
-      "HeroSection must render primary CTA button"
+      !mainHeroBlock.includes("current.cta"),
+      "Main hero banner must not render current.cta button text"
+    );
+    assert.ok(
+      !mainHeroBlock.includes("Shop Now"),
+      "Main hero banner must not render Shop Now text"
     );
   });
 
-  test("3. Option A Split-Layout: Right Artwork Zone renders product/banner artwork safely contained", () => {
-    assert.ok(
-      heroSectionContent.includes("current.bannerImage"),
-      "HeroSection must render bannerImage"
-    );
-    assert.ok(
-      heroSectionContent.includes("<img"),
-      "HeroSection must render <img> tag for artwork"
-    );
-    assert.ok(
-      heroSectionContent.includes("object-contain") || heroSectionContent.includes("object-cover"),
-      "HeroSection artwork must use appropriate object-fit containment"
-    );
-  });
-
-  test("4. Hero Showcase carousel navigation controls are preserved", () => {
+  test("3. Hero Showcase carousel navigation controls are preserved", () => {
     // Carousel arrows
     assert.ok(
       heroSectionContent.includes("aria-label=\"Previous slide\""),
@@ -89,7 +89,7 @@ describe("Hero Showcase Option A Split-Layout & Regression Contract Tests", () =
     );
   });
 
-  test("5. Autoplay and pause on hover behaviors are preserved", () => {
+  test("4. Autoplay and pause on hover behaviors are preserved", () => {
     assert.ok(
       heroSectionContent.includes("setInterval"),
       "HeroSection must preserve carousel timer"
@@ -104,7 +104,7 @@ describe("Hero Showcase Option A Split-Layout & Regression Contract Tests", () =
     );
   });
 
-  test("6. Side promotional cards support two-area split with headings and artwork", () => {
+  test("5. Side cards and other promotional banners remain intact and separate", () => {
     assert.ok(
       heroSectionContent.includes("activeSideCards"),
       "HeroSection must maintain activeSideCards logic"
@@ -123,7 +123,7 @@ describe("Hero Showcase Option A Split-Layout & Regression Contract Tests", () =
     );
     assert.ok(
       heroSectionContent.includes("theme.title") || heroSectionContent.includes("card.slot.title"),
-      "HeroSection promo cards must render heading title without clipping"
+      "Side promotional cards must preserve their titles"
     );
   });
 });

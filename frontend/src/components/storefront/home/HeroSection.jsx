@@ -6,7 +6,7 @@ import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "../../../utils/cn.js";
 import { useBannerSlot } from "../../../hooks/useBannerSlot.js";
 
-// Helper to extract clean card title, subtitle, badge and thematic styling
+// Helper to extract clean card title, subtitle, badge and thematic styling for right-side promo cards
 function getPromoCardTheme(card) {
   const slotKey = card.key;
   const slot = card.slot;
@@ -144,23 +144,12 @@ export function HeroSection({ initialBanners = [], initialCampaign = null, inact
       );
       if (validBanners.length > 0) {
         return validBanners.map((b, i) => {
-          const isDark =
-            i % 2 === 1 ||
-            b.imageUrl?.includes("promo-audio") ||
-            b.imageUrl?.includes("electronics");
           return {
             id: b._id || b.id || `slide-${i}`,
-            badge: b.badge || "Featured Showcase",
-            badgeIcon: isDark ? "⚡" : "🌿",
-            title: b.title || "Next-Gen Hardware & Peripherals",
-            subtitle: b.subtitle || b.description || "Top brands. Unbeatable deals. Only at Buybox.",
-            cta: b.ctaText || "Shop Now",
+            title: b.title || "Promotional Showcase",
             href: b.linkUrl || "/shop",
             bannerImage: b.imageUrl,
-            bgGradient: isDark
-              ? "bg-gradient-to-r from-[#022c22] via-[#043E2E] to-[#064E3B]"
-              : "bg-gradient-to-r from-[#D2EFE0] via-[#E5F5EC] to-[#C7EADB]",
-            isDark,
+            mobileImage: b.mobileImageUrl || b.imageUrl,
           };
         });
       }
@@ -207,103 +196,34 @@ export function HeroSection({ initialBanners = [], initialCampaign = null, inact
             activeSideCards.length > 0 ? "grid-cols-1 lg:grid-cols-3" : "grid-cols-1"
           )}
         >
-          {/* Main Hero Banner: Option A Professional Split-Layout */}
+          {/* Main Hero Banner: Image-Only Promotional Artwork */}
           {current && (
             <div
               className={cn(
                 activeSideCards.length > 0 ? "lg:col-span-2" : "col-span-1 lg:col-span-3",
-                "relative overflow-hidden rounded-3xl h-auto min-h-[340px] sm:min-h-[380px] lg:h-[430px] shadow-sm border border-emerald-200/50 transition-all duration-500 flex flex-col justify-between",
-                current.bgGradient || (current.isDark ? "bg-[#043E2E]" : "bg-[#D2EFE0]")
+                "relative overflow-hidden rounded-3xl aspect-[16/9] sm:aspect-auto sm:h-[320px] lg:h-[430px] shadow-sm border border-emerald-200/50 transition-all duration-500 bg-slate-900 group"
               )}
             >
-              {/* Split Layout Container */}
-              <div className="flex flex-col sm:flex-row size-full items-stretch relative z-10">
-                {/* Left Content Zone (52–56% on Desktop) */}
-                <div className="w-full sm:w-[54%] lg:w-[55%] flex flex-col justify-center items-start z-10 pl-11 sm:pl-14 lg:pl-16 pr-5 sm:pr-6 py-6 sm:py-8 lg:py-10 select-none">
-                  {/* Discount Badge */}
-                  {current.badge && (
-                    <div
-                      className={cn(
-                        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold shadow-xs backdrop-blur-xs",
-                        current.isDark
-                          ? "bg-emerald-950/80 text-emerald-300 border border-emerald-500/30"
-                          : "bg-white/95 text-[#007A55] border border-emerald-200"
-                      )}
-                    >
-                      <span className="text-sm">{current.badgeIcon || "🌿"}</span>
-                      <span>{current.badge}</span>
-                    </div>
-                  )}
-
-                  {/* Main Headline */}
-                  <h1
-                    className={cn(
-                      "mt-2.5 sm:mt-3 text-xl sm:text-2xl lg:text-[1.75rem] xl:text-3xl font-black tracking-tight leading-[1.2] line-clamp-3",
-                      current.isDark ? "text-white" : "text-slate-900"
-                    )}
-                  >
-                    {current.title}
-                  </h1>
-
-                  {/* Supporting Description */}
-                  {current.subtitle && (
-                    <p
-                      className={cn(
-                        "mt-2 sm:mt-2.5 text-xs sm:text-sm font-medium leading-relaxed max-w-sm lg:max-w-md line-clamp-2",
-                        current.isDark ? "text-emerald-100/90" : "text-slate-600"
-                      )}
-                    >
-                      {current.subtitle}
-                    </p>
-                  )}
-
-                  {/* Primary CTA Button */}
-                  <div className="mt-4 sm:mt-5 pt-0.5">
-                    <Link
-                      href={current.href || "/shop"}
-                      className="inline-flex items-center gap-2 rounded-full bg-[#004D38] px-5 py-2.5 sm:px-6 sm:py-3 text-xs sm:text-sm font-bold text-white shadow-md hover:bg-[#003A2A] hover:shadow-lg active:scale-95 transition-all cursor-pointer"
-                    >
-                      <span>{current.cta || "Shop Now"}</span>
-                      <ArrowRight className="size-3.5 sm:size-4 stroke-[2.5]" />
-                    </Link>
-                  </div>
-                </div>
-
-                {/* Right Artwork Zone (44–48% on Desktop) */}
-                <div className="w-full sm:w-[46%] lg:w-[45%] h-[150px] sm:h-auto relative flex items-center justify-end px-4 sm:px-6 lg:px-8 py-2 sm:py-6 overflow-hidden pointer-events-none">
-                  {/* Subtle blend fade on the inner edge */}
-                  <div
-                    className={cn(
-                      "hidden sm:block absolute inset-y-0 left-0 w-12 sm:w-16 z-10 pointer-events-none bg-gradient-to-r to-transparent",
-                      current.isDark ? "from-[#043E2E]" : "from-[#E5F5EC]"
-                    )}
+              {current.bannerImage ? (
+                <Link
+                  href={current.href || "/shop"}
+                  className="relative size-full block overflow-hidden"
+                  tabIndex={0}
+                  aria-label={current.title || "Hero promotional banner"}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={current.bannerImage}
+                    alt={current.title || "Hero promotional banner"}
+                    className="size-full object-cover object-center transition-transform duration-700 group-hover:scale-[1.02]"
+                    loading="eager"
                   />
-
-                  {current.bannerImage ? (
-                    <div className="relative h-full w-[140px] sm:w-full flex items-center justify-end overflow-hidden ml-auto">
-                      <Link
-                        href={current.href || "/shop"}
-                        className="relative size-full flex items-center justify-end group pointer-events-auto"
-                        tabIndex={-1}
-                        aria-label={current.title || "Hero showcase banner artwork"}
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={current.bannerImage}
-                          alt={current.title || "Hero showcase banner artwork"}
-                          className={cn(
-                            "max-h-[90%] max-w-full drop-shadow-xl select-none transition-transform duration-700 group-hover:scale-105",
-                            current.bannerImage?.endsWith(".svg")
-                              ? "size-full object-cover object-right scale-110 sm:scale-125 origin-right"
-                              : "object-contain object-center sm:object-right"
-                          )}
-                          loading="eager"
-                        />
-                      </Link>
-                    </div>
-                  ) : null}
+                </Link>
+              ) : (
+                <div className="size-full flex items-center justify-center bg-emerald-950 text-white font-medium text-sm">
+                  <span>{current.title}</span>
                 </div>
-              </div>
+              )}
 
               {/* Slide Navigation Buttons */}
               {slides.length > 1 && (
@@ -312,7 +232,7 @@ export function HeroSection({ initialBanners = [], initialCampaign = null, inact
                     type="button"
                     onClick={prevSlide}
                     aria-label="Previous slide"
-                    className="absolute left-2.5 sm:left-3.5 top-1/2 -translate-y-1/2 z-20 flex size-8 sm:size-9 items-center justify-center rounded-full bg-white/90 text-slate-800 shadow-md backdrop-blur-xs hover:bg-white hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                    className="absolute left-2.5 sm:left-4 top-1/2 -translate-y-1/2 z-20 flex size-8 sm:size-9 items-center justify-center rounded-full bg-white/90 text-slate-800 shadow-md backdrop-blur-xs hover:bg-white hover:scale-105 active:scale-95 transition-all cursor-pointer"
                   >
                     <ChevronLeft className="size-4 sm:size-5" />
                   </button>
@@ -320,7 +240,7 @@ export function HeroSection({ initialBanners = [], initialCampaign = null, inact
                     type="button"
                     onClick={nextSlide}
                     aria-label="Next slide"
-                    className="absolute right-2.5 sm:right-3.5 top-1/2 -translate-y-1/2 z-20 flex size-8 sm:size-9 items-center justify-center rounded-full bg-white/90 text-slate-800 shadow-md backdrop-blur-xs hover:bg-white hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                    className="absolute right-2.5 sm:right-4 top-1/2 -translate-y-1/2 z-20 flex size-8 sm:size-9 items-center justify-center rounded-full bg-white/90 text-slate-800 shadow-md backdrop-blur-xs hover:bg-white hover:scale-105 active:scale-95 transition-all cursor-pointer"
                   >
                     <ChevronRight className="size-4 sm:size-5" />
                   </button>
@@ -351,7 +271,7 @@ export function HeroSection({ initialBanners = [], initialCampaign = null, inact
             </div>
           )}
 
-          {/* Active Side Promo Cards: Two-Area Split Design */}
+          {/* Active Side Promo Cards */}
           {activeSideCards.length > 0 && (
             <div
               className={cn(
