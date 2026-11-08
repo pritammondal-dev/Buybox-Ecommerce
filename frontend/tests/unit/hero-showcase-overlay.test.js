@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-describe("Hero Showcase Image-Only Banner Redesign & Regression Contract Tests", () => {
+describe("Hero Showcase & Side Banners Image-Only Redesign Contract Tests", () => {
   const heroSectionPath = path.resolve(__dirname, "../../src/components/storefront/home/HeroSection.jsx");
   const heroSectionContent = fs.readFileSync(heroSectionPath, "utf-8");
 
@@ -104,7 +104,11 @@ describe("Hero Showcase Image-Only Banner Redesign & Regression Contract Tests",
     );
   });
 
-  test("5. Side cards and other promotional banners remain intact and separate", () => {
+  test("5. Side promotional banners render pure image-only without HTML text or CTA overlays", () => {
+    // Isolate the side promo cards block
+    const sideCardsStart = heroSectionContent.indexOf("{/* Active Side Promo Cards:");
+    const sideCardsBlock = heroSectionContent.slice(sideCardsStart);
+
     assert.ok(
       heroSectionContent.includes("activeSideCards"),
       "HeroSection must maintain activeSideCards logic"
@@ -121,9 +125,66 @@ describe("Hero Showcase Image-Only Banner Redesign & Regression Contract Tests",
       heroSectionContent.includes("heroBrandDeals"),
       "HeroSection must maintain heroBrandDeals hook"
     );
+
+    // Verify image rendering
     assert.ok(
-      heroSectionContent.includes("theme.title") || heroSectionContent.includes("card.slot.title"),
-      "Side promotional cards must preserve their titles"
+      sideCardsBlock.includes("<img"),
+      "Side promotional cards must render <img> tag"
+    );
+    assert.ok(
+      sideCardsBlock.includes("card.slot.src"),
+      "Side promotional cards must render card.slot.src"
+    );
+
+    // Verify complete absence of HTML text overlays, badges, and CTA buttons in side cards
+    assert.ok(
+      !sideCardsBlock.includes("<h2"),
+      "Side promotional cards must not render <h2 title heading"
+    );
+    assert.ok(
+      !sideCardsBlock.includes("badgeClass"),
+      "Side promotional cards must not render badgeClass"
+    );
+    assert.ok(
+      !sideCardsBlock.includes("subtitleClass"),
+      "Side promotional cards must not render subtitleClass"
+    );
+    assert.ok(
+      !sideCardsBlock.includes("Shop Now"),
+      "Side promotional cards must not render HTML 'Shop Now' text"
+    );
+    assert.ok(
+      !sideCardsBlock.includes("ctaClass"),
+      "Side promotional cards must not render ctaClass"
+    );
+    assert.ok(
+      !sideCardsBlock.includes("ArrowRight"),
+      "Side promotional cards must not render ArrowRight CTA icons"
+    );
+  });
+
+  test("6. Side promotional banners preserve destination URLs and accessible labels", () => {
+    const sideCardsStart = heroSectionContent.indexOf("{/* Active Side Promo Cards:");
+    const sideCardsBlock = heroSectionContent.slice(sideCardsStart);
+
+    // Destination handling
+    assert.ok(
+      sideCardsBlock.includes("card.slot.linkUrl"),
+      "Side cards must respect card.slot.linkUrl"
+    );
+    assert.ok(
+      sideCardsBlock.includes("hasValidDestination"),
+      "Side cards must check hasValidDestination"
+    );
+
+    // Accessible labels
+    assert.ok(
+      sideCardsBlock.includes("card.slot.altText || card.slot.title"),
+      "Side cards must provide accessible labels from slot altText or title"
+    );
+    assert.ok(
+      sideCardsBlock.includes("handleImageError"),
+      "Side cards must preserve image error handling"
     );
   });
 });

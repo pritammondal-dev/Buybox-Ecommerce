@@ -2,98 +2,9 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "../../../utils/cn.js";
 import { useBannerSlot } from "../../../hooks/useBannerSlot.js";
-
-// Helper to extract clean card title, subtitle, badge and thematic styling for right-side promo cards
-function getPromoCardTheme(card) {
-  const slotKey = card.key;
-  const slot = card.slot;
-
-  // Title: use custom title if set, or clean default title
-  let title = slot.title;
-  if (
-    !title ||
-    title.startsWith("Hero Card") ||
-    title.startsWith("Hero Card 1") ||
-    title.startsWith("Hero Card 2") ||
-    title.startsWith("Hero Card 3")
-  ) {
-    if (slotKey === "hero_audio") title = "Audio Essentials";
-    else if (slotKey === "hero_smart_home") title = "Smart Devices";
-    else if (slotKey === "hero_brand_deals") title = "Exclusive Deals";
-    else title = slot.altText || "Special Offer";
-  }
-
-  // Subtitle: only if available or default for slot
-  const subtitle =
-    slot.subtitle ||
-    (slotKey === "hero_audio"
-      ? "Studio monitors & wireless audio"
-      : slotKey === "hero_smart_home"
-      ? "For a smarter connected home"
-      : slotKey === "hero_brand_deals"
-      ? "Apple, Samsung, Dell & more"
-      : null);
-
-  // Badge: only if available or slot default
-  const badge =
-    slot.badge ||
-    (slotKey === "hero_audio"
-      ? "PREMIUM SOUND"
-      : slotKey === "hero_smart_home"
-      ? "SMART LIVING"
-      : slotKey === "hero_brand_deals"
-      ? "TOP BRANDS"
-      : null);
-
-  const cta = slot.ctaText || "Shop Now";
-
-  // Card themes
-  const isDark = slotKey === "hero_audio" || (!slotKey && card.slot.src?.includes("audio"));
-  const isAmber = slotKey === "hero_smart_home";
-  const isRose = slotKey === "hero_brand_deals";
-
-  let bgClass = "bg-gradient-to-br from-[#022c22] via-[#043E2E] to-[#064E3B] border-emerald-800/40";
-  let fadeColor = "from-[#022c22]";
-  let badgeClass = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
-  let headingClass = "text-white";
-  let subtitleClass = "text-emerald-100/80";
-  let ctaClass = "inline-flex items-center gap-1.5 rounded-full bg-[#007A55] px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-[#005f42]";
-
-  if (isAmber) {
-    bgClass = "bg-gradient-to-br from-[#FFFDF5] via-[#FEF3C7] to-[#FDE68A] border-amber-200/80";
-    fadeColor = "from-[#FFFDF5]";
-    badgeClass = "bg-amber-100/90 text-amber-800 border-amber-300/60";
-    headingClass = "text-slate-900";
-    subtitleClass = "text-slate-700";
-    ctaClass = "inline-flex items-center gap-1 text-xs font-extrabold text-amber-900 hover:text-amber-950 underline decoration-amber-500 decoration-2 underline-offset-4";
-  } else if (isRose) {
-    bgClass = "bg-gradient-to-br from-[#FFF1F2] via-[#FFE4E6] to-[#FECDD3] border-rose-200/80";
-    fadeColor = "from-[#FFF1F2]";
-    badgeClass = "bg-rose-100/90 text-rose-800 border-rose-300/60";
-    headingClass = "text-slate-900";
-    subtitleClass = "text-slate-700";
-    ctaClass = "inline-flex items-center gap-1.5 rounded-full bg-[#881337] px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-[#700f2b]";
-  }
-
-  return {
-    title,
-    subtitle,
-    badge,
-    cta,
-    bgClass,
-    fadeColor,
-    badgeClass,
-    headingClass,
-    subtitleClass,
-    ctaClass,
-    isDark,
-    isAmber,
-    isRose,
-  };
-}
 
 export function HeroSection({ initialBanners = [], initialCampaign = null, inactiveSlots = [] }) {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -271,96 +182,57 @@ export function HeroSection({ initialBanners = [], initialCampaign = null, inact
             </div>
           )}
 
-          {/* Active Side Promo Cards */}
+          {/* Active Side Promo Cards: Pure Image-Only Promotional Banners */}
           {activeSideCards.length > 0 && (
             <div
               className={cn(
-                "flex flex-col gap-3.5 sm:gap-4 justify-between lg:h-[430px]",
+                "flex flex-col gap-3 sm:gap-3.5 lg:h-[430px] justify-between",
                 activeSideCards.length === 1 && "sm:grid sm:grid-cols-1 lg:flex lg:flex-col",
                 activeSideCards.length === 2 && "sm:grid sm:grid-cols-2 lg:flex lg:flex-col",
                 activeSideCards.length >= 3 && "sm:grid sm:grid-cols-3 lg:flex lg:flex-col"
               )}
             >
               {activeSideCards.map((card) => {
-                const theme = getPromoCardTheme(card);
+                const destination = card.slot.linkUrl || card.slot.href;
+                const hasValidDestination =
+                  typeof destination === "string" &&
+                  destination.trim().length > 0 &&
+                  destination !== "#";
+                const accessibleLabel = card.slot.altText || card.slot.title || "Promotional banner";
+
+                const imageElement = (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={card.slot.src}
+                    alt={accessibleLabel}
+                    onError={card.slot.handleImageError}
+                    className="size-full object-cover object-center transition-transform duration-500 group-hover:scale-[1.02]"
+                    loading="lazy"
+                  />
+                );
+
+                if (hasValidDestination) {
+                  return (
+                    <Link
+                      key={card.key}
+                      href={destination}
+                      aria-label={accessibleLabel}
+                      className="relative flex-1 min-h-0 h-[115px] sm:h-auto sm:aspect-[2.4/1] lg:aspect-auto lg:h-auto overflow-hidden rounded-2xl border border-slate-200/80 shadow-2xs group hover:shadow-md transition-all bg-slate-100 block focus:outline-none focus-visible:ring-2 focus-visible:ring-[#007A55]"
+                    >
+                      {imageElement}
+                    </Link>
+                  );
+                }
 
                 return (
-                  <Link
+                  <div
                     key={card.key}
-                    href={card.slot.linkUrl || "/shop"}
-                    className={cn(
-                      "relative flex-1 min-h-[140px] sm:min-h-[155px] lg:min-h-0 overflow-hidden rounded-2xl border shadow-2xs group hover:shadow-md transition-all flex items-stretch",
-                      theme.bgClass
-                    )}
+                    role="img"
+                    aria-label={accessibleLabel}
+                    className="relative flex-1 min-h-0 h-[115px] sm:h-auto sm:aspect-[2.4/1] lg:aspect-auto lg:h-auto overflow-hidden rounded-2xl border border-slate-200/80 shadow-2xs group transition-all bg-slate-100 block"
                   >
-                    {/* LEFT Content Zone (56–58% width) */}
-                    <div className="w-[58%] sm:w-[58%] flex flex-col justify-between p-3.5 sm:p-4 lg:p-4.5 z-10 select-none">
-                      <div className="space-y-1">
-                        {theme.badge && (
-                          <span
-                            className={cn(
-                              "inline-block text-[9px] sm:text-[10px] font-extrabold tracking-wider px-2 py-0.5 rounded-full border",
-                              theme.badgeClass
-                            )}
-                          >
-                            {theme.badge}
-                          </span>
-                        )}
-                        <h2
-                          className={cn(
-                            "font-black text-sm sm:text-base lg:text-[15px] xl:text-base tracking-tight leading-snug line-clamp-2",
-                            theme.headingClass
-                          )}
-                        >
-                          {theme.title}
-                        </h2>
-                        {theme.subtitle && (
-                          <p
-                            className={cn(
-                              "text-[10px] sm:text-[11px] font-medium leading-relaxed line-clamp-2",
-                              theme.subtitleClass
-                            )}
-                          >
-                            {theme.subtitle}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="pt-2">
-                        <span className={theme.ctaClass}>
-                          <span>{theme.cta}</span>
-                          <ArrowRight className="size-3 stroke-[2.5]" />
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* RIGHT Artwork Zone (42–44% width) */}
-                    <div className="w-[42%] sm:w-[42%] relative flex items-center justify-end p-2 sm:p-3 overflow-hidden pointer-events-none">
-                      {/* Inner edge subtle blend */}
-                      <div
-                        className={cn(
-                          "absolute inset-y-0 left-0 w-6 z-10 pointer-events-none bg-gradient-to-r to-transparent",
-                          theme.fadeColor
-                        )}
-                      />
-
-                      <div className="relative size-full flex items-center justify-center lg:justify-end overflow-hidden">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={card.slot.src}
-                          alt={card.slot.altText || theme.title}
-                          onError={card.slot.handleImageError}
-                          className={cn(
-                            "max-h-full max-w-full drop-shadow-md transition-transform duration-500 group-hover:scale-105 select-none",
-                            card.slot.src?.endsWith(".svg")
-                              ? "size-full object-cover object-right scale-110 sm:scale-125 origin-right"
-                              : "object-contain object-center lg:object-right"
-                          )}
-                          loading="lazy"
-                        />
-                      </div>
-                    </div>
-                  </Link>
+                    {imageElement}
+                  </div>
                 );
               })}
             </div>
