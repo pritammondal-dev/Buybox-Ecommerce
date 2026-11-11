@@ -41,4 +41,4 @@ This rule is mandatory for all agent operations across the **Buybox** frontend a
 - Ensure full App Router compilation without hydration mismatches (`npm run build`).
 - Do not modify backend code or invent backend fields.
 
-Refer to `frontend/docs/ui-ux-design-system.md` for complete design specifications.
+Refer to `docs/architecture/ui-ux-design-system.md` for complete design specifications.
