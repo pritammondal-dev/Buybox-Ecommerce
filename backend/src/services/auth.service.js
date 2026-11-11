@@ -29,6 +29,7 @@ const otpService = require("./otp.service");
 const smsService = require("./sms.service");
 const googleAuthService = require("./google-auth.service");
 const AuthAuditService = require("./auth-audit.service");
+const { isIdentityTombstoned } = require("../utils/tombstone.util");
 const authenticationPolicyService = require("./authentication-policy.service");
 const { ROLES, OTP_PURPOSES, AUDIT_ACTIONS } = require("../constants/auth.constants");
 const { normalizePhoneNumber, isValidPhoneNumber, maskPhoneNumber } = require("../utils/phone.util");
@@ -1135,6 +1136,30 @@ const authenticateGoogleUser = async ({ idToken, ipAddress = null, userAgent = n
     verifiedEmail = payload.email;
     verifiedSub = payload.sub;
 
+    // Check if this identity has been permanently deleted
+    const isTombstoned = await isIdentityTombstoned({
+      email: payload.email,
+      googleSub: payload.sub,
+    });
+
+    if (isTombstoned) {
+      await AuthAuditService.recordEvent({
+        action: AUDIT_ACTIONS.LOGIN_FAILED,
+        ipAddress,
+        userAgent,
+        metadata: {
+          sub: payload.sub,
+          reason: "ACCOUNT_DELETED",
+        },
+      });
+
+      throw new AppError(
+        "This account was permanently deleted. Automatic recreation via Google Sign-In is blocked.",
+        403,
+        "ACCOUNT_DELETED"
+      );
+    }
+
     // 1. Check if user with this verified Google Provider ID exists
     let user = await User.findOne({ "authProviders.google.id": payload.sub });
 
@@ -1187,7 +1212,9 @@ const authenticateGoogleUser = async ({ idToken, ipAddress = null, userAgent = n
                 firstName: payload.firstName,
                 lastName: payload.lastName,
                 role: "customer",
+                roles: ["customer"],
                 isEmailVerified: true, // Google identity independently verified
+                isActive: true,
                 authProviders: {
                   google: {
                     id: payload.sub,
@@ -1211,8 +1238,36 @@ const authenticateGoogleUser = async ({ idToken, ipAddress = null, userAgent = n
             { session }
           );
         });
+      } catch (txnErr) {
+        if (
+          txnErr?.message?.includes("replica set") ||
+          txnErr?.message?.includes("Transaction numbers")
+        ) {
+          const createdUsers = await User.create([
+            {
+              email: payload.email,
+              firstName: payload.firstName,
+              lastName: payload.lastName,
+              role: "customer",
+              roles: ["customer"],
+              isEmailVerified: true,
+              isActive: true,
+              authProviders: {
+                google: {
+                  id: payload.sub,
+                  email: payload.email,
+                  linkedAt: new Date(),
+                },
+              },
+            },
+          ]);
+          user = createdUsers[0];
+          await Customer.create({ userId: user._id });
+        } else {
+          throw txnErr;
+        }
       } finally {
-        await session.endSession();
+        await session.endSession().catch(() => {});
       }
     }
 

@@ -14,6 +14,7 @@ const Cart = require("../models/Cart");
 const RefreshToken = require("../models/RefreshToken");
 const { hashPassword } = require("../utils/password");
 const { recordAuditLog } = require("../services/governance.service");
+const customerDeletionService = require("../services/customer-deletion.service");
 
 /**
  * List all customers with pagination, search, and status filters.
@@ -781,7 +782,8 @@ const resetCustomerPassword = async (req, res, next) => {
 };
 
 /**
- * Superadmin soft-deactivate customer account
+ * Superadmin permanently delete customer account and purge personal records
+ * Preserves historical orders, payments, refunds, and financial compliance records
  */
 const deleteCustomer = async (req, res, next) => {
   try {
@@ -792,65 +794,26 @@ const deleteCustomer = async (req, res, next) => {
       throw new AppError("Invalid customer user ID", 400, "INVALID_ID");
     }
 
-    const user = await User.findById(id);
-    if (!user) {
-      throw new AppError("Customer not found", 404, "CUSTOMER_NOT_FOUND");
-    }
-
     const actorId = req.user._id || req.user.id;
-    if (user._id.toString() === actorId.toString()) {
+    if (id.toString() === actorId.toString()) {
       throw new AppError("Administrators cannot delete their own account", 400, "CANNOT_DELETE_SELF");
     }
 
-    if (user.role === "super_admin") {
-      throw new AppError("Superadmin accounts cannot be deleted", 403, "CANNOT_DELETE_SUPERADMIN");
-    }
-
-    if (user.role !== "customer") {
-      throw new AppError("Customer not found", 404, "CUSTOMER_NOT_FOUND");
-    }
-
-    if (user.deletedAt) {
-      throw new AppError("Customer account is already deactivated", 400, "ACCOUNT_ALREADY_DEACTIVATED");
-    }
-
-    const beforeState = { isActive: user.isActive, deletedAt: user.deletedAt || null };
-
-    user.isActive = false;
-    user.deletedAt = new Date();
-    user.authVersion = (user.authVersion || 0) + 1;
-    await user.save();
-
-    await Customer.updateOne(
-      { userId: user._id },
-      { $set: { isActive: false, deletedAt: user.deletedAt } }
-    );
-
-    await RefreshToken.updateMany(
-      { userId: user._id, revokedAt: null },
-      { $set: { revokedAt: new Date() } }
-    );
-
-    await Cart.deleteMany({ customerId: user._id }).catch(() => null);
-
-    await recordAuditLog({
+    const result = await customerDeletionService.executePermanentDeletion({
+      userId: id,
+      skipIdentityVerification: true,
       actorId,
-      targetId: user._id,
-      action: "customer.deleted",
-      entityType: "customer",
-      beforeState,
-      afterState: { isActive: false, deletedAt: user.deletedAt, reason },
-      reason,
+      reason: reason || "Administrative permanent customer deletion",
       req,
     });
 
     res.status(200).json({
       success: true,
-      message: "Customer account deactivated successfully",
+      message: "Customer account permanently deleted successfully",
       data: {
-        id: user._id,
-        isActive: false,
-        deletedAt: user.deletedAt,
+        id,
+        permanentlyDeleted: true,
+        deletedAt: result.deletedAt,
       },
     });
   } catch (error) {

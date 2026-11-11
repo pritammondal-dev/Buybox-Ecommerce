@@ -157,6 +157,16 @@ const createAuthMiddleware = (options = {}) => {
         dbUser = null;
         dbEmployee = null;
       }
+
+      if (!dbUser && !options.optional) {
+        return next(
+          new AppError(
+            "User account not found or has been deleted",
+            401,
+            "USER_NOT_FOUND"
+          )
+        );
+      }
     }
 
     if (dbUser) {
