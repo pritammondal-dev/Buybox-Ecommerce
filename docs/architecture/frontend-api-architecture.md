@@ -59,7 +59,7 @@ The Buybox frontend API layer is engineered as a clean, decoupled integration pi
 
 ## 2. Axios Client Architecture
 
-All outgoing API traffic flows through a single configured Axios instance located at [`src/lib/api/axios.js`](../src/lib/api/axios.js).
+All outgoing API traffic flows through a single configured Axios instance located at [`src/lib/api/axios.js`](../../frontend/src/lib/api/axios.js).
 
 ### Key Characteristics:
 1. **Dynamic Base URL:** Loaded from `process.env.NEXT_PUBLIC_API_URL` (defaulting to `http://localhost:5000/api/v1` in local dev).
@@ -72,7 +72,7 @@ All outgoing API traffic flows through a single configured Axios instance locate
 ## 3. Authentication & Refresh Flow
 
 Buybox employs a dual-token JWT architecture:
-- **Short-Lived Access Token (15 Minutes):** Kept strictly **in memory** via [`src/lib/auth/token-manager.js`](../src/lib/auth/token-manager.js). Never persisted to `localStorage` or `sessionStorage` (preventing XSS credential theft).
+- **Short-Lived Access Token (15 Minutes):** Kept strictly **in memory** via [`src/lib/auth/token-manager.js`](../../frontend/src/lib/auth/token-manager.js). Never persisted to `localStorage` or `sessionStorage` (preventing XSS credential theft).
 - **Long-Lived Refresh Token (7 Days):** Sent by the backend in a hardened `Set-Cookie: refreshToken=<token>; HttpOnly; Path=/api/v1/auth; SameSite=Lax`.
 
 ### Automatic Silent Session Recovery (Lifecycle)
@@ -117,7 +117,7 @@ sequenceDiagram
 
 Backend errors adhere to `{ success: false, message: string, code: string, requestId?: string }`.
 
-The frontend normalizes all error structures using the [`ApiError`](../src/lib/api/api-error.js) class:
+The frontend normalizes all error structures using the [`ApiError`](../../frontend/src/lib/api/api-error.js) class:
 
 ```javascript
 import { ApiError, normalizeApiError } from "@/lib/api/api-error";
@@ -172,21 +172,21 @@ Domain services contain purely HTTP integration logic. They:
 
 | Service Module | Backend Mount | Description |
 |---|---|---|
-| [`authService`](../src/services/auth.service.js) | `/api/v1/auth` | Login, register, refresh, logout, password reset, email verify |
-| [`productService`](../src/services/product.service.js) | `/api/v1/products`, `/api/v1/product-variants` | Catalog queries, slug lookup, variant management |
-| [`categoryService`](../src/services/category.service.js) | `/api/v1/categories` | Hierarchical taxonomy and category CRUD |
-| [`brandService`](../src/services/brand.service.js) | `/api/v1/brands` | Brand catalog and CRUD |
-| [`cartService`](../src/services/cart.service.js) | `/api/v1/cart` | Authenticated cart retrieval, item add/update/delete |
-| [`wishlistService`](../src/services/wishlist.service.js) | `/api/v1/wishlist` | Authenticated wishlist items |
-| [`addressService`](../src/services/address.service.js) | `/api/v1/addresses` | Customer shipping/billing address book |
-| [`orderService`](../src/services/order.service.js) | `/api/v1/orders` | Checkout finalization, order history, cancellation |
-| [`paymentService`](../src/services/payment.service.js) | `/api/v1/payments` | Razorpay payment intent creation and signature verification |
-| [`reviewService`](../src/services/review.service.js) | `/api/v1/reviews` | Product reviews, ratings, helpful votes, moderation |
-| [`customerService`](../src/services/customer.service.js) | `/api/v1/customers` | Customer profile and preferences |
-| [`inventoryService`](../src/services/inventory.service.js) | `/api/v1/inventory` | Multi-warehouse inventory lookups and adjustments |
-| [`couponService`](../src/services/coupon.service.js) | `/api/v1/coupons` | Checkout coupon validation and admin management |
-| [`shipmentService`](../src/services/shipment.service.js) | `/api/v1/shipments` | Customer shipment tracking |
-| [`cmsService`](../src/services/cms.service.js) | `/api/v1/cms/pages` | Published pages content and layout blocks |
+| [`authService`](../../frontend/src/services/auth.service.js) | `/api/v1/auth` | Login, register, refresh, logout, password reset, email verify |
+| [`productService`](../../frontend/src/services/product.service.js) | `/api/v1/products`, `/api/v1/product-variants` | Catalog queries, slug lookup, variant management |
+| [`categoryService`](../../frontend/src/services/category.service.js) | `/api/v1/categories` | Hierarchical taxonomy and category CRUD |
+| [`brandService`](../../frontend/src/services/brand.service.js) | `/api/v1/brands` | Brand catalog and CRUD |
+| [`cartService`](../../frontend/src/services/cart.service.js) | `/api/v1/cart` | Authenticated cart retrieval, item add/update/delete |
+| [`wishlistService`](../../frontend/src/services/wishlist.service.js) | `/api/v1/wishlist` | Authenticated wishlist items |
+| [`addressService`](../../frontend/src/services/address.service.js) | `/api/v1/addresses` | Customer shipping/billing address book |
+| [`orderService`](../../frontend/src/services/order.service.js) | `/api/v1/orders` | Checkout finalization, order history, cancellation |
+| [`paymentService`](../../frontend/src/services/payment.service.js) | `/api/v1/payments` | Razorpay payment intent creation and signature verification |
+| [`reviewService`](../../frontend/src/services/review.service.js) | `/api/v1/reviews` | Product reviews, ratings, helpful votes, moderation |
+| [`customerService`](../../frontend/src/services/customer.service.js) | `/api/v1/customers` | Customer profile and preferences |
+| [`inventoryService`](../../frontend/src/services/inventory.service.js) | `/api/v1/inventory` | Multi-warehouse inventory lookups and adjustments |
+| [`couponService`](../../frontend/src/services/coupon.service.js) | `/api/v1/coupons` | Checkout coupon validation and admin management |
+| [`shipmentService`](../../frontend/src/services/shipment.service.js) | `/api/v1/shipments` | Customer shipment tracking |
+| [`cmsService`](../../frontend/src/services/cms.service.js) | `/api/v1/cms/pages` | Published pages content and layout blocks |
 
 ---
 
@@ -194,9 +194,9 @@ Domain services contain purely HTTP integration logic. They:
 
 | Store | Scope & State Managed | Persistence |
 |---|---|---|
-| [`useAuthStore`](../src/stores/auth.store.js) | `user`, `customerProfile`, `isAuthenticated`, `isLoading`, `isInitialized`, `error` | In-memory. Synchronized with `tokenManager` and httpOnly cookie. |
-| [`useCartStore`](../src/stores/cart.store.js) | `guestCart: { items }`, `serverCart`, `isMigrating` | `guestCart` is persisted in `localStorage`. `serverCart` is memory-only. |
-| [`useWishlistStore`](../src/stores/wishlist.store.js) | `guestWishlist: { itemVariantIds }`, `serverWishlist` | `guestWishlist` is persisted in `localStorage`. `serverWishlist` is memory-only. |
+| [`useAuthStore`](../../frontend/src/stores/auth.store.js) | `user`, `customerProfile`, `isAuthenticated`, `isLoading`, `isInitialized`, `error` | In-memory. Synchronized with `tokenManager` and httpOnly cookie. |
+| [`useCartStore`](../../frontend/src/stores/cart.store.js) | `guestCart: { items }`, `serverCart`, `isMigrating` | `guestCart` is persisted in `localStorage`. `serverCart` is memory-only. |
+| [`useWishlistStore`](../../frontend/src/stores/wishlist.store.js) | `guestWishlist: { itemVariantIds }`, `serverWishlist` | `guestWishlist` is persisted in `localStorage`. `serverWishlist` is memory-only. |
 
 ---
 
