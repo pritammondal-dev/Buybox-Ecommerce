@@ -22,6 +22,9 @@ const {
 const {
   SUPPORT_TICKET_CATEGORIES,
 } = require("../constants/support.constants");
+const {
+  SECTION5_CATALOG,
+} = require("../constants/permissions.constants");
 
 /**
  * Deep clone and remove sensitive credentials from state before storing in AuditLog.
@@ -536,7 +539,32 @@ const updateRolePermissions = async (
    2. PERMISSION GOVERNANCE (READ-ONLY)
    ========================================================================= */
 
-const listPermissions = async ({ page = 1, limit = 100, module, search }) => {
+const listPermissions = async ({ page = 1, limit = 100, module, search, grouped = false, catalog = false, all = false }) => {
+  const isGrouped = grouped === true || grouped === "true" || catalog === true || catalog === "true";
+  if (isGrouped) {
+    let catalogResult = SECTION5_CATALOG;
+    if (search) {
+      const q = String(search).toLowerCase();
+      catalogResult = SECTION5_CATALOG.map((cat) => ({
+        ...cat,
+        permissions: cat.permissions.filter(
+          (p) =>
+            p.slug.toLowerCase().includes(q) ||
+            p.name.toLowerCase().includes(q) ||
+            (p.description && p.description.toLowerCase().includes(q))
+        ),
+      })).filter((cat) => cat.permissions.length > 0);
+    }
+    const total = catalogResult.reduce((acc, cat) => acc + cat.permissions.length, 0);
+    return {
+      permissions: catalogResult,
+      isGrouped: true,
+      total,
+      page: 1,
+      limit: total,
+    };
+  }
+
   const query = {};
   if (module) {
     query.module = String(module).toLowerCase().trim();
@@ -548,17 +576,18 @@ const listPermissions = async ({ page = 1, limit = 100, module, search }) => {
     ];
   }
 
-  const skip = (Number(page) - 1) * Number(limit);
+  const effectiveLimit = all === "true" || all === true ? 1000 : Number(limit);
+  const skip = (Number(page) - 1) * effectiveLimit;
   const [permissions, total] = await Promise.all([
     Permission.find(query)
       .sort({ module: 1, slug: 1 })
       .skip(skip)
-      .limit(Number(limit))
+      .limit(effectiveLimit)
       .lean(),
     Permission.countDocuments(query),
   ]);
 
-  return { permissions, total, page: Number(page), limit: Number(limit) };
+  return { permissions, total, page: Number(page), limit: effectiveLimit };
 };
 
 const getPermissionById = async (permissionId) => {

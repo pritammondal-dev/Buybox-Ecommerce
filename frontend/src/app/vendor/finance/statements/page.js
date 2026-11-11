@@ -26,6 +26,11 @@ import { vendorService } from "@/services/vendor.service";
 export default function VendorStatementsPage() {
   const [settlements, setSettlements] = useState([]);
   const [summary, setSummary] = useState(null);
+  const [serverSummary, setServerSummary] = useState(null);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -33,8 +38,19 @@ export default function VendorStatementsPage() {
   const loadStatements = useCallback(async (showToast = false) => {
     setIsLoading(true);
     try {
+      const params = {
+        page,
+        limit: pageSize,
+      };
+      if (statusFilter !== "all") {
+        params.status = statusFilter;
+      }
+      if (searchQuery.trim()) {
+        params.search = searchQuery.trim();
+      }
+
       const [settlementsRes, summaryRes] = await Promise.allSettled([
-        vendorService.getMySettlements(),
+        vendorService.getMySettlements(params),
         vendorService.getFinanceSummary(),
       ]);
 
@@ -46,6 +62,13 @@ export default function VendorStatementsPage() {
           [];
         const items = Array.isArray(raw) ? raw : raw.items || [];
         setSettlements(items);
+
+        const meta = settlementsRes.value?.data?.meta || {};
+        if (meta.summary) {
+          setServerSummary(meta.summary);
+        }
+        setTotalRecords(meta.total !== undefined ? meta.total : items.length);
+        setTotalPages(meta.totalPages || 1);
       }
 
       if (summaryRes.status === "fulfilled") {
@@ -71,38 +94,47 @@ export default function VendorStatementsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [page, pageSize, statusFilter, searchQuery]);
 
   useEffect(() => {
     loadStatements();
   }, [loadStatements]);
 
-  // Financial metric calculations
-  const totalSettledAmount = useMemo(() => {
-    return settlements
-      .filter((s) => s.status === "paid")
-      .reduce((sum, s) => sum + Number(s.netPayable || 0), 0);
-  }, [settlements]);
+  const handleFilterChange = (newStatus) => {
+    setStatusFilter(newStatus);
+    setPage(1);
+  };
 
-  const pendingDisbursements = useMemo(() => {
-    return settlements
-      .filter((s) => s.status !== "paid")
-      .reduce((sum, s) => sum + Number(s.netPayable || 0), 0);
-  }, [settlements]);
+  const handleSearchChange = (e) => {
+    setSearchQuery(e.target.value);
+    setPage(1);
+  };
 
-  const totalGrossVolume = useMemo(() => {
-    return settlements.reduce((sum, s) => sum + Number(s.grossSales || 0), 0);
-  }, [settlements]);
+  // Authoritative cumulative financial metrics from database aggregation
+  const totalSettledAmount = serverSummary?.totalSettledAmount !== undefined
+    ? Number(serverSummary.totalSettledAmount)
+    : summary?.totalSettledAmount !== undefined
+    ? Number(summary.totalSettledAmount)
+    : 0;
 
-  // Filtered & searched statement list
+  const pendingDisbursements = serverSummary?.pendingDisbursements !== undefined
+    ? Number(serverSummary.pendingDisbursements)
+    : summary?.pendingSettlementAmount !== undefined
+    ? Number(summary.pendingSettlementAmount)
+    : 0;
+
+  const totalGrossVolume = serverSummary?.totalGrossVolume !== undefined
+    ? Number(serverSummary.totalGrossVolume)
+    : summary?.totalSettlementVolume !== undefined
+    ? Number(summary.totalSettlementVolume)
+    : 0;
+
+  // Filtered & searched statement list (safe client fallback)
   const filteredSettlements = useMemo(() => {
     return settlements.filter((item) => {
-      // Status filter
       if (statusFilter !== "all" && item.status !== statusFilter) {
         return false;
       }
-
-      // Search query
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase().trim();
         const numberMatch =
@@ -122,7 +154,6 @@ export default function VendorStatementsPage() {
 
         return Boolean(numberMatch || idMatch || refMatch || bankMatch);
       }
-
       return true;
     });
   }, [settlements, statusFilter, searchQuery]);
@@ -287,7 +318,7 @@ export default function VendorStatementsPage() {
             </div>
           </div>
           <div className="text-2xl font-black text-slate-900">
-            {settlements.length}
+            {totalRecords}
           </div>
           <p className="text-[11px] text-slate-400 mt-1">
             Generated marketplace billing cycles
@@ -302,7 +333,7 @@ export default function VendorStatementsPage() {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={handleSearchChange}
             placeholder="Search statement #, payout reference, or bank..."
             className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20"
           />
@@ -313,10 +344,10 @@ export default function VendorStatementsPage() {
           <span className="text-xs font-bold text-slate-600">Status:</span>
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => handleFilterChange(e.target.value)}
             className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:border-emerald-600"
           >
-            <option value="all">All Statuses ({settlements.length})</option>
+            <option value="all">All Statuses ({totalRecords})</option>
             <option value="paid">Paid</option>
             <option value="payable">Payable</option>
             <option value="processing">Processing</option>
@@ -455,6 +486,38 @@ export default function VendorStatementsPage() {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50 text-xs">
+            <span className="text-slate-500 font-semibold">
+              Showing page <span className="text-slate-900 font-bold">{page}</span> of{" "}
+              <span className="text-slate-900 font-bold">{totalPages}</span> ({totalRecords} statements total)
+            </span>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || isLoading}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                Previous
+              </button>
+              <span className="px-2 font-bold text-slate-600">
+                {page} / {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || isLoading}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                Next
+              </button>
+            </div>
           </div>
         )}
       </div>

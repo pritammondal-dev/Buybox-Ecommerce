@@ -2,6 +2,11 @@ const mongoose = require("mongoose");
 
 const countItemSchema = new mongoose.Schema(
   {
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      default: null,
+    },
     productVariantId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ProductVariant",
@@ -43,15 +48,89 @@ const countItemSchema = new mongoose.Schema(
         message: "Discrepancy must be an integer",
       },
     },
+    shortageQuantity: {
+      type: Number,
+      default: 0,
+      min: 0,
+      validate: {
+        validator: Number.isInteger,
+        message: "Shortage quantity must be an integer",
+      },
+    },
+    excessQuantity: {
+      type: Number,
+      default: 0,
+      min: 0,
+      validate: {
+        validator: Number.isInteger,
+        message: "Excess quantity must be an integer",
+      },
+    },
+    variancePercentage: {
+      type: Number,
+      default: 0,
+    },
+    countedCondition: {
+      type: String,
+      enum: ["sellable", "damaged", "defective", "expired", "missing"],
+      default: "sellable",
+    },
+    inspectionNotes: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 500,
+    },
     reason: {
       type: String,
       default: null,
       trim: true,
       maxlength: 200,
     },
+    recountRequested: {
+      type: Boolean,
+      default: false,
+    },
+    recountNotes: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 500,
+    },
+    recountCountedOnHand: {
+      type: Number,
+      default: null,
+      min: 0,
+      validate: {
+        validator: (val) => val === null || Number.isInteger(val),
+        message: "Recount counted on-hand must be an integer",
+      },
+    },
     adjustmentApplied: {
       type: Boolean,
       default: false,
+    },
+    appliedAdjustmentDelta: {
+      type: Number,
+      default: 0,
+    },
+    countingTimestamp: {
+      type: Date,
+      default: null,
+    },
+    countedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    unitCost: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+    varianceValue: {
+      type: Number,
+      default: null,
     },
   },
   {
@@ -81,6 +160,13 @@ const stockCountSchema = new mongoose.Schema(
       index: true,
     },
 
+    vendorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Vendor",
+      default: null,
+      index: true,
+    },
+
     warehouseId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Warehouse",
@@ -88,15 +174,51 @@ const stockCountSchema = new mongoose.Schema(
       index: true,
     },
 
+    countType: {
+      type: String,
+      enum: ["physical", "cycle"],
+      default: "physical",
+    },
+
     scope: {
       type: String,
-      enum: ["full", "partial", "cycle", "cycle_count"],
+      enum: [
+        "full",
+        "partial",
+        "cycle",
+        "cycle_count",
+        "selected_sku",
+        "category",
+        "low_stock",
+        "high_value",
+      ],
       default: "full",
     },
 
+    categoryIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Category",
+      },
+    ],
+
     status: {
       type: String,
-      enum: ["draft", "in_progress", "review", "completed", "finalized", "cancelled"],
+      enum: [
+        "draft",
+        "counting",
+        "in_progress",
+        "submitted",
+        "under_review",
+        "review",
+        "recount_required",
+        "approved",
+        "rejected",
+        "reconciled",
+        "completed",
+        "finalized",
+        "cancelled",
+      ],
       default: "draft",
       index: true,
     },
@@ -107,6 +229,50 @@ const stockCountSchema = new mongoose.Schema(
         validator: (items) => Array.isArray(items) && items.length > 0,
         message: "Stock count must contain at least one item",
       },
+    },
+
+    materialityThresholdPercent: {
+      type: Number,
+      default: 5,
+      min: 0,
+      max: 100,
+    },
+
+    recountCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    totalExpectedQty: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    totalCountedQty: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    totalVarianceQty: {
+      type: Number,
+      default: 0,
+    },
+
+    skuAccuracyRate: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
+    },
+
+    quantityAccuracyRate: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
     },
 
     notes: {
@@ -128,6 +294,82 @@ const stockCountSchema = new mongoose.Schema(
     },
 
     startedAt: {
+      type: Date,
+      default: null,
+    },
+
+    submittedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    submittedAt: {
+      type: Date,
+      default: null,
+    },
+
+    reviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    reviewedAt: {
+      type: Date,
+      default: null,
+    },
+
+    reviewNotes: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 1000,
+    },
+
+    approvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    approvedAt: {
+      type: Date,
+      default: null,
+    },
+
+    approvalNotes: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 1000,
+    },
+
+    rejectedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    rejectedAt: {
+      type: Date,
+      default: null,
+    },
+
+    rejectionReason: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 1000,
+    },
+
+    reconciledBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    reconciledAt: {
       type: Date,
       default: null,
     },
@@ -176,6 +418,7 @@ stockCountSchema.virtual("countedByUserId", {
   justOne: true,
 });
 
+stockCountSchema.index({ vendorId: 1, warehouseId: 1, status: 1, createdAt: -1 });
 stockCountSchema.index({ warehouseId: 1, status: 1 });
 stockCountSchema.index({ status: 1, createdAt: -1 });
 

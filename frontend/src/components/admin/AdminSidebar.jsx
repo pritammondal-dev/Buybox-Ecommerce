@@ -48,6 +48,7 @@ import {
 import { Tooltip } from "../ui/Tooltip.jsx";
 import { useAdminAuth } from "../../hooks/useAdminAuth.js";
 import { cn } from "../../utils/cn.js";
+import { checkPermissionsMatch } from "../../lib/auth/permissions.js";
 
 const NAV_GROUPS = [
   {
@@ -369,46 +370,7 @@ const checkItemAccess = (item, user) => {
   if (!item.permission) return true;
 
   const permissions = user.permissions || [];
-  if (permissions.includes(item.permission)) return true;
-
-  const legacyAliases = {
-    "dashboard.view": ["analytics:read"],
-    "tasks.view": ["work_assignments:read"],
-    "vendors.view": ["vendors:read"],
-    "customers.view": ["users:read"],
-    "products.view": ["products:read"],
-    "attributes.view": ["products:read", "products.view"],
-    "categories.view": ["products:read", "products.view"],
-    "brands.view": ["products:read", "products.view"],
-    "inventory.view": ["inventory:read"],
-    "warehouses.view": ["warehouses:read"],
-    "orders.view": ["orders:read"],
-    "returns.view": ["orders:read"],
-    "refunds.view": ["finance:read"],
-    "shipping.view": ["shipments:read"],
-    "payments.view": ["payments:read"],
-    "settlements.view": ["finance:read"],
-    "campaigns.view": ["campaigns:read"],
-    "coupons.view": ["coupons:read"],
-    "discounts.view": ["coupons:read", "discounts:read", "discounts.view"],
-    "cms.view": ["settings:read"],
-    "cms.events.view": ["settings:read", "cms.view"],
-    "reviews.view": ["reviews:read"],
-    "support.view": ["support_tickets:read"],
-    "staff.view": ["employees:read"],
-    "job_roles.view": ["employees:read", "roles:read"],
-    "activity_logs.view": ["audit_logs:read"],
-    "tax.view": ["tax:read"],
-    "platform_settings.view": ["settings:read"],
-    "platform_credentials.view": ["settings:read"],
-    "permissions.view": ["permissions:read"],
-  };
-
-  const aliasEntry = legacyAliases[item.permission];
-  if (Array.isArray(aliasEntry)) {
-    return aliasEntry.some((alias) => permissions.includes(alias));
-  }
-  return Boolean(aliasEntry && permissions.includes(aliasEntry));
+  return checkPermissionsMatch(permissions, item.permission);
 };
 
 export function AdminSidebar({

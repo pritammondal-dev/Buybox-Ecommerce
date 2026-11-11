@@ -182,7 +182,7 @@ const releaseRefundReservation = async (
     `-${decimalAmount.toString().replace(/^-/, "")}`
   );
 
-  return Payment.findOneAndUpdate(
+  const exactMatch = await Payment.findOneAndUpdate(
     {
       _id: paymentId,
       $expr: {
@@ -200,6 +200,26 @@ const releaseRefundReservation = async (
     {
       $inc: {
         refundReservedAmount: negativeDecimalAmount,
+      },
+    },
+    {
+      returnDocument: "after",
+      runValidators: true,
+      session: options.session,
+    }
+  );
+
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  return Payment.findOneAndUpdate(
+    {
+      _id: paymentId,
+    },
+    {
+      $set: {
+        refundReservedAmount: mongoose.Types.Decimal128.fromString("0"),
       },
     },
     {

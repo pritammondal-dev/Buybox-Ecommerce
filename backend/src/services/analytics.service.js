@@ -441,7 +441,7 @@ class AnalyticsService {
     });
 
     // 1. Current Period Overview
-    const { overview } = await analyticsRepository.getSalesOverview({
+    const { overview, authoritativeRefunds } = await analyticsRepository.getSalesOverview({
       startDate: range.startDate,
       endDate: range.endDate,
       vendorId: vendor._id,
@@ -456,24 +456,25 @@ class AnalyticsService {
 
     const grossSalesNum = grossSales ? Number(grossSales.toString()) : 0;
     const discountsNum = discounts ? Number(discounts.toString()) : 0;
+    const refundsNum = authoritativeRefunds ? Number(authoritativeRefunds.toString()) : 0;
     const merchandiseSalesNum = Math.max(0, grossSalesNum - discountsNum);
+    const netSalesNum = Math.max(0, merchandiseSalesNum - refundsNum);
     const averageOrderValue =
-      orderCount > 0 ? (merchandiseSalesNum / orderCount).toFixed(2) : "0.00";
+      orderCount > 0 ? (netSalesNum / orderCount).toFixed(2) : "0.00";
 
     const metrics = {
       grossSales: formatMoney(grossSales),
       discounts: formatMoney(discounts),
       merchandiseSales: formatMoney(merchandiseSalesNum),
-      netSales: formatMoney(merchandiseSalesNum),
+      netSales: formatMoney(netSalesNum),
       tax: formatMoney(tax),
       unitsSold: Number(unitsSold) || 0,
       orderCount: Number(orderCount) || 0,
       averageOrderValue,
       commissionAmount: formatMoney(commission),
-      refunds: null,
-      refundAttributionAvailable: false,
-      refundAttributionNote:
-        "Authoritative refund attribution per vendor requires Order-level refund allocation records. Platform-wide refunds are available via Admin Overview.",
+      refunds: formatMoney(refundsNum),
+      refundAttributionAvailable: true,
+      refundAttributionNote: null,
     };
 
     // 2. Preceding Period Comparison (opt-in via compare=true or string "true")
@@ -481,7 +482,7 @@ class AnalyticsService {
     const shouldCompare = query.compare === true || query.compare === "true";
     if (shouldCompare) {
       const compRange = this.resolveComparisonDateRange(range);
-      const { overview: compOverview } =
+      const { overview: compOverview, authoritativeRefunds: compRefunds } =
         await analyticsRepository.getSalesOverview({
           startDate: compRange.startDate,
           endDate: compRange.endDate,
@@ -494,7 +495,9 @@ class AnalyticsService {
       const prevDiscounts = compOverview?.discounts
         ? Number(compOverview.discounts.toString())
         : 0;
-      const prevNet = Math.max(0, prevGross - prevDiscounts);
+      const prevRefunds = compRefunds ? Number(compRefunds.toString()) : 0;
+      const prevMerchandise = Math.max(0, prevGross - prevDiscounts);
+      const prevNet = Math.max(0, prevMerchandise - prevRefunds);
       const prevUnits = compOverview?.unitsSold ? Number(compOverview.unitsSold) : 0;
       const prevOrders = compOverview?.orderCount ? Number(compOverview.orderCount) : 0;
       const prevAov = prevOrders > 0 ? prevNet / prevOrders : 0;
@@ -505,6 +508,8 @@ class AnalyticsService {
         endDate: compRange.endDate.toISOString(),
         previousMetrics: {
           grossSales: prevGross.toFixed(2),
+          merchandiseSales: prevMerchandise.toFixed(2),
+          refunds: prevRefunds.toFixed(2),
           netSales: prevNet.toFixed(2),
           unitsSold: prevUnits,
           orderCount: prevOrders,
@@ -512,11 +517,12 @@ class AnalyticsService {
         },
         changes: {
           grossSales: calculatePercentageChange(grossSalesNum, prevGross),
-          netSales: calculatePercentageChange(merchandiseSalesNum, prevNet),
+          merchandiseSales: calculatePercentageChange(merchandiseSalesNum, prevMerchandise),
+          netSales: calculatePercentageChange(netSalesNum, prevNet),
           unitsSold: calculatePercentageChange(unitsSold, prevUnits),
           orderCount: calculatePercentageChange(orderCount, prevOrders),
           averageOrderValue: calculatePercentageChange(
-            orderCount > 0 ? merchandiseSalesNum / orderCount : 0,
+            orderCount > 0 ? netSalesNum / orderCount : 0,
             prevAov
           ),
         },
@@ -678,16 +684,21 @@ class AnalyticsService {
     const formattedItems = items.map((item) => ({
       productId: item.productId,
       productVariantId: item.productVariantId,
+      variantId: item.productVariantId,
       productName: item.productName,
       variantName: item.variantName || "",
       sku: item.sku,
       unitsSold: item.unitsSold || 0,
+      returnedUnits: item.returnedUnits || 0,
+      netUnitsSold: Math.max(0, (item.unitsSold || 0) - (item.returnedUnits || 0)),
       grossSales: formatMoney(item.grossSales),
       discounts: formatMoney(item.discounts),
       netSales: formatMoney(item.netSales),
       orderCount: item.orderCount || 0,
       currentStock: item.currentStock || 0,
+      totalStockOnHand: item.currentStock || 0,
       availableStock: item.availableStock || 0,
+      totalAvailableStock: item.availableStock || 0,
     }));
 
     return {
@@ -741,6 +752,7 @@ class AnalyticsService {
       const rows = [
         ["Gross Sales (INR)", m.grossSales, range.period, range.startDate.toISOString(), range.endDate.toISOString()],
         ["Discounts (INR)", m.discounts, range.period, range.startDate.toISOString(), range.endDate.toISOString()],
+        ["Customer Refunds (INR)", m.refunds || "0.00", range.period, range.startDate.toISOString(), range.endDate.toISOString()],
         ["Net Sales (INR)", m.netSales, range.period, range.startDate.toISOString(), range.endDate.toISOString()],
         ["Total Units Sold", m.unitsSold, range.period, range.startDate.toISOString(), range.endDate.toISOString()],
         ["Order Count", m.orderCount, range.period, range.startDate.toISOString(), range.endDate.toISOString()],

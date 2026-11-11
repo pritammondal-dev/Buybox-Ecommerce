@@ -62,9 +62,33 @@ const refundSchema = new mongoose.Schema(
         "processed",
         "failed",
         "cancelled",
+        "reversed",
       ],
       default: "created",
       index: true,
+    },
+
+    gatewayStatus: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
+    normalizedGatewayMessage: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 1000,
+    },
+
+    lastReconciledAt: {
+      type: Date,
+      default: null,
+    },
+
+    gatewayCreatedAt: {
+      type: Date,
+      default: null,
     },
 
     reason: {
@@ -98,6 +122,24 @@ const refundSchema = new mongoose.Schema(
     processedAt: {
       type: Date,
       default: null,
+    },
+
+    arn: {
+      type: String,
+      default: null,
+      trim: true,
+      index: true,
+    },
+
+    acquirerData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+
+    speedProcessed: {
+      type: String,
+      default: null,
+      trim: true,
     },
   },
   {

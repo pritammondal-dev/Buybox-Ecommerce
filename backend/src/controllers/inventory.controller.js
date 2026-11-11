@@ -1,6 +1,10 @@
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess } = require("../utils/apiResponse");
 const inventoryService = require("../services/inventory.service");
+const stockReceivingService = require("../services/stock-receiving.service");
+const stockTransferService = require("../services/stock-transfer.service");
+const stockCountService = require("../services/stock-count.service");
+const warehouseAnalyticsService = require("../services/warehouse-analytics.service");
 const {
   ensureInventoryAccess,
   ensureInventoryIdAccess,
@@ -279,6 +283,463 @@ const getInventorySummary = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * ============================================================
+ * VENDOR-AUTHENTICATED WAREHOUSE OPERATIONS CONTROLLERS
+ * ============================================================
+ */
+
+// 1. Inbound Goods Receiving
+const createVendorReceivingRecord = asyncHandler(async (req, res) => {
+  const result = await stockReceivingService.createVendorReceivingRecord({
+    userId: req.user.id,
+    warehouseId: req.body.warehouseId,
+    supplierName: req.body.supplierName,
+    referenceDocNumber: req.body.referenceDocNumber,
+    items: req.body.items,
+    notes: req.body.notes,
+    autoConfirm: req.body.autoConfirm === true,
+    idempotencyKey: req.headers["idempotency-key"] || req.body.idempotencyKey,
+  });
+
+  return sendSuccess(res, {
+    statusCode: 201,
+    message: "Stock receiving record created successfully",
+    data: result,
+  });
+});
+
+const listVendorReceivingRecords = asyncHandler(async (req, res) => {
+  const result = await stockReceivingService.listVendorReceivingRecords({
+    userId: req.user.id,
+    warehouseId: req.query.warehouseId,
+    status: req.query.status,
+    search: req.query.search,
+    page: req.query.page,
+    limit: req.query.limit,
+  });
+
+  return sendSuccess(res, {
+    message: "Receiving records retrieved successfully",
+    data: result.items,
+    meta: result.pagination,
+  });
+});
+
+const getVendorReceivingRecord = asyncHandler(async (req, res) => {
+  const record = await stockReceivingService.getVendorReceivingRecord({
+    userId: req.user.id,
+    id: req.params.id,
+  });
+
+  return sendSuccess(res, {
+    message: "Receiving record retrieved successfully",
+    data: record,
+  });
+});
+
+const confirmVendorReceiving = asyncHandler(async (req, res) => {
+  const result = await stockReceivingService.confirmVendorReceiving({
+    userId: req.user.id,
+    id: req.params.id,
+    idempotencyKey: req.headers["idempotency-key"] || req.body.idempotencyKey,
+  });
+
+  return sendSuccess(res, {
+    message: "Stock receiving confirmed and inventory updated successfully",
+    data: result,
+  });
+});
+
+const cancelVendorReceiving = asyncHandler(async (req, res) => {
+  const result = await stockReceivingService.cancelVendorReceiving({
+    userId: req.user.id,
+    id: req.params.id,
+    reason: req.body.reason,
+  });
+
+  return sendSuccess(res, {
+    message: "Stock receiving record cancelled successfully",
+    data: result,
+  });
+});
+
+// 2. Inter-Warehouse Stock Transfers
+const createVendorTransfer = asyncHandler(async (req, res) => {
+  const result = await stockTransferService.createVendorTransfer({
+    userId: req.user.id,
+    sourceWarehouseId: req.body.sourceWarehouseId,
+    destinationWarehouseId: req.body.destinationWarehouseId,
+    items: req.body.items,
+    notes: req.body.notes,
+    idempotencyKey: req.headers["idempotency-key"] || req.body.idempotencyKey,
+  });
+
+  return sendSuccess(res, {
+    statusCode: 201,
+    message: "Stock transfer request created and approved successfully",
+    data: result,
+  });
+});
+
+const listVendorTransfers = asyncHandler(async (req, res) => {
+  const result = await stockTransferService.listVendorTransfers({
+    userId: req.user.id,
+    warehouseId: req.query.warehouseId,
+    status: req.query.status,
+    search: req.query.search,
+    page: req.query.page,
+    limit: req.query.limit,
+  });
+
+  return sendSuccess(res, {
+    message: "Stock transfers retrieved successfully",
+    data: result.items,
+    meta: result.pagination,
+  });
+});
+
+const getVendorTransferRecord = asyncHandler(async (req, res) => {
+  const transfer = await stockTransferService.getVendorTransferRecord({
+    userId: req.user.id,
+    id: req.params.id,
+  });
+
+  return sendSuccess(res, {
+    message: "Stock transfer retrieved successfully",
+    data: transfer,
+  });
+});
+
+const dispatchVendorTransfer = asyncHandler(async (req, res) => {
+  const result = await stockTransferService.dispatchVendorTransfer({
+    userId: req.user.id,
+    id: req.params.id,
+    trackingReference: req.body.trackingReference || req.body.trackingNumber,
+    carrierName: req.body.carrierName || req.body.carrier,
+    idempotencyKey: req.headers["idempotency-key"] || req.body.idempotencyKey,
+  });
+
+  return sendSuccess(res, {
+    message: "Transfer dispatched successfully and source stock updated",
+    data: result,
+  });
+});
+
+const receiveVendorTransfer = asyncHandler(async (req, res) => {
+  const result = await stockTransferService.receiveVendorTransfer({
+    userId: req.user.id,
+    id: req.params.id,
+    receivedItems: req.body.receivedItems || [],
+    notes: req.body.notes,
+    idempotencyKey: req.headers["idempotency-key"] || req.body.idempotencyKey,
+  });
+
+  return sendSuccess(res, {
+    message: "Transfer received and destination inventory updated successfully",
+    data: result,
+  });
+});
+
+const cancelVendorTransfer = asyncHandler(async (req, res) => {
+  const result = await stockTransferService.cancelVendorTransfer({
+    userId: req.user.id,
+    id: req.params.id,
+    reason: req.body.reason,
+  });
+
+  return sendSuccess(res, {
+    message: "Stock transfer cancelled successfully",
+    data: result,
+  });
+});
+
+// 3. Controlled Inventory Adjustments
+const adjustVendorStock = asyncHandler(async (req, res) => {
+  const result = await inventoryService.adjustVendorStock({
+    userId: req.user.id,
+    inventoryId: req.params.id || req.body.inventoryId,
+    quantity: req.body.quantity,
+    reason: req.body.reason,
+    condition: req.body.condition || "sellable",
+    notes: req.body.notes,
+    idempotencyKey: req.headers["idempotency-key"] || req.body.idempotencyKey,
+  });
+
+  return sendSuccess(res, {
+    message: "Stock adjusted and logged to immutable audit ledger successfully",
+    data: result,
+  });
+});
+
+// 4. Consolidated Stock Movement History
+const getMyVendorMovementHistory = asyncHandler(async (req, res) => {
+  const result = await inventoryService.getMyVendorMovementHistory({
+    userId: req.user.id,
+    query: req.query,
+  });
+
+  return sendSuccess(res, {
+    message: "Stock movement history retrieved successfully",
+    data: result.items,
+    meta: result.pagination,
+  });
+});
+
+// 5. Reorder & Threshold Management
+const updateVendorInventoryThreshold = asyncHandler(async (req, res) => {
+  const result = await inventoryService.updateVendorInventoryThreshold({
+    userId: req.user.id,
+    inventoryId: req.params.id,
+    lowStockThreshold: req.body.lowStockThreshold,
+    reorderLevel: req.body.reorderLevel,
+  });
+
+  return sendSuccess(res, {
+    message: "Reorder threshold updated successfully",
+    data: result,
+  });
+});
+
+// 6. Vendor Physical Stock Counting & Reconciliation
+const createVendorStockCount = asyncHandler(async (req, res) => {
+  const result = await stockCountService.createVendorStockCount({
+    userId: req.user.id,
+    warehouseId: req.body.warehouseId,
+    countType: req.body.countType || "physical",
+    scope: req.body.scope || "full",
+    variantIds: req.body.variantIds || [],
+    categoryIds: req.body.categoryIds || [],
+    materialityThresholdPercent: req.body.materialityThresholdPercent,
+    notes: req.body.notes,
+  });
+
+  return sendSuccess(res, {
+    statusCode: 201,
+    message: "Stock count session created successfully",
+    data: result,
+  });
+});
+
+const listVendorStockCounts = asyncHandler(async (req, res) => {
+  const result = await stockCountService.listVendorStockCounts({
+    userId: req.user.id,
+    warehouseId: req.query.warehouseId,
+    status: req.query.status,
+    countType: req.query.countType,
+    scope: req.query.scope,
+    search: req.query.search,
+    page: req.query.page,
+    limit: req.query.limit,
+  });
+
+  return sendSuccess(res, {
+    message: "Stock count sessions retrieved successfully",
+    data: result.items,
+    meta: result.pagination,
+  });
+});
+
+const getVendorStockCount = asyncHandler(async (req, res) => {
+  const result = await stockCountService.getVendorStockCount({
+    userId: req.user.id,
+    id: req.params.id,
+  });
+
+  return sendSuccess(res, {
+    message: "Stock count session retrieved successfully",
+    data: result,
+  });
+});
+
+const recordVendorPhysicalCounts = asyncHandler(async (req, res) => {
+  const result = await stockCountService.recordVendorPhysicalCounts({
+    userId: req.user.id,
+    id: req.params.id,
+    items: req.body.items,
+    notes: req.body.notes,
+  });
+
+  return sendSuccess(res, {
+    message: "Physical counts and inspection conditions recorded successfully",
+    data: result,
+  });
+});
+
+const submitVendorStockCount = asyncHandler(async (req, res) => {
+  const result = await stockCountService.submitVendorStockCount({
+    userId: req.user.id,
+    id: req.params.id,
+    notes: req.body.notes,
+  });
+
+  return sendSuccess(res, {
+    message: "Stock count session submitted for review successfully",
+    data: result,
+  });
+});
+
+const requestVendorRecount = asyncHandler(async (req, res) => {
+  const result = await stockCountService.requestVendorRecount({
+    userId: req.user.id,
+    id: req.params.id,
+    itemIds: req.body.itemIds,
+    recountNotes: req.body.recountNotes,
+  });
+
+  return sendSuccess(res, {
+    message: "Recount request initiated successfully",
+    data: result,
+  });
+});
+
+const approveVendorStockCount = asyncHandler(async (req, res) => {
+  const result = await stockCountService.approveVendorStockCount({
+    userId: req.user.id,
+    id: req.params.id,
+    approvalNotes: req.body.approvalNotes,
+  });
+
+  return sendSuccess(res, {
+    message: "Stock count variances approved for reconciliation successfully",
+    data: result,
+  });
+});
+
+const rejectVendorStockCount = asyncHandler(async (req, res) => {
+  const result = await stockCountService.rejectVendorStockCount({
+    userId: req.user.id,
+    id: req.params.id,
+    rejectionReason: req.body.rejectionReason,
+  });
+
+  return sendSuccess(res, {
+    message: "Stock count rejected successfully",
+    data: result,
+  });
+});
+
+const reconcileVendorStockCount = asyncHandler(async (req, res) => {
+  const result = await stockCountService.reconcileVendorStockCount({
+    userId: req.user.id,
+    id: req.params.id,
+    idempotencyKey: req.headers["idempotency-key"] || req.body.idempotencyKey,
+  });
+
+  return sendSuccess(res, {
+    message: "Inventory reconciled atomically and ledger transactions generated successfully",
+    data: result,
+  });
+});
+
+const cancelVendorStockCount = asyncHandler(async (req, res) => {
+  const result = await stockCountService.cancelVendorStockCount({
+    userId: req.user.id,
+    id: req.params.id,
+    reason: req.body.reason,
+  });
+
+  return sendSuccess(res, {
+    message: "Stock count session cancelled successfully",
+    data: result,
+  });
+});
+
+const exportVendorStockCount = asyncHandler(async (req, res) => {
+  const result = await stockCountService.exportVendorStockCount({
+    userId: req.user.id,
+    id: req.params.id,
+    format: req.query.format || "csv",
+  });
+
+  res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+  res.setHeader("Content-Type", result.contentType);
+  return res.send(result.buffer);
+});
+
+const getVendorWarehouseOverview = asyncHandler(async (req, res) => {
+  const result = await warehouseAnalyticsService.getVendorWarehouseOverview({
+    userId: req.user.id,
+    query: req.query,
+  });
+
+  return sendSuccess(res, {
+    message: "Warehouse overview metrics retrieved successfully",
+    data: result,
+  });
+});
+
+const getVendorMovementAnalytics = asyncHandler(async (req, res) => {
+  const result = await warehouseAnalyticsService.getVendorMovementAnalytics({
+    userId: req.user.id,
+    query: req.query,
+  });
+
+  return sendSuccess(res, {
+    message: "Inventory movement analytics retrieved successfully",
+    data: result,
+  });
+});
+
+const getVendorInventoryAging = asyncHandler(async (req, res) => {
+  const result = await warehouseAnalyticsService.getVendorInventoryAging({
+    userId: req.user.id,
+    query: req.query,
+  });
+
+  return sendSuccess(res, {
+    message: "Inventory aging report retrieved successfully",
+    data: result,
+  });
+});
+
+const getVendorInventoryTurnover = asyncHandler(async (req, res) => {
+  const result = await warehouseAnalyticsService.getVendorInventoryTurnover({
+    userId: req.user.id,
+    query: req.query,
+  });
+
+  return sendSuccess(res, {
+    message: "Inventory turnover and velocity metrics retrieved successfully",
+    data: result,
+  });
+});
+
+const getVendorDemandAndReplenishment = asyncHandler(async (req, res) => {
+  const result = await warehouseAnalyticsService.getVendorDemandAndReplenishment({
+    userId: req.user.id,
+    query: req.query,
+  });
+
+  return sendSuccess(res, {
+    message: "Demand and replenishment intelligence retrieved successfully",
+    data: result,
+  });
+});
+
+const getVendorWarehouseOperations = asyncHandler(async (req, res) => {
+  const result = await warehouseAnalyticsService.getVendorWarehouseOperations({
+    userId: req.user.id,
+    query: req.query,
+  });
+
+  return sendSuccess(res, {
+    message: "Warehouse operational performance metrics retrieved successfully",
+    data: result,
+  });
+});
+
+const exportVendorWarehouseAnalytics = asyncHandler(async (req, res) => {
+  const result = await warehouseAnalyticsService.exportVendorWarehouseAnalytics({
+    userId: req.user.id,
+    query: req.query,
+  });
+
+  res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+  res.setHeader("Content-Type", result.contentType);
+  return res.send(result.buffer);
+});
+
 module.exports = {
   createInventory,
   getInventory,
@@ -292,4 +753,36 @@ module.exports = {
   listAllInventory,
   transferStock,
   getInventorySummary,
+  createVendorReceivingRecord,
+  listVendorReceivingRecords,
+  getVendorReceivingRecord,
+  confirmVendorReceiving,
+  cancelVendorReceiving,
+  createVendorTransfer,
+  listVendorTransfers,
+  getVendorTransferRecord,
+  dispatchVendorTransfer,
+  receiveVendorTransfer,
+  cancelVendorTransfer,
+  adjustVendorStock,
+  getMyVendorMovementHistory,
+  updateVendorInventoryThreshold,
+  createVendorStockCount,
+  listVendorStockCounts,
+  getVendorStockCount,
+  recordVendorPhysicalCounts,
+  submitVendorStockCount,
+  requestVendorRecount,
+  approveVendorStockCount,
+  rejectVendorStockCount,
+  reconcileVendorStockCount,
+  cancelVendorStockCount,
+  exportVendorStockCount,
+  getVendorWarehouseOverview,
+  getVendorMovementAnalytics,
+  getVendorInventoryAging,
+  getVendorInventoryTurnover,
+  getVendorDemandAndReplenishment,
+  getVendorWarehouseOperations,
+  exportVendorWarehouseAnalytics,
 };

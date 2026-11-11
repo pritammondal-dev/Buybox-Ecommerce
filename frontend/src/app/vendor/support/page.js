@@ -86,6 +86,7 @@ export default function VendorSupportPage() {
     try {
       await vendorService.createSupportTicket({
         subject: formData.subject.trim(),
+        description: formData.message.trim(),
         category: formData.category,
         priority: formData.priority,
         message: formData.message.trim(),
@@ -95,8 +96,13 @@ export default function VendorSupportPage() {
       setFormData({ subject: "", category: "general", priority: "medium", message: "" });
       handleRefresh();
     } catch (err) {
+      const errorMsg =
+        err.response?.data?.errors?.[0]?.message ||
+        err.response?.data?.message ||
+        err.message ||
+        "Failed to submit ticket";
       toast.error("Failed to submit ticket", {
-        description: err.response?.data?.message || err.message,
+        description: errorMsg,
       });
     } finally {
       setIsSubmitting(false);
@@ -159,6 +165,10 @@ export default function VendorSupportPage() {
                     <option value="finance">Settlements & Banking</option>
                     <option value="shipment">Courier & Logistics</option>
                     <option value="returns">RMA & Returns</option>
+                    <option value="order">Order Issue</option>
+                    <option value="account">Account & Security</option>
+                    <option value="technical">Technical Issue</option>
+                    <option value="other">Other</option>
                   </select>
                 </div>
 

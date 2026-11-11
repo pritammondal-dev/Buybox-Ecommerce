@@ -2,7 +2,13 @@ const AppError = require("../errors/AppError");
 
 const validate = (schema, source = "body") => {
   return (req, res, next) => {
-    const result = schema.safeParse(req[source]);
+    const dataToValidate =
+      req[source] !== undefined && req[source] !== null
+        ? req[source]
+        : source === "body"
+        ? {}
+        : req[source];
+    const result = schema.safeParse(dataToValidate);
 
     if (!result.success) {
       const message = result.error.issues

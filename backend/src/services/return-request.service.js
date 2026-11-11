@@ -26,12 +26,14 @@ const generateReturnNumber = () => {
 
 const CANONICAL_REASONS = [
   "defective",
+  "damaged_item",
   "wrong_item",
   "not_as_described",
   "damaged_packaging",
   "size_fit_issue",
   "quality_issue",
   "changed_mind",
+  "buyer_remorse",
   "other",
 ];
 
@@ -39,6 +41,7 @@ const normalizeReturnReason = (rawReason) => {
   if (!rawReason || typeof rawReason !== "string") return "defective";
   const str = rawReason.toLowerCase().trim();
   if (CANONICAL_REASONS.includes(str)) return str;
+  if (/damaged_item|item damaged/i.test(str)) return "damaged_item";
   if (/defect|broken|faulty|malfunction|not function/i.test(str)) return "defective";
   if (/wrong|incorrect|different model|color variant/i.test(str)) return "wrong_item";
   if (/described|missing|accessories|different from description/i.test(str)) return "not_as_described";
@@ -775,6 +778,8 @@ const createReturnRequest = async ({
   orderId,
   type = "return",
   items,
+  reason = null,
+  customerComments = null,
   customerNotes = null,
   replacementVariantId = null,
   idempotencyKey = null,
@@ -1034,9 +1039,8 @@ const createReturnRequest = async ({
       }
     }
 
-    calculatedRefundMinor += itemRefundMinor;
-
-    const normReason = normalizeReturnReason(item.reason);
+    const itemReason = item.reason || reason;
+    const normReason = normalizeReturnReason(itemReason);
     const normCondition = ["unopened", "opened_unused", "defective_in_box", "damaged", "missing_parts"].includes(item.condition)
       ? item.condition
       : "unopened";
@@ -1049,7 +1053,14 @@ const createReturnRequest = async ({
       ? Math.max(0, lineTotalMinor - discountTotalMinor - taxTotalMinor)
       : Math.max(0, lineTotalMinor - discountTotalMinor);
     const itemProductMinor = Math.round((netBaseItemMinor * returnQty) / orderItem.quantity);
-    const itemShippingMinor = Math.max(0, itemRefundMinor - itemProductMinor - itemTaxRefundMinor);
+    const isRemorse = normReason === "changed_mind" || normReason === "buyer_remorse";
+    let itemShippingMinor = Math.max(0, itemRefundMinor - itemProductMinor - itemTaxRefundMinor);
+    if (isRemorse) {
+      itemRefundMinor = Math.max(0, itemRefundMinor - itemShippingMinor);
+      itemShippingMinor = 0;
+    }
+
+    calculatedRefundMinor += itemRefundMinor;
 
     validatedItems.push({
       orderItemId: orderItem._id,
@@ -1074,6 +1085,7 @@ const createReturnRequest = async ({
         igst: mongoose.Types.Decimal128.fromString((igstMinor / 100).toFixed(2)),
       },
       reason: normReason,
+      customerComments: item.customerComments || customerComments || customerNotes || null,
       condition: normCondition,
       images: itemEvidenceImages,
     });
@@ -1265,6 +1277,9 @@ const createReturnRequest = async ({
     const vendorIds = vKey !== "unassigned" ? [new mongoose.Types.ObjectId(vKey)] : [];
     const primaryVendorId = vendorIds[0] || null;
 
+    const returnReason = vendorItemsList[0]?.reason || normalizeReturnReason(reason);
+    const returnComments = customerComments ? customerComments.trim() : (customerNotes ? customerNotes.trim() : null);
+
     const newReturn = await ReturnRequest.create({
       returnNumber,
       orderId: order._id,
@@ -1273,6 +1288,8 @@ const createReturnRequest = async ({
       vendorIds,
       type: type === "exchange" ? "exchange" : "return",
       status: "requested",
+      reason: returnReason,
+      customerComments: returnComments,
       items: vendorItemsList,
       images: evidenceImagesList,
       vendorIds,
@@ -1382,6 +1399,136 @@ const getReturnByOrderId = async (orderId, userId) => {
     .lean();
 };
 
+const sanitizeDecimal = (val, fallback = "0.00") => {
+  if (val === null || val === undefined) return fallback;
+  if (typeof val === "string") return val;
+  if (typeof val === "number") return val.toFixed(2);
+  if (val.$numberDecimal) return val.$numberDecimal.toString();
+  if (typeof val.toString === "function") {
+    const str = val.toString();
+    return str === "[object Object]" ? fallback : str;
+  }
+  return fallback;
+};
+
+const sanitizeReturnItem = (item) => ({
+  _id: item._id,
+  orderItemId: item.orderItemId,
+  productId: item.productId,
+  productVariantId: item.productVariantId,
+  sku: item.sku,
+  name: item.name,
+  quantity: item.quantity,
+  itemPrice: sanitizeDecimal(item.itemPrice),
+  originalUnitPrice: sanitizeDecimal(item.originalUnitPrice, sanitizeDecimal(item.itemPrice)),
+  allocatedDiscount: sanitizeDecimal(item.allocatedDiscount, "0.00"),
+  taxRefund: sanitizeDecimal(item.taxRefund, "0.00"),
+  shippingRefund: sanitizeDecimal(item.shippingRefund, "0.00"),
+  customerPaidAmount: sanitizeDecimal(item.customerPaidAmount, sanitizeDecimal(item.itemPrice)),
+  taxBreakdown: item.taxBreakdown ? {
+    taxRate: sanitizeDecimal(item.taxBreakdown.taxRate, "0"),
+    taxCategory: item.taxBreakdown.taxCategory || null,
+    pricingMode: item.taxBreakdown.pricingMode || "tax_exclusive",
+    cgst: sanitizeDecimal(item.taxBreakdown.cgst, "0.00"),
+    sgst: sanitizeDecimal(item.taxBreakdown.sgst, "0.00"),
+    igst: sanitizeDecimal(item.taxBreakdown.igst, "0.00"),
+  } : null,
+  reason: item.reason,
+  condition: item.condition,
+  vendorId: item.vendorId,
+  images: item.images || [],
+  restocked: Boolean(item.restocked),
+});
+
+const calculateAuthoritativeRefundBreakdown = (ret, order = null) => {
+  const sanitizedItems = (ret.items || []).map(sanitizeReturnItem);
+  const totalRefund = sanitizeDecimal(ret.refundAmount, "0.00");
+  const taxRefundTotal = sanitizeDecimal(ret.taxRefundTotal, "0.00");
+  const shippingRefundTotal = sanitizeDecimal(ret.shippingRefundTotal, "0.00");
+  const customerDeductionsTotal = sanitizeDecimal(ret.customerDeductionsTotal, "0.00");
+  const discountDeductedTotal = sanitizeDecimal(ret.discountDeductedTotal, "0.00");
+  const netItemRefundTotal = sanitizeDecimal(ret.netItemRefundTotal, "0.00");
+
+  let computedItemSubtotal = Number(netItemRefundTotal);
+  if (computedItemSubtotal === 0 && sanitizedItems.length > 0) {
+    computedItemSubtotal = sanitizedItems.reduce((acc, it) => {
+      const unit = Number(it.itemPrice) || Number(it.originalUnitPrice) || 0;
+      return acc + unit * (it.quantity || 1);
+    }, 0);
+  }
+
+  const originalProductTotal = sanitizedItems.reduce((acc, it) => {
+    const orig = Number(it.originalUnitPrice || it.itemPrice || 0);
+    return acc + orig * (it.quantity || 1);
+  }, 0);
+  const totalDiscount = Number(discountDeductedTotal) || sanitizedItems.reduce((acc, it) => acc + Number(it.allocatedDiscount || 0), 0);
+  const netProductPaid = computedItemSubtotal > 0 ? computedItemSubtotal : Number(netItemRefundTotal);
+  const grossEligible = netProductPaid + Number(taxRefundTotal) + Number(shippingRefundTotal);
+  const previouslyRefunded = Number(ret.previouslyRefundedTotal || 0);
+  const netRefundable = Number(totalRefund);
+
+  let refundLifecycleStatus = "estimated";
+  if (ret.status === "refunded") {
+    refundLifecycleStatus = "processed";
+  } else if (ret.status === "refund_pending") {
+    refundLifecycleStatus = "initiated";
+  } else if (["approved", "inspected", "received"].includes(ret.status)) {
+    refundLifecycleStatus = "authorized";
+  } else if (["rejected", "cancelled"].includes(ret.status)) {
+    refundLifecycleStatus = "failed";
+  }
+
+  const orderGrandTotal = Number(order?.grandTotal || ret.orderId?.grandTotal || 0);
+  const remainingPool = orderGrandTotal > 0
+    ? Math.max(0, orderGrandTotal - previouslyRefunded - netRefundable)
+    : Math.max(0, grossEligible - previouslyRefunded - netRefundable);
+
+  return {
+    productRefund: {
+      originalPrice: originalProductTotal > 0 ? originalProductTotal.toFixed(2) : netProductPaid.toFixed(2),
+      discountAllocated: totalDiscount.toFixed(2),
+      customerPaidAmount: netProductPaid.toFixed(2),
+      returnedQuantity: sanitizedItems.reduce((acc, it) => acc + (it.quantity || 1), 0),
+      eligibleProductRefund: netProductPaid.toFixed(2),
+    },
+    taxRefund: {
+      taxableAmount: netProductPaid.toFixed(2),
+      effectiveTaxRate: sanitizedItems[0]?.taxBreakdown?.taxRate || "0",
+      cgst: sanitizedItems.reduce((acc, it) => acc + Number(it.taxBreakdown?.cgst || 0), 0).toFixed(2),
+      sgst: sanitizedItems.reduce((acc, it) => acc + Number(it.taxBreakdown?.sgst || 0), 0).toFixed(2),
+      igst: sanitizedItems.reduce((acc, it) => acc + Number(it.taxBreakdown?.igst || 0), 0).toFixed(2),
+      refundableTax: Number(taxRefundTotal).toFixed(2),
+    },
+    shippingRefund: {
+      originalShipping: Number(shippingRefundTotal).toFixed(2),
+      refundableShipping: Number(shippingRefundTotal).toFixed(2),
+      isEligible: Number(shippingRefundTotal) > 0,
+      policyNote: Number(shippingRefundTotal) > 0
+        ? "Eligible for freight reversal (merchant/carrier fault or full order return)"
+        : "Standard non-refundable shipping charges",
+    },
+    deductions: {
+      amount: Number(customerDeductionsTotal).toFixed(2),
+      category: ret.inspection?.deductionCategory || (Number(customerDeductionsTotal) > 0 ? "merchant_inspection" : "none"),
+      reason: ret.inspection?.deductionReason || (Number(customerDeductionsTotal) > 0 ? "Documented deduction" : "None"),
+      notes: ret.inspection?.notes || null,
+    },
+    finalRefund: {
+      customerEntitlement: grossEligible.toFixed(2),
+      previouslyRefunded: previouslyRefunded.toFixed(2),
+      deductionsTotal: Number(customerDeductionsTotal).toFixed(2),
+      netRefundableAmount: netRefundable.toFixed(2),
+      originalRefundableAmount: (netRefundable + previouslyRefunded).toFixed(2),
+      successfullyRefundedAmount: previouslyRefunded.toFixed(2),
+      pendingReservedAmount: "0.00",
+      availableRefundableBalance: netRefundable.toFixed(2),
+      remainingRefundableAmount: remainingPool.toFixed(2),
+      status: refundLifecycleStatus,
+      currency: ret.orderId?.currency || order?.currency || "INR",
+    },
+  };
+};
+
 const getMyVendorReturns = async ({ userId, query = {} }) => {
   const vendor = await resolveApprovedVendor(userId);
 
@@ -1430,6 +1577,23 @@ const getMyVendorReturns = async ({ userId, query = {} }) => {
       productIdSet.has(item.productId?.toString())
     );
 
+    const serializedVendorItems = vendorItems.map((item) => ({
+      ...item,
+      itemPrice: sanitizeDecimal(item.itemPrice, "0.00"),
+      originalUnitPrice: sanitizeDecimal(item.originalUnitPrice, "0.00"),
+      allocatedDiscount: sanitizeDecimal(item.allocatedDiscount, "0.00"),
+      taxRefund: sanitizeDecimal(item.taxRefund, "0.00"),
+      shippingRefund: sanitizeDecimal(item.shippingRefund, "0.00"),
+      customerPaidAmount: sanitizeDecimal(item.customerPaidAmount, "0.00"),
+      taxBreakdown: item.taxBreakdown ? {
+        ...item.taxBreakdown,
+        cgst: sanitizeDecimal(item.taxBreakdown.cgst, "0.00"),
+        sgst: sanitizeDecimal(item.taxBreakdown.sgst, "0.00"),
+        igst: sanitizeDecimal(item.taxBreakdown.igst, "0.00"),
+        taxRate: sanitizeDecimal(item.taxBreakdown.taxRate, "0.00"),
+      } : item.taxBreakdown,
+    }));
+
     return {
       _id: ret._id,
       secureId: encodeSecureId("return", ret._id),
@@ -1437,7 +1601,7 @@ const getMyVendorReturns = async ({ userId, query = {} }) => {
       orderNumber: ret.orderId?.orderNumber || "N/A",
       type: ret.type,
       status: ret.status,
-      items: vendorItems,
+      items: serializedVendorItems,
       images: ret.images || [],
       customerNotes: ret.customerNotes,
       refundAmount: ret.refundAmount?.toString?.() || "0.00",
@@ -1465,8 +1629,12 @@ const getMyVendorReturnById = async ({ userId, returnId }) => {
   const resolvedReturnId = decodeSecureId(returnId, "return");
 
   const ret = await ReturnRequest.findById(resolvedReturnId)
-    .populate("orderId", "orderNumber status placedAt currency shippingAddress")
-    .populate("customerId", "firstName lastName email phone")
+    .populate("orderId", "orderNumber status placedAt currency shippingAddress grandTotal")
+    .populate({
+      path: "customerId",
+      select: "userId phone",
+      populate: { path: "userId", select: "firstName lastName email phone" },
+    })
     .populate("replacementVariantId", "name sku attributes price")
     .lean();
 
@@ -1492,22 +1660,102 @@ const getMyVendorReturnById = async ({ userId, returnId }) => {
     throw new AppError("You do not have permission to view this return request", 403, "FORBIDDEN");
   }
 
+  const refundBreakdown = calculateAuthoritativeRefundBreakdown(ret, ret.orderId);
+
+  const REASON_LABELS = {
+    damaged_item: "Damaged Item (Damaged in transit / packaging broken)",
+    damaged_packaging: "Damaged Packaging / Torn box",
+    buyer_remorse: "Changed Mind / Don't want product anymore",
+    changed_mind: "Changed Mind / Don't want product anymore",
+    defective: "Defective / Malfunctioning product",
+    defective_product: "Defective / Malfunctioning product",
+    wrong_item: "Wrong Item / Incorrect product delivered",
+    not_as_described: "Not as Described / Missing accessories or details",
+    size_fit_issue: "Size / Fit Issue",
+    quality_issue: "Quality Issue / Unsatisfactory material",
+    other: "Other Reason",
+  };
+
+  const primaryItem = (ret.items || [])[0] || {};
+  const selectedReason = ret.reason || primaryItem.reason || "defective";
+  const selectedReasonLabel = REASON_LABELS[selectedReason] || REASON_LABELS[normalizeReturnReason(selectedReason)] || selectedReason;
+  const customerComments = ret.customerComments || ret.customerNotes || primaryItem.customerComments || null;
+  const evidenceImages = (ret.images || []).map((img) => (typeof img === "string" ? img : img?.url || ""));
+
+  const customerInformation = {
+    selectedReason,
+    selectedReasonLabel,
+    customerComments,
+    evidenceImages,
+    isLegacy: !REASON_LABELS[selectedReason],
+  };
+
+  const merchantInspection = ret.inspection ? {
+    ...ret.inspection,
+    condition: ret.inspection.condition || ret.inspection.receivedCondition,
+    receivedCondition: ret.inspection.receivedCondition || ret.inspection.condition,
+    deductionAmount: ret.inspection.deductionAmount != null
+      ? (typeof ret.inspection.deductionAmount === "object" && ret.inspection.deductionAmount.$numberDecimal
+          ? Number(ret.inspection.deductionAmount.$numberDecimal)
+          : Number(ret.inspection.deductionAmount.toString()))
+      : 0,
+  } : null;
+
+  const serializedVendorItems = vendorItems.map((item) => ({
+    ...item,
+    itemPrice: sanitizeDecimal(item.itemPrice, "0.00"),
+    originalUnitPrice: sanitizeDecimal(item.originalUnitPrice, "0.00"),
+    allocatedDiscount: sanitizeDecimal(item.allocatedDiscount, "0.00"),
+    taxRefund: sanitizeDecimal(item.taxRefund, "0.00"),
+    shippingRefund: sanitizeDecimal(item.shippingRefund, "0.00"),
+    customerPaidAmount: sanitizeDecimal(item.customerPaidAmount, "0.00"),
+    taxBreakdown: item.taxBreakdown ? {
+      ...item.taxBreakdown,
+      cgst: sanitizeDecimal(item.taxBreakdown.cgst, "0.00"),
+      sgst: sanitizeDecimal(item.taxBreakdown.sgst, "0.00"),
+      igst: sanitizeDecimal(item.taxBreakdown.igst, "0.00"),
+      taxRate: sanitizeDecimal(item.taxBreakdown.taxRate, "0.00"),
+    } : item.taxBreakdown,
+  }));
+
+  const financialSummary = {
+    totalRefund: sanitizeDecimal(ret.refundAmount, "0.00"),
+    netItemRefundTotal: sanitizeDecimal(ret.netItemRefundTotal, "0.00"),
+    itemSubtotal: sanitizeDecimal(ret.netItemRefundTotal, "0.00"),
+    taxRefundTotal: sanitizeDecimal(ret.taxRefundTotal, "0.00"),
+    customerDeductionsTotal: sanitizeDecimal(ret.customerDeductionsTotal, "0.00"),
+    shippingRefundTotal: sanitizeDecimal(ret.shippingRefundTotal, "0.00"),
+  };
+
+  const rawCustomerUser = ret.customerId?.userId || ret.customerId;
+  const rawFirstName = rawCustomerUser?.firstName || "";
+  const rawLastName = rawCustomerUser?.lastName || "";
+  let customerFullName = `${rawFirstName} ${rawLastName}`.trim();
+  if (!customerFullName && ret.orderId?.shippingAddress?.fullName) {
+    customerFullName = ret.orderId.shippingAddress.fullName.trim();
+  }
+
+  let maskedCustomerName = customerFullName;
+  if (customerFullName) {
+    const parts = customerFullName.split(" ").filter(Boolean);
+    if (parts.length > 1) {
+      const lastInitial = parts[parts.length - 1].replace(/[^a-zA-Z]/g, "").charAt(0).toUpperCase();
+      maskedCustomerName = `${parts[0]} ${lastInitial ? `${lastInitial}.` : ""}`.trim();
+    }
+  }
+
+  const customerObj = customerFullName ? { name: maskedCustomerName } : null;
+
   return {
     _id: ret._id,
     secureId: encodeSecureId("return", ret._id),
     returnNumber: ret.returnNumber,
     orderId: ret.orderId?._id || ret.orderId,
     orderNumber: ret.orderId?.orderNumber || "N/A",
-    customer: ret.customerId
-      ? {
-          name: `${ret.customerId.firstName || ""} ${ret.customerId.lastName || ""}`.trim(),
-          email: ret.customerId.email,
-          phone: ret.customerId.phone,
-        }
-      : null,
+    customer: customerObj,
     type: ret.type,
     status: ret.status,
-    items: vendorItems,
+    items: serializedVendorItems,
     images: ret.images || [],
     customerNotes: ret.customerNotes,
     pickupAddress: ret.pickupAddress || ret.orderId?.shippingAddress || null,
@@ -1522,7 +1770,11 @@ const getMyVendorReturnById = async ({ userId, returnId }) => {
     reversePickupSchedule: ret.reversePickupSchedule || null,
     replacementOrder: ret.replacementOrder || null,
     resolutionNotes: ret.resolutionNotes,
-    inspection: ret.inspection || null,
+    inspection: merchantInspection,
+    merchantInspection,
+    customerInformation,
+    refundBreakdown,
+    financialSummary,
     refundAmount: ret.refundAmount?.toString?.() || "0.00",
     timeline: ret.timeline,
     createdAt: ret.createdAt,
@@ -1700,8 +1952,17 @@ const approveReturnRequest = async ({
     }
   }
 
-  if (!["requested", "under_review"].includes(ret.status)) {
+  if (ret.status === "approved") {
+    if (isAdmin) return ret;
+    return getMyVendorReturnById({ userId, returnId: ret._id });
+  }
+
+  const isOverride = isAdmin && ret.status === "rejected";
+  if (!isOverride && !["requested", "under_review"].includes(ret.status)) {
     throw new AppError(`Cannot approve return request in status '${ret.status}'`, 409, "INVALID_STATUS_TRANSITION");
+  }
+  if (isOverride && (!notes || !notes.trim())) {
+    throw new AppError("Reason is mandatory for overriding return decision", 400, "REASON_REQUIRED");
   }
 
   const beforeStatus = ret.status;
@@ -1713,7 +1974,7 @@ const approveReturnRequest = async ({
   ret.timeline = ret.timeline || [];
   ret.timeline.push({
     status: "approved",
-    notes: notes || "Return request approved by merchant.",
+    notes: notes || (isOverride ? "Return rejection overridden to approved by superadmin." : "Return request approved by merchant."),
     timestamp: new Date(),
     actor: { actorType: isAdmin ? "admin" : "vendor", actorId: userId },
   });
@@ -1723,10 +1984,11 @@ const approveReturnRequest = async ({
   await AuditLog.create({
     actorId: userId,
     targetId: ret._id,
-    action: "RETURN_APPROVED",
+    action: isOverride ? "RETURN_OVERRIDE_APPROVED" : "RETURN_APPROVED",
     entityType: "return_request",
     beforeState: { status: beforeStatus },
     afterState: { status: ret.status },
+    reason: notes ? notes.trim() : (isOverride ? "Superadmin override" : undefined),
     ipAddress,
     userAgent,
   }).catch(() => {});
@@ -1780,7 +2042,8 @@ const rejectReturnRequest = async ({
     }
   }
 
-  if (!["requested", "under_review"].includes(ret.status)) {
+  const isOverride = isAdmin && ret.status === "approved";
+  if (!isOverride && !["requested", "under_review"].includes(ret.status)) {
     throw new AppError(`Cannot reject return request in status '${ret.status}'`, 409, "INVALID_STATUS_TRANSITION");
   }
 
@@ -1794,7 +2057,9 @@ const rejectReturnRequest = async ({
   ret.timeline = ret.timeline || [];
   ret.timeline.push({
     status: "rejected",
-    notes: `Return request rejected: ${rejectionReason.trim()}`,
+    notes: isOverride
+      ? `Return approval overridden to rejected by superadmin: ${rejectionReason.trim()}`
+      : `Return request rejected: ${rejectionReason.trim()}`,
     timestamp: new Date(),
     actor: { actorType: isAdmin ? "admin" : "vendor", actorId: userId },
   });
@@ -1835,10 +2100,11 @@ const rejectReturnRequest = async ({
   await AuditLog.create({
     actorId: userId,
     targetId: ret._id,
-    action: "RETURN_REJECTED",
+    action: isOverride ? "RETURN_OVERRIDE_REJECTED" : "RETURN_REJECTED",
     entityType: "return_request",
     beforeState: { status: beforeStatus },
     afterState: { status: ret.status, resolutionNotes: ret.resolutionNotes },
+    reason: rejectionReason.trim(),
     ipAddress,
     userAgent,
   }).catch(() => {});
@@ -2169,6 +2435,15 @@ const inspectReturnRequest = async ({
   returnId,
   passed = true,
   outcome = null,
+  condition = null,
+  packagingCondition = null,
+  productCondition = null,
+  missingAccessories = false,
+  missingAccessoriesNotes = null,
+  photos = [],
+  deductionAmount = 0,
+  deductionReason = null,
+  deductionCategory = null,
   notes = null,
   items = null,
   strict = false,
@@ -2205,6 +2480,21 @@ const inspectReturnRequest = async ({
     );
   }
 
+  const numDeduction = Number(deductionAmount || 0);
+  const currentRefund = Number(ret.refundAmount?.toString() || 0);
+  if (numDeduction > currentRefund) {
+    throw new AppError(
+      `Deduction amount (₹${numDeduction.toFixed(2)}) cannot exceed the eligible refundable amount (₹${currentRefund.toFixed(2)})`,
+      400,
+      "EXCESSIVE_DEDUCTION"
+    );
+  }
+
+  if (numDeduction > 0) {
+    ret.customerDeductionsTotal = mongoose.Types.Decimal128.fromString(numDeduction.toFixed(2));
+    ret.refundAmount = mongoose.Types.Decimal128.fromString(Math.max(0, currentRefund - numDeduction).toFixed(2));
+  }
+
   if (Array.isArray(items) && items.length > 0) {
     for (const itemOverride of items) {
       const match = (ret.items || []).find(
@@ -2228,8 +2518,24 @@ const inspectReturnRequest = async ({
     inspectedAt: new Date(),
     passed: isPassed,
     outcome: determinedOutcome,
+    condition: condition || (isPassed ? "opened_unused" : "damaged"),
+    receivedCondition: condition || (isPassed ? "opened_unused" : "damaged"),
+    packagingCondition: packagingCondition || null,
+    productCondition: productCondition || null,
+    missingAccessories: Boolean(missingAccessories),
+    missingAccessoriesNotes: missingAccessoriesNotes || null,
+    deductionAmount: mongoose.Types.Decimal128.fromString(numDeduction.toFixed(2)),
+    deductionReason: deductionReason || null,
+    deductionCategory: deductionCategory || null,
+    photos: photos || [],
     restocked: Boolean(shouldRestock),
     notes: notes ? notes.trim() : isPassed ? "Quality inspection passed." : "Quality inspection failed.",
+  };
+  ret.merchantInspection = {
+    ...ret.inspection,
+    condition: ret.inspection.condition,
+    receivedCondition: ret.inspection.receivedCondition,
+    deductionAmount: numDeduction,
   };
 
   if (isPassed && ret.type === "return") {
@@ -2509,7 +2815,10 @@ const processReturnRefund = async ({
   }
 
   if (ret.status === "refunded") {
-    throw new AppError("Return request has already been refunded", 409, "RETURN_ALREADY_REFUNDED");
+    if (isAdmin) {
+      return ret;
+    }
+    return getMyVendorReturnById({ userId, returnId: ret._id });
   }
 
   if (!["received", "inspected", "approved", "refund_pending"].includes(ret.status)) {
@@ -2551,6 +2860,21 @@ const processReturnRefund = async ({
       return ret;
     }
     if (existingRefund.status === "pending") {
+      if (existingRefund.gatewayRefundId) {
+        try {
+          await refundService.reconcileGatewayRefund({
+            refundId: existingRefund._id,
+            gatewayRefundId: existingRefund.gatewayRefundId,
+            userId,
+            ipAddress,
+            userAgent,
+          });
+          const reloaded = await ReturnRequest.findById(ret._id);
+          return reloaded;
+        } catch (syncErr) {
+          logger.warn("Automatic reconciliation on retry failed", { error: syncErr.message });
+        }
+      }
       ret.status = "refund_pending";
       ret.resolutionNotes = ret.resolutionNotes || "Refund pending gateway confirmation";
       await ret.save();
@@ -2603,6 +2927,15 @@ const processReturnRefund = async ({
         `Captured payment is missing gateway transaction ID (${payment.gateway || "razorpay"}). Cannot execute automated refund.`,
         409,
         "PAYMENT_GATEWAY_ID_MISSING"
+      );
+    }
+
+    const capturedAmount = Number(payment.amount?.toString() || 0);
+    if (Number(refundAmountStr) > capturedAmount + 0.01) {
+      throw new AppError(
+        `Refund amount (₹${refundAmountStr}) exceeds captured payment amount (₹${capturedAmount.toFixed(2)})`,
+        422,
+        "REFUND_EXCEEDS_PAYMENT"
       );
     }
 
@@ -2756,6 +3089,74 @@ const processReturnRefund = async ({
   return getMyVendorReturnById({ userId, returnId: ret._id });
 };
 
+const reconcileReturnRefund = async ({
+  returnId,
+  returnRequestId,
+  userId,
+  ipAddress = null,
+  userAgent = null,
+  strict = false,
+  isAdmin = true,
+}) => {
+  const rawReturnId = returnId || returnRequestId;
+  const resolvedReturnId = decodeSecureId(rawReturnId, "return", { strict });
+  const ret = await ReturnRequest.findById(resolvedReturnId);
+  if (!ret) {
+    throw new AppError("Return request not found", 404, "RETURN_NOT_FOUND");
+  }
+
+  if (!isAdmin) {
+    throw new AppError(
+      "Merchants do not have authority to execute refund reconciliation directly.",
+      403,
+      "MERCHANT_DISBURSEMENT_UNAUTHORIZED"
+    );
+  }
+
+  const Refund = require("../models/Refund");
+  let refund = null;
+  if (ret.refundId) {
+    refund = await Refund.findById(ret.refundId);
+  }
+  if (!refund) {
+    const idempotencyKey = `ret_refund_${ret._id.toString()}`;
+    refund = await Refund.findOne({ orderId: ret.orderId, idempotencyKey });
+  }
+
+  if (!refund) {
+    throw new AppError(
+      "No refund record found for this return request. Cannot reconcile.",
+      404,
+      "REFUND_NOT_FOUND"
+    );
+  }
+
+  const effectiveGatewayRefundId = refund.gatewayRefundId || ret.gatewayRefundId;
+  if (!effectiveGatewayRefundId) {
+    throw new AppError(
+      "Cannot reconcile refund without gateway refund ID",
+      400,
+      "MISSING_GATEWAY_REFUND_ID"
+    );
+  }
+
+  const refundService = require("./refund.service");
+  await refundService.reconcileGatewayRefund({
+    refundId: refund._id,
+    gatewayRefundId: effectiveGatewayRefundId,
+    userId,
+    ipAddress,
+    userAgent,
+  });
+
+  const refreshedReturn = await ReturnRequest.findById(ret._id)
+    .populate("orderId", "orderNumber status paymentStatus placedAt deliveryOption currency grandTotal")
+    .populate("replacementVariantId", "name sku attributes price")
+    .populate("refundId");
+
+  return refreshedReturn;
+};
+
 const getAdminReturns = async ({ query = {} }) => {
   const safePage = Math.max(Number(query.page) || 1, 1);
   const safeLimit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
@@ -2768,22 +3169,71 @@ const getAdminReturns = async ({ query = {} }) => {
   if (query.type && query.type !== "all") {
     filter.type = query.type;
   }
+  if (query.reason && query.reason !== "all") {
+    filter.reason = query.reason;
+  }
   if (query.search) {
+    const searchRegex = new RegExp(query.search.trim(), "i");
+    const matchingOrders = await Order.find({ orderNumber: searchRegex }).select("_id").lean();
+    const orderIds = (matchingOrders || []).map((o) => o._id);
     filter.$or = [
-      { returnNumber: { $regex: query.search.trim(), $options: "i" } },
+      { returnNumber: searchRegex },
+      { orderId: { $in: orderIds } },
     ];
   }
 
-  const total = await ReturnRequest.countDocuments(filter);
-  const returns = await ReturnRequest.find(filter)
-    .populate("orderId", "orderNumber status placedAt grandTotal currency")
-    .populate("customerId", "firstName lastName email phone")
-    .populate("items.vendorId", "storeName businessName")
-    .populate("replacementVariantId", "name sku attributes price")
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(safeLimit)
-    .lean();
+  const [total, returns, allReturns] = await Promise.all([
+    ReturnRequest.countDocuments(filter),
+    ReturnRequest.find(filter)
+      .populate("orderId", "orderNumber status placedAt grandTotal currency")
+      .populate("customerId", "firstName lastName email phone")
+      .populate("items.vendorId", "storeName businessName")
+      .populate("replacementVariantId", "name sku attributes price")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .lean(),
+    ReturnRequest.find({}).select("status refundAmount previouslyRefundedTotal items").lean(),
+  ]);
+
+  let totalReturns = allReturns.length;
+  let pendingVendorDecisions = 0;
+  let pendingSuperadminInterventions = 0;
+  let acceptedReturns = 0;
+  let rejectedReturns = 0;
+  let authorizedLiabilityNum = 0;
+  let refundedLiabilityNum = 0;
+
+  for (const r of allReturns) {
+    const amt = Number(r.refundAmount?.toString() || 0);
+    if (["requested", "under_review"].includes(r.status)) {
+      pendingVendorDecisions++;
+    }
+    if (["rejected", "cancelled", "disputed"].includes(r.status)) {
+      pendingSuperadminInterventions++;
+    }
+    if (["approved", "inspected", "received", "refunded", "exchange_completed"].includes(r.status)) {
+      acceptedReturns++;
+      authorizedLiabilityNum += amt;
+    }
+    if (r.status === "rejected") {
+      rejectedReturns++;
+    }
+    if (r.status === "refunded") {
+      refundedLiabilityNum += amt;
+    }
+  }
+
+  const kpis = {
+    totalReturns,
+    pendingVendorDecisions,
+    pendingSuperadminInterventions,
+    acceptedReturns,
+    rejectedReturns,
+    totalAuthorizedLiability: authorizedLiabilityNum.toFixed(2),
+    totalSuccessfullyRefunded: refundedLiabilityNum.toFixed(2),
+    outstandingRefundLiability: Math.max(0, authorizedLiabilityNum - refundedLiabilityNum).toFixed(2),
+  };
 
   const items = returns.map((ret) => ({
     _id: ret._id,
@@ -2818,15 +3268,17 @@ const getAdminReturns = async ({ query = {} }) => {
       total,
       totalPages: Math.ceil(total / safeLimit),
     },
+    kpis,
   };
 };
 
 const getAdminReturnById = async (returnId) => {
   const resolvedReturnId = decodeSecureId(returnId, "return", { strict: false });
   const ret = await ReturnRequest.findById(resolvedReturnId)
-    .populate("orderId", "orderNumber status placedAt grandTotal currency shippingAddress")
+    .populate("orderId", "orderNumber status paymentStatus placedAt grandTotal currency shippingAddress paymentMethod")
     .populate("customerId", "firstName lastName email phone")
-    .populate("items.vendorId", "storeName businessName email")
+    .populate("vendorId", "businessName businessSlug storeName onboardingStatus isActive")
+    .populate("items.vendorId", "storeName businessName email onboardingStatus isActive")
     .populate("replacementVariantId", "name sku attributes price")
     .lean();
 
@@ -2834,14 +3286,192 @@ const getAdminReturnById = async (returnId) => {
     throw new AppError("Return request not found", 404, "RETURN_NOT_FOUND");
   }
 
+  const refundBreakdown = calculateAuthoritativeRefundBreakdown(ret, ret.orderId);
+
+  const Refund = require("../models/Refund");
+  const Payment = require("../models/Payment");
+  const AuditLog = require("../models/AuditLog");
+
+  const [refundDocs, paymentDoc, auditLogs] = await Promise.all([
+    Refund.find({ orderId: ret.orderId?._id || ret.orderId }).lean(),
+    Payment.findOne({ orderId: ret.orderId?._id || ret.orderId }).lean(),
+    AuditLog.find({ targetId: ret._id }).sort({ timestamp: -1, createdAt: -1 }).lean(),
+  ]);
+
+  const refundTransactions = (refundDocs || []).map((rf) => ({
+    _id: rf._id,
+    id: rf._id,
+    gateway: rf.gateway,
+    gatewayRefundId: rf.gatewayRefundId || null,
+    amount: sanitizeDecimal(rf.amount, "0.00"),
+    currency: rf.currency || ret.orderId?.currency || "INR",
+    status: rf.status,
+    gatewayStatus: rf.gatewayStatus || rf.status,
+    normalizedGatewayMessage: rf.normalizedGatewayMessage || null,
+    reason: rf.reason || null,
+    failureReason: rf.failureReason || null,
+    arn: rf.arn || null,
+    idempotencyKey: rf.idempotencyKey || null,
+    lastReconciledAt: rf.lastReconciledAt || null,
+    createdAt: rf.createdAt,
+    processedAt: rf.processedAt || null,
+  }));
+
+  const previousRefunds = refundTransactions.filter((tx) => tx.status === "processed");
+
+  const isCod =
+    ret.orderId?.paymentMethod === "cod" ||
+    ret.refundMethod === "bank_transfer" ||
+    ret.refundMethod === "upi" ||
+    paymentDoc?.gateway === "cod";
+
+  let originalPayment = null;
+  if (paymentDoc) {
+    let codCollectionStatus = "pending_delivery";
+    if (["paid", "refunded", "partially_refunded"].includes(ret.orderId?.paymentStatus) || paymentDoc.status === "captured") {
+      codCollectionStatus = "cash_collected";
+    } else if (ret.orderId?.status === "delivered") {
+      codCollectionStatus = "collected_pending_reconciliation";
+    }
+
+    originalPayment = {
+      isAvailable: true,
+      isUnavailable: false,
+      paymentGateway: paymentDoc.gateway || "razorpay",
+      gateway: paymentDoc.gateway || "razorpay",
+      transactionId: paymentDoc.gatewayPaymentId || null,
+      gatewayPaymentId: paymentDoc.gatewayPaymentId || null,
+      referenceId: paymentDoc.gatewayOrderId || null,
+      gatewayOrderId: paymentDoc.gatewayOrderId || null,
+      paymentStatus: paymentDoc.status || "captured",
+      amountCaptured: sanitizeDecimal(paymentDoc.amount, ret.orderId?.grandTotal?.toString() || "0.00"),
+      paymentDate: paymentDoc.createdAt || ret.orderId?.placedAt,
+      isCod,
+      codCollectionStatus: isCod ? codCollectionStatus : null,
+      codReconciled: isCod && codCollectionStatus === "cash_collected",
+    };
+  } else {
+    let codCollectionStatus = "pending_delivery";
+    if (["paid", "refunded", "partially_refunded"].includes(ret.orderId?.paymentStatus)) {
+      codCollectionStatus = "cash_collected";
+    } else if (ret.orderId?.status === "delivered") {
+      codCollectionStatus = "collected_pending_reconciliation";
+    }
+
+    originalPayment = {
+      isAvailable: false,
+      isUnavailable: true,
+      paymentGateway: ret.orderId?.paymentMethod || "unavailable",
+      gateway: ret.orderId?.paymentMethod || "unavailable",
+      transactionId: null,
+      referenceId: null,
+      paymentStatus: ret.orderId?.paymentStatus || "pending",
+      amountCaptured: "0.00",
+      paymentDate: ret.orderId?.placedAt || null,
+      isCod,
+      codCollectionStatus: isCod ? codCollectionStatus : null,
+      codReconciled: isCod && codCollectionStatus === "cash_collected",
+    };
+  }
+
+  const vendorDecision = {
+    decision: ["approved", "inspected", "received", "refunded"].includes(ret.status)
+      ? "approved"
+      : ret.status === "rejected"
+      ? "rejected"
+      : "pending",
+    decidedAt: ret.updatedAt || ret.createdAt,
+    reason: ret.resolutionNotes || ret.customerNotes || null,
+    notes: ret.resolutionNotes || null,
+  };
+
+  const auditHistory = auditLogs || [];
+
+  const REASON_LABELS = {
+    damaged_item: "Damaged Item (Damaged in transit / packaging broken)",
+    damaged_packaging: "Damaged Packaging / Torn box",
+    buyer_remorse: "Changed Mind / Don't want product anymore",
+    changed_mind: "Changed Mind / Don't want product anymore",
+    defective: "Defective / Malfunctioning product",
+    defective_product: "Defective / Malfunctioning product",
+    wrong_item: "Wrong Item / Incorrect product delivered",
+    not_as_described: "Not as Described / Missing accessories or details",
+    size_fit_issue: "Size / Fit Issue",
+    quality_issue: "Quality Issue / Unsatisfactory material",
+    other: "Other Reason",
+  };
+
+  const primaryItem = (ret.items || [])[0] || {};
+  const selectedReason = ret.reason || primaryItem.reason || "defective";
+  const selectedReasonLabel = REASON_LABELS[selectedReason] || REASON_LABELS[normalizeReturnReason(selectedReason)] || selectedReason;
+  const customerComments = ret.customerComments || ret.customerNotes || primaryItem.customerComments || null;
+  const evidenceImages = (ret.images || []).map((img) => (typeof img === "string" ? img : img?.url || ""));
+
+  const customerInformation = {
+    selectedReason,
+    selectedReasonLabel,
+    customerComments,
+    evidenceImages,
+    isLegacy: !REASON_LABELS[selectedReason],
+  };
+
+  const primaryVendorDoc = ret.vendorId && typeof ret.vendorId === "object"
+    ? ret.vendorId
+    : (ret.items || [])[0]?.vendorId && typeof (ret.items || [])[0]?.vendorId === "object"
+    ? (ret.items || [])[0]?.vendorId
+    : null;
+  const vendorObj = primaryVendorDoc || { storeName: "", businessName: "" };
+  if (!vendorObj.storeName) {
+    vendorObj.storeName = vendorObj.businessName || "";
+  }
+  const vendorStatus = vendorObj.onboardingStatus === "suspended" || vendorObj.isActive === false
+    ? "suspended"
+    : (vendorObj.onboardingStatus === "approved" ? "active" : (vendorObj.onboardingStatus || "active"));
+
+  const sanitizedReturnItems = (ret.items || []).map((it) => {
+    const rawPrice = it.itemPrice?.$numberDecimal || (typeof it.itemPrice?.toString === "function" ? it.itemPrice.toString() : it.itemPrice) || "0.00";
+    const vDoc = it.vendorId && typeof it.vendorId === "object" ? it.vendorId : null;
+    const sName = vDoc?.storeName || vDoc?.businessName || "";
+    return {
+      ...it,
+      itemPrice: rawPrice,
+      originalUnitPrice: it.originalUnitPrice?.$numberDecimal || (typeof it.originalUnitPrice?.toString === "function" ? it.originalUnitPrice.toString() : it.originalUnitPrice) || rawPrice,
+      vendor: {
+        ...(vDoc || {}),
+        storeName: sName,
+        businessName: vDoc?.businessName || sName,
+      },
+    };
+  });
+
+  const financialSummary = {
+    grossRefund: refundBreakdown.finalRefund.customerEntitlement,
+    deductions: refundBreakdown.finalRefund.deductionsTotal,
+    previouslyRefunded: refundBreakdown.finalRefund.previouslyRefunded,
+    netRefund: refundBreakdown.finalRefund.netRefundableAmount,
+    currency: refundBreakdown.finalRefund.currency || "INR",
+  };
+
   return {
     ...ret,
+    items: sanitizedReturnItems,
     secureId: encodeSecureId("return", ret._id),
     refundAmount: ret.refundAmount?.toString?.() || "0.00",
+    refundBreakdown,
+    refundTransactions,
+    previousRefunds,
+    originalPayment,
+    vendorDecision,
+    auditHistory,
+    customerInformation,
+    vendor: vendorObj,
+    vendorStatus,
+    financialSummary,
   };
 };
 
 module.exports = {
+  calculateAuthoritativeRefundBreakdown,
   calculateBusinessDaysFrom,
   getReturnSlaStatus,
   checkOrderReturnEligibility,
@@ -2861,6 +3491,7 @@ module.exports = {
   fulfillExchangeRequest,
   receiveReturnAndRestock,
   processReturnRefund,
+  reconcileReturnRefund,
   generateCreditNoteForReturn,
   buildOrderItemFinancialAllocationMap,
   getAdminReturns,

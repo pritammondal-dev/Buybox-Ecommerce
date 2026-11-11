@@ -706,6 +706,41 @@ const processRefundWebhook = async ({
       } catch (err) {
         // Non-blocking ledger reversal on webhook
       }
+
+      try {
+        const RefundApplication = require("../models/RefundApplication");
+        await RefundApplication.updateMany(
+          {
+            $or: [
+              { disbursementReference: refund._id },
+              { orderId: order._id, applicationStatus: { $in: ["disbursement_processing", "pending_confirmation", "approved", "disbursement_failed"] } },
+            ],
+          },
+          {
+            $set: {
+              applicationStatus: "disbursed",
+              disbursementStatus: "disbursed",
+              disbursedAmount: refund.amount,
+              disbursedAt: updatedRefund.processedAt || new Date(),
+              gatewayRefundId: razorpayRefund.id,
+              gatewayStatus: "processed",
+              normalizedGatewayMessage: "Refund confirmed by gateway webhook",
+              failureDetails: null,
+            },
+            $push: {
+              timeline: {
+                status: "disbursed",
+                notes: `Refund confirmed disbursed by payment gateway webhook (${razorpayRefund.id})`,
+                timestamp: new Date(),
+                actor: { actorType: "system", role: "webhook" },
+              },
+            },
+          },
+          { session }
+        );
+      } catch (err) {
+        // Non-blocking for application synchronization
+      }
     }
 
     if (nextStatus === "failed") {
@@ -732,6 +767,39 @@ const processRefundWebhook = async ({
                 status: "refund_pending",
                 notes: `Payment gateway refund failed: ${failureReason}. Action required by administrator.`,
                 timestamp: new Date(),
+              },
+            },
+          },
+          { session }
+        );
+
+        const RefundApplication = require("../models/RefundApplication");
+        await RefundApplication.updateMany(
+          {
+            $or: [
+              { disbursementReference: refund._id },
+              { orderId: order._id, applicationStatus: { $in: ["disbursement_processing", "pending_confirmation"] } },
+            ],
+          },
+          {
+            $set: {
+              applicationStatus: "disbursement_failed",
+              disbursementStatus: "failed",
+              gatewayRefundId: razorpayRefund.id,
+              gatewayStatus: "failed",
+              normalizedGatewayMessage: failureReason,
+              failureDetails: {
+                code: razorpayRefund.error_code || "GATEWAY_FAILED",
+                message: failureReason,
+                failedAt: new Date(),
+              },
+            },
+            $push: {
+              timeline: {
+                status: "disbursement_failed",
+                notes: `Disbursement failed reported by gateway webhook: ${failureReason}`,
+                timestamp: new Date(),
+                actor: { actorType: "system", role: "webhook" },
               },
             },
           },

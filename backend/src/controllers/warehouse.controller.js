@@ -94,6 +94,7 @@ const getMyVendorWarehouseById = asyncHandler(async (req, res) => {
   const warehouse = await warehouseService.getMyVendorWarehouseById({
     userId: req.user.id,
     warehouseId: req.params.warehouseId,
+    query: req.query,
   });
 
   return sendSuccess(res, {

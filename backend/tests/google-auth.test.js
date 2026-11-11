@@ -368,9 +368,9 @@ describe("Google OAuth / OIDC Authentication Suite", () => {
       }
     });
 
-    it("4. rejects auto-linking to an UNVERIFIED existing email account (Account Takeover Defense)", async () => {
+    it("4. recovers abandoned/unverified email account when legitimate user authenticates with verified Google identity", async () => {
       const email = `unverified-victim-${Date.now()}@google-auth-test.com`;
-      const googleSub = `sub-attacker-${Date.now()}`;
+      const googleSub = `sub-legit-${Date.now()}`;
 
       const unverifiedUser = await User.create({
         email,
@@ -386,24 +386,32 @@ describe("Google OAuth / OIDC Authentication Suite", () => {
         sub: googleSub,
         email,
         emailVerified: true,
-        firstName: "Attacker",
-        lastName: "Takeover",
+        firstName: "Legit",
+        lastName: "GoogleUser",
       });
 
       try {
         const res = await request(app)
           .post("/api/v1/auth/google")
-          .send({ idToken: "valid.google.jwt.takeover" });
+          .send({ idToken: "valid.google.jwt.recovery" });
 
-        expect(res.status).toBe(403);
-        expect(res.body.code).toBe("ACCOUNT_LINKING_VERIFICATION_REQUIRED");
+        expect(res.status).toBe(200);
+        expect(res.body.data.user.email).toBe(email);
+        expect(res.body.data.user.isEmailVerified).toBe(true);
 
-        // Verify audit log for failed login recorded
-        const failedAudit = await AuditLog.findOne({
-          action: AUDIT_ACTIONS.GOOGLE_LOGIN_FAILED,
-          actorId: unverifiedUser._id,
+        // Verify unverified password account was replaced with clean Google account
+        const recoveredUser = await User.findOne({ email });
+        expect(recoveredUser).toBeTruthy();
+        expect(recoveredUser._id.toString()).not.toBe(unverifiedUser._id.toString());
+        expect(recoveredUser.authProviders.google.id).toBe(googleSub);
+        createdUserIds.push(recoveredUser._id);
+
+        // Verify audit log for successful login recorded
+        const successAudit = await AuditLog.findOne({
+          action: AUDIT_ACTIONS.GOOGLE_LOGIN_SUCCESS,
+          actorId: recoveredUser._id,
         });
-        expect(failedAudit).toBeTruthy();
+        expect(successAudit).toBeTruthy();
       } finally {
         spy.mockRestore();
       }

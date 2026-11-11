@@ -36,6 +36,12 @@ const inventorySchema = new mongoose.Schema(
       default: 5,
     },
 
+    reorderLevel: {
+      type: Number,
+      min: 0,
+      default: 10,
+    },
+
     damaged: {
       type: Number,
       default: 0,

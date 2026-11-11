@@ -14,6 +14,7 @@ import {
   Shield,
   Eye,
   MapPin,
+  Trash2,
 } from "lucide-react";
 import { adminCustomerService } from "@/services/admin/customer.service.js";
 import { ReasonConfirmModal } from "@/components/admin/ReasonConfirmModal.jsx";
@@ -22,6 +23,7 @@ import { useAdminAuthStore } from "@/stores/admin-auth.store.js";
 export default function AdminCustomersPage() {
   const hasPermission = useAdminAuthStore((state) => state.hasPermission);
   const canSuspend = hasPermission("customers.suspend");
+  const canDelete = hasPermission("customers.delete");
 
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,6 +36,8 @@ export default function AdminCustomersPage() {
   const [actionSuccess, setActionSuccess] = useState(null);
   const [confirmTarget, setConfirmTarget] = useState(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const fetchCustomers = async (page = 1) => {
     setLoading(true);
@@ -100,6 +104,25 @@ export default function AdminCustomersPage() {
       setError(msg);
     } finally {
       setConfirmLoading(false);
+    }
+  };
+
+  const handleConfirmDelete = async ({ reason }) => {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    setModalError(null);
+    try {
+      await adminCustomerService.delete(deleteTarget.id, reason);
+      setActionSuccess("Customer account permanently deleted successfully");
+      setTimeout(() => setActionSuccess(null), 4000);
+      setDeleteTarget(null);
+      fetchCustomers(pagination.page);
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || "Failed to delete customer";
+      setModalError(msg);
+      setError(msg);
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -297,6 +320,19 @@ export default function AdminCustomersPage() {
                             {c.isActive ? "Suspend" : "Reactivate"}
                           </button>
                         )}
+                        {canDelete && (
+                          <button
+                            onClick={() => {
+                              setModalError(null);
+                              setDeleteTarget(c);
+                            }}
+                            className="px-2.5 py-1 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-colors inline-flex items-center gap-1"
+                            title="Permanently Delete Account"
+                          >
+                            <Trash2 className="size-3" />
+                            <span>Delete</span>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -361,6 +397,30 @@ export default function AdminCustomersPage() {
             : "Reactivation restores customer login privileges, active cart sessions, and store ordering capabilities."
         }
         confirmLabel={confirmTarget?.isActive ? "Confirm Suspension" : "Confirm Reactivation"}
+      />
+
+      {/* Customer Permanent Deletion Modal */}
+      <ReasonConfirmModal
+        isOpen={Boolean(deleteTarget)}
+        onClose={() => {
+          setDeleteTarget(null);
+          setModalError(null);
+        }}
+        onConfirm={handleConfirmDelete}
+        isLoading={deleteLoading}
+        errorMessage={modalError}
+        targetIdentity={
+          deleteTarget
+            ? `${deleteTarget.firstName || ""} ${deleteTarget.lastName || ""} (${deleteTarget.email || deleteTarget.id})`.trim()
+            : ""
+        }
+        actionType="delete"
+        isDestructive={true}
+        requireAcknowledgment={true}
+        acknowledgmentText="I acknowledge that permanently deleting this customer account removes authentication credentials and active sessions, while preserving historical orders, payments, and invoices for legal compliance."
+        title="Permanently Delete Customer Account"
+        description="Permanent customer deletion removes the user authentication record from the database, invalidates all sessions and tokens, and clears active shopping carts. This frees the email address for new registrations or Google Sign-In. In accordance with financial and legal compliance policies, all completed orders, invoices, payments, and refunds remain intact in the database."
+        confirmLabel="Permanently Delete Customer"
       />
     </div>
   );

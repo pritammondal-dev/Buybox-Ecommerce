@@ -31,21 +31,23 @@ import { formatCurrency } from "../../../../../utils/formatCurrency.js";
 import { Skeleton } from "../../../../../components/ui/Skeleton.jsx";
 
 const RETURN_REASONS = [
-  "Defective / Does not work properly",
-  "Physical damage in transit / Box crushed",
-  "Item different from description or missing accessories",
-  "Audio / performance quality issue",
-  "Wrong model, color or size delivered",
-  "Quality not as expected",
-  "Don't want the product anymore",
+  { value: "defective_product", label: "Defective / Does not work properly" },
+  { value: "damaged_item", label: "Physical damage in transit / Box crushed" },
+  { value: "wrong_item", label: "Wrong model, color or size delivered" },
+  { value: "missing_parts", label: "Missing accessories or components" },
+  { value: "not_as_described", label: "Item different from description" },
+  { value: "quality_issue", label: "Quality not as expected / substandard" },
+  { value: "size_fit_issue", label: "Size or fit issue" },
+  { value: "changed_mind", label: "Don't want the product anymore" },
+  { value: "other", label: "Other reason" },
 ];
 
 const FLIPKART_STEPS = [
   { key: "requested", label: "Return Requested", desc: "Request submitted and waiting for merchant review" },
   { key: "pickup_scheduled", label: "Pickup Scheduled", desc: "Courier partner assigned for doorstep pickup" },
   { key: "picked_up", label: "Item Picked Up", desc: "Handed over to courier and in-transit to warehouse" },
-  { key: "inspected", label: "Quality Inspection", desc: "Technical inspection completed at fulfillment center" },
-  { key: "completed", label: "Refund / Exchange Done", desc: "Amount credited to payment source or replacement delivered" },
+  { key: "inspected", label: "Inspection & Audit", desc: "Technical inspection completed; refund audit in progress" },
+  { key: "completed", label: "Refund Disbursed", desc: "Payment reversal authorized and credited to payment source" },
 ];
 
 function getTimelineProgress(status, type) {
@@ -427,9 +429,11 @@ export function OrderReturnPageView({ orderId }) {
         orderId,
         type: returnType,
         items: payloadItems,
+        reason,
         replacementVariantId,
         images: evidenceImages.map((url) => ({ url })),
         customerNotes: customerNotes.trim(),
+        customerComments: customerNotes.trim(),
         refundMethod: eligibility?.paymentMethod === "cod" ? refundMethod : "original_source",
         pickupAddress: isEditingAddress ? addressForm : eligibility?.shippingAddress,
       };
@@ -579,6 +583,39 @@ export function OrderReturnPageView({ orderId }) {
                     })}
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* Refund Status Banner (Gateway Confirmation & Bank SLA) */}
+            {activeReturn.status === "refunded" && (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5 text-xs space-y-3">
+                <div className="flex items-center gap-2 font-bold text-emerald-900 text-sm">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+                  <span>Refund Successfully Processed</span>
+                </div>
+                <p className="text-slate-700 leading-relaxed text-xs">
+                  A refund of <strong className="font-bold text-slate-900">{formatCurrency(Number(activeReturn.refundAmount?.toString?.() || 0))}</strong> has been processed by the payment gateway to your original payment method. Depending on your bank&apos;s clearing cycle, funds typically reflect in your account within <strong className="text-emerald-900 font-semibold">5–7 business days</strong>.
+                </p>
+                {activeReturn.arn && (
+                  <div className="pt-1 flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Bank Reference / ARN:</span>
+                    <span className="font-mono text-xs font-bold text-emerald-900 bg-white px-2 py-0.5 rounded border border-emerald-200">
+                      {activeReturn.arn}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeReturn.status === "refund_pending" && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-5 text-xs space-y-2">
+                <div className="flex items-center gap-2 font-bold text-amber-900 text-sm">
+                  <Clock className="h-5 w-5 text-amber-600 shrink-0" />
+                  <span>Refund Verification in Progress</span>
+                </div>
+                <p className="text-slate-700 leading-relaxed text-xs">
+                  Your refund of <strong className="font-bold text-slate-900">{formatCurrency(Number(activeReturn.refundAmount?.toString?.() || 0))}</strong> has been initiated with the payment gateway and is awaiting final settlement confirmation. Once processed, money will be routed to your account.
+                </p>
               </div>
             )}
 
@@ -985,11 +1022,15 @@ export function OrderReturnPageView({ orderId }) {
                   className="w-full rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-800 outline-none focus:border-[#004D38]"
                 >
                   <option value="">-- Choose a Reason --</option>
-                  {RETURN_REASONS.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
+                  {RETURN_REASONS.map((r) => {
+                    const val = typeof r === "string" ? r : r.value;
+                    const lbl = typeof r === "string" ? r : r.label;
+                    return (
+                      <option key={val} value={val}>
+                        {lbl}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 

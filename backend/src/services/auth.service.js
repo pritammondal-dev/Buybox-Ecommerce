@@ -6,6 +6,10 @@ const Customer = require("../models/Customer");
 const RefreshToken = require("../models/RefreshToken");
 const EmailVerificationToken = require("../models/EmailVerificationToken");
 const PasswordResetToken = require("../models/PasswordResetToken");
+const Otp = require("../models/Otp");
+const Cart = require("../models/Cart");
+const Address = require("../models/Address");
+const Order = require("../models/Order");
 
 const {
   hashPassword,
@@ -63,51 +67,62 @@ const registerUser = async ({
   const existingUser = await User.findOne({ email: normalizedEmail });
 
   if (existingUser) {
-    if (existingUser.isEmailVerified) {
+    if (existingUser.deletedAt) {
+      // Legacy soft-deleted customer: permanently purge to allow fresh registration
+      const oldId = existingUser._id;
+      await Customer.deleteMany({ userId: oldId }).catch(() => null);
+      await Otp.deleteMany({ $or: [{ userId: oldId }, { email: normalizedEmail }] }).catch(() => null);
+      await RefreshToken.deleteMany({ userId: oldId }).catch(() => null);
+      await EmailVerificationToken.deleteMany({ userId: oldId }).catch(() => null);
+      await PasswordResetToken.deleteMany({ userId: oldId }).catch(() => null);
+      await Cart.deleteMany({ customerId: oldId }).catch(() => null);
+      await Address.deleteMany({ userId: oldId }).catch(() => null);
+      await User.deleteOne({ _id: oldId });
+    } else if (existingUser.isEmailVerified) {
       throw new AppError(
         "An account may already be associated with this email. Please sign in or use Forgot Password.",
         409,
         "EMAIL_ALREADY_EXISTS"
       );
-    }
-
-    // Existing unverified account: Resume verification lifecycle rather than duplicating records
-    const { otp, resendCooldownSeconds } = await otpService.generateOtp({
-      email: normalizedEmail,
-      userId: existingUser._id,
-      purpose: "email_verification",
-    });
-
-    const emailResult = await emailService.sendEmailVerificationOTP({
-      to: normalizedEmail,
-      customerName: existingUser.firstName,
-      otp,
-    });
-
-    if (!emailResult || emailResult.success === false) {
-      await otpService.invalidateOtp({ email: normalizedEmail, purpose: "email_verification" });
-      logger.error("Failed to deliver verification email to customer:", {
-        recipient: normalizedEmail,
-        status: emailResult?.status,
-        error: emailResult?.error,
+    } else {
+      // Existing unverified account: Resume verification lifecycle rather than duplicating records
+      const { otp, resendCooldownSeconds } = await otpService.generateOtp({
+        email: normalizedEmail,
+        userId: existingUser._id,
+        purpose: "email_verification",
       });
-      throw new AppError(
-        "Failed to deliver verification code to your email. Please try again later.",
-        500,
-        "EMAIL_DELIVERY_FAILED"
-      );
-    }
 
-    return {
-      id: existingUser._id,
-      email: normalizedEmail,
-      firstName: existingUser.firstName,
-      lastName: existingUser.lastName,
-      role: existingUser.role,
-      isEmailVerified: false,
-      requireVerification: true,
-      resendCooldownSeconds,
-    };
+      const emailResult = await emailService.sendEmailVerificationOTP({
+        to: normalizedEmail,
+        customerName: existingUser.firstName,
+        otp,
+      });
+
+      if (!emailResult || emailResult.success === false) {
+        await otpService.invalidateOtp({ email: normalizedEmail, purpose: "email_verification" });
+        logger.error("Failed to deliver verification email to customer:", {
+          recipient: normalizedEmail,
+          status: emailResult?.status,
+          error: emailResult?.error,
+        });
+        throw new AppError(
+          "Failed to deliver verification code to your email. Please try again later.",
+          500,
+          "EMAIL_DELIVERY_FAILED"
+        );
+      }
+
+      return {
+        id: existingUser._id,
+        email: normalizedEmail,
+        firstName: existingUser.firstName,
+        lastName: existingUser.lastName,
+        role: existingUser.role,
+        isEmailVerified: false,
+        requireVerification: true,
+        resendCooldownSeconds,
+      };
+    }
   }
 
   // 2. New account creation transaction
@@ -116,11 +131,49 @@ const registerUser = async ({
   try {
     let result;
 
-    await session.withTransaction(async () => {
-      const passwordHash = await hashPassword(password);
+    try {
+      await session.withTransaction(async () => {
+        const passwordHash = await hashPassword(password);
 
-      const user = await User.create(
-        [
+        const user = await User.create(
+          [
+            {
+              email: normalizedEmail,
+              password: passwordHash,
+              firstName,
+              lastName,
+              isEmailVerified: false,
+            },
+          ],
+          { session }
+        );
+
+        const createdUser = user[0];
+
+        await Customer.create(
+          [
+            {
+              userId: createdUser._id,
+            },
+          ],
+          { session }
+        );
+
+        result = {
+          id: createdUser._id,
+          email: createdUser.email,
+          firstName: createdUser.firstName,
+          lastName: createdUser.lastName,
+          role: createdUser.role,
+          isEmailVerified: false,
+          requireVerification: true,
+        };
+      });
+    } catch (txnErr) {
+      // Graceful fallback for standalone MongoDB without replica set support
+      if (txnErr?.message?.includes("replica set") || txnErr?.message?.includes("Transaction numbers")) {
+        const passwordHash = await hashPassword(password);
+        const [createdUser] = await User.create([
           {
             email: normalizedEmail,
             password: passwordHash,
@@ -128,31 +181,21 @@ const registerUser = async ({
             lastName,
             isEmailVerified: false,
           },
-        ],
-        { session }
-      );
-
-      const createdUser = user[0];
-
-      await Customer.create(
-        [
-          {
-            userId: createdUser._id,
-          },
-        ],
-        { session }
-      );
-
-      result = {
-        id: createdUser._id,
-        email: createdUser.email,
-        firstName: createdUser.firstName,
-        lastName: createdUser.lastName,
-        role: createdUser.role,
-        isEmailVerified: false,
-        requireVerification: true,
-      };
-    });
+        ]);
+        await Customer.create({ userId: createdUser._id });
+        result = {
+          id: createdUser._id,
+          email: createdUser.email,
+          firstName: createdUser.firstName,
+          lastName: createdUser.lastName,
+          role: createdUser.role,
+          isEmailVerified: false,
+          requireVerification: true,
+        };
+      } else {
+        throw txnErr;
+      }
+    }
 
     // 3. Generate secure OTP and dispatch via EmailService
     const { otp, resendCooldownSeconds } = await otpService.generateOtp({
@@ -1135,6 +1178,10 @@ const authenticateGoogleUser = async ({ idToken, ipAddress = null, userAgent = n
     verifiedEmail = payload.email;
     verifiedSub = payload.sub;
 
+    if (!payload.emailVerified) {
+      throw new AppError("Google email address is not verified by Google. Cannot proceed with sign-in.", 403, "GOOGLE_EMAIL_NOT_VERIFIED");
+    }
+
     // 1. Check if user with this verified Google Provider ID exists
     let user = await User.findOne({ "authProviders.google.id": payload.sub });
 
@@ -1156,25 +1203,92 @@ const authenticateGoogleUser = async ({ idToken, ipAddress = null, userAgent = n
 
     if (existingEmailUser) {
       actorId = existingEmailUser._id;
-      // Safe Account Linking: Require existing account to be independently verified
-      if (!existingEmailUser.isEmailVerified) {
+
+      // Restrict cross-domain access (staff or vendor portal accounts)
+      if (["super_admin", "admin", "editor", "manager", "support"].includes(existingEmailUser.role)) {
         throw new AppError(
-          "An unverified account exists with this email address. Please verify your email first before connecting Google Sign-In.",
+          "Access restricted. Privileged staff accounts must sign in through the administrator portal.",
           403,
-          "ACCOUNT_LINKING_VERIFICATION_REQUIRED"
+          "STAFF_PORTAL_REQUIRED"
         );
       }
 
-      // Link Google Provider to existing verified customer
-      existingEmailUser.authProviders = existingEmailUser.authProviders || {};
-      existingEmailUser.authProviders.google = {
-        id: payload.sub,
-        email: payload.email,
-        linkedAt: new Date(),
-      };
-      await existingEmailUser.save();
+      if (existingEmailUser.role === "vendor" && !(existingEmailUser.roles || []).includes("customer")) {
+        throw new AppError(
+          "Access restricted. Vendor accounts must sign in through the merchant center portal.",
+          403,
+          "VENDOR_PORTAL_REQUIRED"
+        );
+      }
 
-      user = existingEmailUser;
+      // Check if existing account is unverified or legacy soft-deleted
+      if (existingEmailUser.deletedAt || !existingEmailUser.isEmailVerified) {
+        // Abandoned unverified account OR legacy soft-deleted account recovery:
+        // User has authenticated through Google OAuth, providing authoritative verification of email ownership.
+        const oldUserId = existingEmailUser._id;
+
+        // Clean up unverified credentials and tokens
+        await Otp.deleteMany({ $or: [{ userId: oldUserId }, { email: payload.email }] }).catch(() => null);
+        await RefreshToken.deleteMany({ userId: oldUserId }).catch(() => null);
+        await EmailVerificationToken.deleteMany({ userId: oldUserId }).catch(() => null);
+        await PasswordResetToken.deleteMany({ userId: oldUserId }).catch(() => null);
+
+        // Delete the unverified / soft-deleted user document to release the unique email index
+        await User.deleteOne({ _id: oldUserId });
+
+        // Create clean Google-verified User
+        const [newUser] = await User.create([
+          {
+            email: payload.email,
+            firstName: payload.firstName || existingEmailUser.firstName,
+            lastName: payload.lastName || existingEmailUser.lastName,
+            role: "customer",
+            roles: ["customer"],
+            isEmailVerified: true,
+            isActive: true,
+            authProviders: {
+              google: {
+                id: payload.sub,
+                email: payload.email,
+                linkedAt: new Date(),
+              },
+            },
+          },
+        ]);
+
+        user = newUser;
+
+        // Re-link existing customer profile if one existed, preserving history
+        const existingCustomer = await Customer.findOne({ userId: oldUserId });
+        if (existingCustomer) {
+          existingCustomer.userId = user._id;
+          existingCustomer.isActive = true;
+          existingCustomer.deletedAt = null;
+          await existingCustomer.save();
+        } else {
+          await Customer.create({ userId: user._id });
+        }
+
+        // Re-link any existing orders, addresses, carts to user._id
+        await Order.updateMany({ customerId: oldUserId }, { $set: { customerId: user._id } }).catch(() => null);
+        await Address.updateMany({ userId: oldUserId }, { $set: { userId: user._id } }).catch(() => null);
+        await Cart.updateMany({ customerId: oldUserId }, { $set: { customerId: user._id } }).catch(() => null);
+      } else {
+        // Existing verified customer account: link Google Provider
+        if (!existingEmailUser.isActive) {
+          throw new AppError("Account is inactive or deactivated. Please contact customer support.", 403, "ACCOUNT_INACTIVE");
+        }
+
+        existingEmailUser.authProviders = existingEmailUser.authProviders || {};
+        existingEmailUser.authProviders.google = {
+          id: payload.sub,
+          email: payload.email,
+          linkedAt: new Date(),
+        };
+        await existingEmailUser.save();
+
+        user = existingEmailUser;
+      }
     } else {
       // 3. Create new customer user with Google Identity
       const session = await mongoose.startSession();
@@ -1187,7 +1301,9 @@ const authenticateGoogleUser = async ({ idToken, ipAddress = null, userAgent = n
                 firstName: payload.firstName,
                 lastName: payload.lastName,
                 role: "customer",
-                isEmailVerified: true, // Google identity independently verified
+                roles: ["customer"],
+                isEmailVerified: true,
+                isActive: true,
                 authProviders: {
                   google: {
                     id: payload.sub,
@@ -1211,8 +1327,33 @@ const authenticateGoogleUser = async ({ idToken, ipAddress = null, userAgent = n
             { session }
           );
         });
+      } catch (txnErr) {
+        if (txnErr?.message?.includes("replica set") || txnErr?.message?.includes("Transaction numbers")) {
+          const createdUsers = await User.create([
+            {
+              email: payload.email,
+              firstName: payload.firstName,
+              lastName: payload.lastName,
+              role: "customer",
+              roles: ["customer"],
+              isEmailVerified: true,
+              isActive: true,
+              authProviders: {
+                google: {
+                  id: payload.sub,
+                  email: payload.email,
+                  linkedAt: new Date(),
+                },
+              },
+            },
+          ]);
+          user = createdUsers[0];
+          await Customer.create({ userId: user._id });
+        } else {
+          throw txnErr;
+        }
       } finally {
-        await session.endSession();
+        await session.endSession().catch(() => {});
       }
     }
 

@@ -7,11 +7,13 @@ const inventoryTransactionService = require("./inventory-transaction.service");
 const ProductVariant = require("../models/ProductVariant");
 const Product = require("../models/Product");
 const Inventory = require("../models/Inventory");
+const InventoryTransaction = require("../models/InventoryTransaction");
 const Warehouse = require("../models/Warehouse");
+const CustomerNotification = require("../models/CustomerNotification");
 const AppError = require("../errors/AppError");
 const withTransaction = require("../utils/withTransaction");
 const { resolveApprovedVendor } = require("../middlewares/vendor.middleware");
-const { encodeSecureId } = require("../utils/secure-id.util");
+const { encodeSecureId, decodeSecureId } = require("../utils/secure-id.util");
 
 /**
  * Calculates authoritative stock across eligible active warehouses.
@@ -98,7 +100,7 @@ const syncVariantStockMirror = async (productVariantId, session = null) => {
   try {
     const { totalAvailable } = await calculateAuthoritativeStock(productVariantId, session);
 
-    const updateQuery = ProductVariant.findByIdAndUpdate(
+    let updateQuery = ProductVariant.findByIdAndUpdate(
       productVariantId,
       {
         stockQuantity: totalAvailable,
@@ -1219,6 +1221,394 @@ const getInventorySummary = async ({ vendorId = null } = {}) => {
   };
 };
 
+/**
+ * ============================================================
+ * VENDOR-SPECIFIC OPERATIONAL INVENTORY SERVICES
+ * ============================================================
+ */
+
+const VALID_ADJUSTMENT_REASONS = Object.freeze([
+  "physical_count_correction",
+  "damaged",
+  "lost",
+  "found",
+  "expired",
+  "data_correction",
+  "other",
+]);
+
+/**
+ * Execute a controlled, auditable inventory adjustment for an authenticated vendor.
+ */
+const adjustVendorStock = async ({
+  userId,
+  inventoryId,
+  quantity,
+  reason = "other",
+  condition = "sellable",
+  notes = null,
+  idempotencyKey = null,
+}) => {
+  const vendor = await resolveApprovedVendor(userId);
+
+  if (!Number.isInteger(quantity) || quantity === 0) {
+    throw new AppError("Adjustment quantity must be a non-zero integer", 400, "INVALID_STOCK_ADJUSTMENT");
+  }
+
+  let resolvedInventoryId;
+  try {
+    resolvedInventoryId = decodeSecureId(inventoryId, "inventory");
+  } catch {
+    resolvedInventoryId = inventoryId;
+  }
+
+  if (!mongoose.isValidObjectId(resolvedInventoryId)) {
+    throw new AppError("Invalid inventory ID", 400, "INVALID_ID");
+  }
+
+  const inventory = await Inventory.findById(resolvedInventoryId);
+  if (!inventory) {
+    throw new AppError("Inventory record not found", 404, "INVENTORY_NOT_FOUND");
+  }
+
+  // Verify merchant owns this inventory item
+  const variant = await ProductVariant.findById(inventory.productVariantId).populate("productId");
+  if (!variant || variant.deletedAt) {
+    throw new AppError("Product variant not found", 404, "PRODUCT_VARIANT_NOT_FOUND");
+  }
+
+  const product = variant.productId;
+  if (!product || !product.vendorId || product.vendorId.toString() !== vendor._id.toString()) {
+    throw new AppError("You do not have access to this inventory item", 403, "INVENTORY_ACCESS_DENIED");
+  }
+
+  // Validate reason
+  const normalizedReason = String(reason || "other").toLowerCase().trim();
+  const validReason = VALID_ADJUSTMENT_REASONS.includes(normalizedReason) ? normalizedReason : "other";
+
+  const onHandBefore = inventory.onHand;
+  const reservedBefore = inventory.reserved;
+  const nonSellableBefore = (inventory.damaged || 0) + (inventory.defective || 0) + (inventory.expired || 0);
+
+  // Check invariants if reducing sellable stock
+  if (condition === "sellable" && quantity < 0) {
+    if (onHandBefore + quantity < reservedBefore + nonSellableBefore) {
+      throw new AppError(
+        `Adjustment would reduce on-hand stock below reserved (${reservedBefore}) and non-sellable (${nonSellableBefore}) stock. Max allowed reduction is ${onHandBefore - reservedBefore - nonSellableBefore}.`,
+        409,
+        "INVALID_STOCK_ADJUSTMENT"
+      );
+    }
+  }
+
+  return await withTransaction(async (session) => {
+    let updatedInventory;
+    let txType = "adjustment";
+
+    if (condition && ["damaged", "defective", "expired"].includes(condition)) {
+      txType = "condition_change";
+      const disposition = quantity > 0 ? "mark_condition" : "restore_condition";
+      updatedInventory = await inventoryRepository.adjustStockCondition(
+        resolvedInventoryId,
+        {
+          condition,
+          quantity: Math.abs(quantity),
+          disposition,
+        },
+        { session }
+      );
+
+      if (!updatedInventory) {
+        throw new AppError(
+          `Condition adjustment (${condition}) failed due to insufficient available or condition stock`,
+          409,
+          "INVALID_STOCK_CONDITION_ADJUSTMENT"
+        );
+      }
+    } else {
+      updatedInventory = await inventoryRepository.adjustStock(
+        resolvedInventoryId,
+        quantity,
+        { session }
+      );
+
+      if (!updatedInventory) {
+        throw new AppError(
+          "Stock adjustment would reduce on-hand stock below reserved and non-sellable stock",
+          409,
+          "INVALID_STOCK_ADJUSTMENT"
+        );
+      }
+    }
+
+    const onHandAfter = updatedInventory.onHand;
+    const reservedAfter = updatedInventory.reserved;
+
+    await inventoryTransactionService.createTransaction({
+      productVariantId: updatedInventory.productVariantId,
+      warehouseId: updatedInventory.warehouseId,
+      vendorId: vendor._id,
+      type: txType,
+      quantity,
+      onHandBefore,
+      onHandAfter,
+      reservedBefore,
+      reservedAfter,
+      referenceType: "manual_adjustment",
+      referenceId: resolvedInventoryId.toString(),
+      idempotencyKey,
+      actorUserId: vendor.userId,
+      notes: `[Reason: ${validReason}] ${notes?.trim() || "Merchant stock adjustment"}`,
+      session,
+    });
+
+    await syncVariantStockMirror(updatedInventory.productVariantId, session);
+
+    const nonSellableAfter = (updatedInventory.damaged || 0) + (updatedInventory.defective || 0) + (updatedInventory.expired || 0);
+    const availableAfter = Math.max(0, onHandAfter - reservedAfter - nonSellableAfter);
+    const threshold = updatedInventory.lowStockThreshold || 5;
+
+    // Trigger low stock alert if stock reached or dropped below threshold
+    if (availableAfter <= threshold && availableAfter > 0) {
+      try {
+        await CustomerNotification.create({
+          customerId: vendor.userId,
+          userId: vendor.userId,
+          title: `Low Stock Alert: ${variant.sku}`,
+          message: `Inventory for SKU ${variant.sku} at warehouse has dropped to ${availableAfter} units (reorder threshold: ${threshold}).`,
+          type: "system",
+          link: "/vendor/inventory",
+        });
+      } catch {
+        // non-blocking notification
+      }
+    } else if (availableAfter === 0) {
+      try {
+        await CustomerNotification.create({
+          customerId: vendor.userId,
+          userId: vendor.userId,
+          title: `Out of Stock Alert: ${variant.sku}`,
+          message: `Inventory for SKU ${variant.sku} at warehouse is now OUT OF STOCK.`,
+          type: "system",
+          link: "/vendor/inventory",
+        });
+      } catch {
+        // non-blocking notification
+      }
+    }
+
+    return {
+      inventory: updatedInventory,
+      beforeQuantity: onHandBefore,
+      adjustmentQuantity: quantity,
+      afterQuantity: onHandAfter,
+      reason: validReason,
+      notes: notes?.trim() || null,
+      timestamp: new Date(),
+    };
+  });
+};
+
+/**
+ * Retrieve consolidated, immutable stock movement history for the authenticated vendor.
+ */
+const getMyVendorMovementHistory = async ({
+  userId,
+  query = {},
+}) => {
+  const vendor = await resolveApprovedVendor(userId);
+
+  // Find all products and variants owned by this vendor
+  const products = await Product.find({ vendorId: vendor._id, deletedAt: null }).select("_id name title sku").lean();
+  const productIds = products.map((p) => p._id);
+  const productMap = new Map(products.map((p) => [p._id.toString(), p]));
+
+  const variants = await ProductVariant.find({ productId: { $in: productIds } })
+    .select("_id productId sku name image")
+    .lean();
+  const variantIds = variants.map((v) => v._id);
+  const variantMap = new Map(variants.map((v) => [v._id.toString(), v]));
+
+  const filter = {
+    $or: [{ vendorId: vendor._id }, { productVariantId: { $in: variantIds } }],
+  };
+
+  // Filter by movement type
+  if (query.type && query.type !== "all") {
+    filter.type = query.type;
+  }
+
+  // Filter by warehouse
+  if (query.warehouseId && query.warehouseId !== "all") {
+    let resolvedWhId;
+    try {
+      resolvedWhId = decodeSecureId(query.warehouseId, "warehouse");
+    } catch {
+      resolvedWhId = query.warehouseId;
+    }
+    if (mongoose.isValidObjectId(resolvedWhId)) {
+      filter.warehouseId = resolvedWhId;
+    }
+  }
+
+  // Filter by date range
+  if (query.startDate || query.endDate) {
+    filter.createdAt = {};
+    if (query.startDate) {
+      filter.createdAt.$gte = new Date(query.startDate);
+    }
+    if (query.endDate) {
+      const end = new Date(query.endDate);
+      end.setHours(23, 59, 59, 999);
+      filter.createdAt.$lte = end;
+    }
+  }
+
+  // Filter by search term
+  if (query.search && typeof query.search === "string" && query.search.trim().length > 0) {
+    const s = query.search.toLowerCase().trim();
+    const matchingVariantIds = variants
+      .filter((v) => v.sku.toLowerCase().includes(s) || (v.name && v.name.toLowerCase().includes(s)))
+      .map((v) => v._id);
+
+    filter.$and = [
+      { $or: [{ vendorId: vendor._id }, { productVariantId: { $in: variantIds } }] },
+      {
+        $or: [
+          { productVariantId: { $in: matchingVariantIds } },
+          { referenceId: { $regex: s, $options: "i" } },
+          { notes: { $regex: s, $options: "i" } },
+        ],
+      },
+    ];
+    delete filter.$or;
+  }
+
+  const safePage = Math.max(1, parseInt(query.page, 10) || 1);
+  const safeLimit = Math.min(100, Math.max(1, parseInt(query.limit, 10) || 20));
+  const skip = (safePage - 1) * safeLimit;
+
+  const [total, transactions] = await Promise.all([
+    InventoryTransaction.countDocuments(filter),
+    InventoryTransaction.find(filter)
+      .populate("productVariantId", "sku name image productId")
+      .populate("warehouseId", "name code address city state country")
+      .populate("actorUserId", "firstName lastName email role")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .lean(),
+  ]);
+
+  const items = transactions.map((tx) => {
+    const variant = tx.productVariantId;
+    const product = variant ? productMap.get(variant.productId?.toString()) : null;
+    const warehouse = tx.warehouseId;
+    const actor = tx.actorUserId;
+
+    return {
+      _id: tx._id,
+      secureId: encodeSecureId("transaction", tx._id),
+      date: tx.createdAt,
+      createdAt: tx.createdAt,
+      type: tx.type,
+      quantity: tx.quantity,
+      onHandBefore: tx.onHandBefore,
+      onHandAfter: tx.onHandAfter,
+      reservedBefore: tx.reservedBefore,
+      reservedAfter: tx.reservedAfter,
+      referenceType: tx.referenceType,
+      referenceId: tx.referenceId,
+      notes: tx.notes,
+      sku: variant?.sku || "N/A",
+      variantName: variant?.name || "Standard",
+      productName: product?.name || product?.title || "Product",
+      productId: product?._id || null,
+      warehouseName: warehouse?.name || "Warehouse",
+      warehouseCode: warehouse?.code || "N/A",
+      warehouseId: warehouse?._id || null,
+      initiatedBy: actor ? `${actor.firstName || ""} ${actor.lastName || ""}`.trim() : "System",
+      actorRole: actor?.role || "system",
+    };
+  });
+
+  return {
+    items,
+    pagination: {
+      total,
+      page: safePage,
+      limit: safeLimit,
+      totalPages: Math.ceil(total / safeLimit) || 1,
+    },
+  };
+};
+
+/**
+ * Configure merchant-specific reorder threshold and level for an inventory SKU.
+ */
+const updateVendorInventoryThreshold = async ({
+  userId,
+  inventoryId,
+  lowStockThreshold,
+  reorderLevel,
+}) => {
+  const vendor = await resolveApprovedVendor(userId);
+
+  let resolvedInventoryId;
+  try {
+    resolvedInventoryId = decodeSecureId(inventoryId, "inventory");
+  } catch {
+    resolvedInventoryId = inventoryId;
+  }
+
+  if (!mongoose.isValidObjectId(resolvedInventoryId)) {
+    throw new AppError("Invalid inventory ID", 400, "INVALID_ID");
+  }
+
+  const inventory = await Inventory.findById(resolvedInventoryId);
+  if (!inventory) {
+    throw new AppError("Inventory record not found", 404, "INVENTORY_NOT_FOUND");
+  }
+
+  // Ownership verification
+  const variant = await ProductVariant.findById(inventory.productVariantId).populate("productId");
+  if (!variant || variant.deletedAt) {
+    throw new AppError("Product variant not found", 404, "PRODUCT_VARIANT_NOT_FOUND");
+  }
+
+  const product = variant.productId;
+  if (!product || !product.vendorId || product.vendorId.toString() !== vendor._id.toString()) {
+    throw new AppError("You do not have access to this inventory item", 403, "INVENTORY_ACCESS_DENIED");
+  }
+
+  if (lowStockThreshold !== undefined) {
+    const thresh = parseInt(lowStockThreshold, 10);
+    if (!Number.isInteger(thresh) || thresh < 0) {
+      throw new AppError("Low stock threshold must be a non-negative integer", 400, "INVALID_THRESHOLD");
+    }
+    inventory.lowStockThreshold = thresh;
+  }
+
+  if (reorderLevel !== undefined) {
+    const reord = parseInt(reorderLevel, 10);
+    if (!Number.isInteger(reord) || reord < 0) {
+      throw new AppError("Reorder level must be a non-negative integer", 400, "INVALID_REORDER_LEVEL");
+    }
+    inventory.reorderLevel = reord;
+  }
+
+  await inventory.save();
+
+  return {
+    _id: inventory._id,
+    secureId: encodeSecureId("inventory", inventory._id),
+    lowStockThreshold: inventory.lowStockThreshold,
+    reorderLevel: inventory.reorderLevel || inventory.lowStockThreshold * 2,
+    onHand: inventory.onHand,
+    reserved: inventory.reserved,
+  };
+};
+
 module.exports = {
   createInventory,
   getInventoryById,
@@ -1237,4 +1627,7 @@ module.exports = {
   getInventorySummary,
   syncVariantStockMirror,
   calculateAuthoritativeStock,
+  adjustVendorStock,
+  getMyVendorMovementHistory,
+  updateVendorInventoryThreshold,
 };

@@ -157,6 +157,8 @@ const errorMiddleware = (err, req, res, next) => {
         method: req ? req.method : undefined,
         url: req ? req.originalUrl : undefined,
         statusCode,
+        code,
+        message,
       },
       "Application error"
     );

@@ -1091,38 +1091,40 @@ const getAdminSettlementById = async (settlementId) => {
 
 const getMyVendorSettlements = async ({ userId, query = {} }) => {
   const vendor = await resolveApprovedVendor(userId);
-  const settlements = await vendorSettlementRepository.findByVendorId(vendor._id);
 
-  const safePage = Math.max(Number(query.page) || 1, 1);
-  const safeLimit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
-  const skip = (safePage - 1) * safeLimit;
+  const paginatedResult = await vendorSettlementRepository.findPaginatedByVendor({
+    vendorId: vendor._id,
+    page: query.page,
+    limit: query.limit,
+    status: query.status,
+    startDate: query.startDate,
+    endDate: query.endDate,
+    search: query.search,
+  });
 
-  let filtered = settlements;
-  if (query.status) {
-    filtered = filtered.filter((s) => s.status === query.status);
-  }
-
-  const paginated = filtered.slice(skip, skip + safeLimit).map((s) => {
+  const serializedItems = paginatedResult.items.map((s) => {
     const obj = s.toObject ? s.toObject() : s;
     return {
       ...obj,
       secureId: encodeSecureId("settlement", obj._id),
-      grossSales: obj.grossSales?.toString(),
+      grossSales: obj.grossSales?.toString() || "0.00",
       platformSubsidy: obj.platformSubsidy?.toString() || "0.00",
-      discounts: obj.discounts?.toString(),
-      refunds: obj.refunds?.toString(),
-      platformCommission: obj.platformCommission?.toString(),
-      netPayable: obj.netPayable?.toString(),
+      discounts: obj.discounts?.toString() || "0.00",
+      refunds: obj.refunds?.toString() || "0.00",
+      platformCommission: obj.platformCommission?.toString() || "0.00",
+      netPayable: obj.netPayable?.toString() || "0.00",
     };
   });
 
   return {
-    items: paginated,
+    items: serializedItems,
+    summary: paginatedResult.summary,
     meta: {
-      page: safePage,
-      limit: safeLimit,
-      total: filtered.length,
-      totalPages: Math.ceil(filtered.length / safeLimit),
+      page: paginatedResult.page,
+      limit: paginatedResult.limit,
+      total: paginatedResult.total,
+      totalPages: paginatedResult.totalPages,
+      summary: paginatedResult.summary,
     },
   };
 };

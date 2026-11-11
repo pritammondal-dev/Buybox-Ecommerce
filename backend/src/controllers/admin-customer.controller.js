@@ -12,6 +12,11 @@ const CouponRedemption = require("../models/CouponRedemption");
 const AppError = require("../errors/AppError");
 const Cart = require("../models/Cart");
 const RefreshToken = require("../models/RefreshToken");
+const Otp = require("../models/Otp");
+const EmailVerificationToken = require("../models/EmailVerificationToken");
+const PasswordResetToken = require("../models/PasswordResetToken");
+const CustomerNotification = require("../models/CustomerNotification");
+const Wishlist = require("../models/Wishlist");
 const { hashPassword } = require("../utils/password");
 const { recordAuditLog } = require("../services/governance.service");
 
@@ -781,7 +786,8 @@ const resetCustomerPassword = async (req, res, next) => {
 };
 
 /**
- * Superadmin soft-deactivate customer account
+ * Permanently delete customer account and associated transient credentials/sessions
+ * Preserves historical orders, payments, refunds, and financial compliance records
  */
 const deleteCustomer = async (req, res, next) => {
   try {
@@ -802,36 +808,79 @@ const deleteCustomer = async (req, res, next) => {
       throw new AppError("Administrators cannot delete their own account", 400, "CANNOT_DELETE_SELF");
     }
 
-    if (user.role === "super_admin") {
+    if (user.role === "super_admin" || (user.roles || []).includes("super_admin")) {
       throw new AppError("Superadmin accounts cannot be deleted", 403, "CANNOT_DELETE_SUPERADMIN");
     }
 
-    if (user.role !== "customer") {
+    if (user.role !== "customer" && !(user.roles || []).includes("customer")) {
       throw new AppError("Customer not found", 404, "CUSTOMER_NOT_FOUND");
     }
 
-    if (user.deletedAt) {
-      throw new AppError("Customer account is already deactivated", 400, "ACCOUNT_ALREADY_DEACTIVATED");
+    const customerDoc = await Customer.findOne({ userId: user._id });
+
+    const beforeState = {
+      userId: user._id,
+      customerId: customerDoc?._id || null,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      isActive: user.isActive,
+      deletedAt: user.deletedAt || null,
+    };
+
+    const executeDeletion = async (session = null) => {
+      const opts = session ? { session } : {};
+      const userId = user._id;
+      const customerId = customerDoc?._id;
+
+      // 1. Permanently delete User document
+      await User.deleteOne({ _id: userId }, opts);
+
+      // 2. Permanently delete Customer profile(s)
+      await Customer.deleteMany({ userId }, opts);
+
+      // 3. Purge authentication, tokens & sessions
+      await Otp.deleteMany({ $or: [{ userId }, { email: user.email }] }, opts);
+      await RefreshToken.deleteMany({ userId }, opts);
+      await EmailVerificationToken.deleteMany({ userId }, opts);
+      await PasswordResetToken.deleteMany({ userId }, opts);
+
+      // 4. Purge shopping carts & notifications & wishlist & addresses
+      const cartOr = [{ customerId: userId }];
+      if (customerId) cartOr.push({ customerId });
+      await Cart.deleteMany({ $or: cartOr }, opts);
+
+      const notifOr = [{ userId }];
+      if (customerId) notifOr.push({ customerId });
+      await CustomerNotification.deleteMany({ $or: notifOr }, opts);
+
+      const wishOr = [{ customerId: userId }];
+      if (customerId) wishOr.push({ customerId });
+      await Wishlist.deleteMany({ $or: wishOr }, opts);
+
+      await Address.deleteMany({ userId }, opts);
+    };
+
+    let session = null;
+    try {
+      session = await mongoose.startSession();
+      session.startTransaction();
+      await executeDeletion(session);
+      await session.commitTransaction();
+    } catch (txnErr) {
+      if (session) {
+        await session.abortTransaction().catch(() => {});
+      }
+      if (txnErr?.message?.includes("replica set") || txnErr?.message?.includes("Transaction numbers")) {
+        await executeDeletion(null);
+      } else {
+        throw txnErr;
+      }
+    } finally {
+      if (session) {
+        await session.endSession().catch(() => {});
+      }
     }
-
-    const beforeState = { isActive: user.isActive, deletedAt: user.deletedAt || null };
-
-    user.isActive = false;
-    user.deletedAt = new Date();
-    user.authVersion = (user.authVersion || 0) + 1;
-    await user.save();
-
-    await Customer.updateOne(
-      { userId: user._id },
-      { $set: { isActive: false, deletedAt: user.deletedAt } }
-    );
-
-    await RefreshToken.updateMany(
-      { userId: user._id, revokedAt: null },
-      { $set: { revokedAt: new Date() } }
-    );
-
-    await Cart.deleteMany({ customerId: user._id }).catch(() => null);
 
     await recordAuditLog({
       actorId,
@@ -839,18 +888,25 @@ const deleteCustomer = async (req, res, next) => {
       action: "customer.deleted",
       entityType: "customer",
       beforeState,
-      afterState: { isActive: false, deletedAt: user.deletedAt, reason },
+      afterState: {
+        permanentlyDeleted: true,
+        email: user.email,
+        deletedAt: new Date(),
+        reason,
+      },
       reason,
       req,
-    });
+    }).catch(() => {});
 
     res.status(200).json({
       success: true,
-      message: "Customer account deactivated successfully",
+      message: "Customer account permanently deleted successfully",
       data: {
         id: user._id,
+        email: user.email,
+        permanentlyDeleted: true,
         isActive: false,
-        deletedAt: user.deletedAt,
+        deletedAt: new Date(),
       },
     });
   } catch (error) {

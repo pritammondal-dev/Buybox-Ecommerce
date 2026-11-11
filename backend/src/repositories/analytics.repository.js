@@ -115,12 +115,227 @@ class AnalyticsRepository {
         refundResult.length > 0 && refundResult[0].totalRefunds !== undefined
           ? refundResult[0].totalRefunds
           : 0;
+    } else {
+      authoritativeRefunds = await this.getVendorAuthoritativeRefunds({
+        startDate,
+        endDate,
+        vendorId: targetVendorId,
+      });
     }
 
     return {
       overview: overviewResult || null,
       authoritativeRefunds,
     };
+  }
+
+  /**
+   * Aggregates completed and processed refunds attributable to a specific vendor
+   * during the specified date range. Correctly attributes multi-vendor order refunds,
+   * item-level returns, and prevents double-counting between Refund & ReturnRequest records.
+   */
+  async getVendorAuthoritativeRefunds({ startDate, endDate, vendorId }) {
+    if (mongoose.connection && mongoose.connection.readyState !== 1) {
+      return 0;
+    }
+
+    const targetVendorId =
+      vendorId instanceof mongoose.Types.ObjectId
+        ? vendorId
+        : new mongoose.Types.ObjectId(vendorId);
+
+    // 1. Processed gateway refunds in date range
+    let processedRefunds = [];
+    try {
+      const refundQuery =
+        Refund && typeof Refund.find === "function"
+          ? Refund.find({
+              status: "processed",
+              createdAt: { $gte: startDate, $lte: endDate },
+            })
+          : null;
+
+      if (refundQuery) {
+        if (typeof refundQuery.lean === "function") {
+          processedRefunds = (await refundQuery.lean()) || [];
+        } else if (Array.isArray(refundQuery)) {
+          processedRefunds = refundQuery;
+        } else {
+          processedRefunds = (await refundQuery) || [];
+        }
+      }
+    } catch {
+      processedRefunds = [];
+    }
+
+    let totalVendorRefund = 0;
+    const handledRefundIds = new Set();
+    const handledReturnIds = new Set();
+    const handledOrderIds = new Set();
+
+    if (Array.isArray(processedRefunds) && processedRefunds.length > 0) {
+      const orderIds = processedRefunds.map((r) => r.orderId).filter(Boolean);
+      const refundIds = processedRefunds.map((r) => r._id);
+
+      let orders = [];
+      let returnRequests = [];
+
+      try {
+        const orderQuery =
+          Order && typeof Order.find === "function"
+            ? Order.find({
+                _id: { $in: orderIds },
+                "items.vendorId": targetVendorId,
+              })
+            : null;
+        if (orderQuery) {
+          if (typeof orderQuery.lean === "function") {
+            orders = (await orderQuery.lean()) || [];
+          } else if (Array.isArray(orderQuery)) {
+            orders = orderQuery;
+          } else {
+            orders = (await orderQuery) || [];
+          }
+        }
+      } catch {
+        orders = [];
+      }
+
+      try {
+        const returnQuery =
+          ReturnRequest && typeof ReturnRequest.find === "function"
+            ? ReturnRequest.find({
+                $or: [
+                  { refundId: { $in: refundIds } },
+                  { orderId: { $in: orderIds }, "items.vendorId": targetVendorId },
+                ],
+              })
+            : null;
+        if (returnQuery) {
+          if (typeof returnQuery.lean === "function") {
+            returnRequests = (await returnQuery.lean()) || [];
+          } else if (Array.isArray(returnQuery)) {
+            returnRequests = returnQuery;
+          } else {
+            returnRequests = (await returnQuery) || [];
+          }
+        }
+      } catch {
+        returnRequests = [];
+      }
+
+      const orderMap = new Map(orders.map((o) => [o._id.toString(), o]));
+      const returnByRefundId = new Map();
+      const returnByOrderId = new Map();
+      for (const ret of returnRequests) {
+        if (ret.refundId) {
+          returnByRefundId.set(ret.refundId.toString(), ret);
+        }
+        if (ret.orderId) {
+          returnByOrderId.set(ret.orderId.toString(), ret);
+        }
+      }
+
+      for (const refund of processedRefunds) {
+        const refundIdStr = refund._id.toString();
+        const orderIdStr = refund.orderId ? refund.orderId.toString() : null;
+        const order = orderIdStr ? orderMap.get(orderIdStr) : null;
+
+        if (!order) {
+          // Refund belongs to an order without targetVendorId items
+          continue;
+        }
+
+        handledRefundIds.add(refundIdStr);
+        if (orderIdStr) {
+          handledOrderIds.add(orderIdStr);
+        }
+        const refundAmount = Number(refund.amount?.toString() || 0);
+
+        const linkedReturn =
+          returnByRefundId.get(refundIdStr) ||
+          (orderIdStr ? returnByOrderId.get(orderIdStr) : null);
+
+        if (linkedReturn) {
+          handledReturnIds.add(linkedReturn._id.toString());
+          let vendorReturnSum = 0;
+          for (const item of (linkedReturn.items || [])) {
+            const itemVendorId = item.vendorId ? item.vendorId.toString() : null;
+            if (itemVendorId === targetVendorId.toString()) {
+              if (item.refundAmount !== undefined && item.refundAmount !== null) {
+                vendorReturnSum += Number(item.refundAmount.toString());
+              } else {
+                const price = Number(item.price?.toString() || item.itemPrice?.toString() || 0);
+                const qty = Number(item.quantity || 1);
+                const tax = Number(item.taxRefund?.toString() || 0);
+                const shipping = Number(item.shippingRefund?.toString() || 0);
+                vendorReturnSum += (price * qty) + tax + shipping;
+              }
+            }
+          }
+          totalVendorRefund += Math.min(vendorReturnSum, refundAmount);
+        } else {
+          // Direct order refund: attribute vendor proportional share
+          let vendorItemsTotal = 0;
+          let allItemsTotal = 0;
+
+          for (const item of (order.items || [])) {
+            const itemGross = Number(item.unitPrice?.toString() || 0) * Number(item.quantity || 1);
+            allItemsTotal += itemGross;
+            if (item.vendorId && item.vendorId.toString() === targetVendorId.toString()) {
+              vendorItemsTotal += itemGross;
+            }
+          }
+
+          if (allItemsTotal > 0 && vendorItemsTotal > 0) {
+            const vendorShareRatio = vendorItemsTotal / allItemsTotal;
+            const vendorRefundAmount = refundAmount * vendorShareRatio;
+            totalVendorRefund += Math.min(vendorRefundAmount, vendorItemsTotal);
+          }
+        }
+      }
+    }
+
+    // 2. Completed ReturnRequests in date range that were not already counted via Refund doc
+    const standaloneReturns = await ReturnRequest.find({
+      status: "refunded",
+      "items.vendorId": targetVendorId,
+      updatedAt: { $gte: startDate, $lte: endDate },
+    }).lean();
+
+    for (const ret of standaloneReturns) {
+      const retIdStr = ret._id.toString();
+      const refundIdStr = ret.refundId ? ret.refundId.toString() : null;
+      const orderIdStr = ret.orderId ? ret.orderId.toString() : null;
+
+      if (
+        handledReturnIds.has(retIdStr) ||
+        (refundIdStr && handledRefundIds.has(refundIdStr)) ||
+        (orderIdStr && handledOrderIds.has(orderIdStr))
+      ) {
+        continue;
+      }
+
+      let vendorReturnSum = 0;
+      for (const item of (ret.items || [])) {
+        const itemVendorId = item.vendorId ? item.vendorId.toString() : null;
+        if (itemVendorId === targetVendorId.toString()) {
+          if (item.refundAmount !== undefined && item.refundAmount !== null) {
+            vendorReturnSum += Number(item.refundAmount.toString());
+          } else {
+            const price = Number(item.price?.toString() || item.itemPrice?.toString() || 0);
+            const qty = Number(item.quantity || 1);
+            const tax = Number(item.taxRefund?.toString() || 0);
+            const shipping = Number(item.shippingRefund?.toString() || 0);
+            vendorReturnSum += (price * qty) + tax + shipping;
+          }
+        }
+      }
+
+      totalVendorRefund += vendorReturnSum;
+    }
+
+    return Math.round(totalVendorRefund * 100) / 100;
   }
 
   /**
@@ -383,6 +598,7 @@ class AnalyticsRepository {
 
     const baseMatch = {
       status: { $ne: "cancelled" },
+      cancellationStatus: { $ne: "completed" },
       paymentStatus: { $in: ["paid", "partially_refunded", "refunded"] },
       createdAt: { $gte: startDate, $lte: endDate },
       "items.vendorId": targetVendorId,
@@ -391,7 +607,12 @@ class AnalyticsRepository {
     const pipeline = [
       { $match: baseMatch },
       { $unwind: "$items" },
-      { $match: { "items.vendorId": targetVendorId } },
+      {
+        $match: {
+          "items.vendorId": targetVendorId,
+          "items.fulfillmentStatus": { $ne: "cancelled" },
+        },
+      },
     ];
 
     if (search && search.trim()) {
@@ -414,22 +635,97 @@ class AnalyticsRepository {
             sku: "$items.sku",
           },
           productId: { $first: "$items.productId" },
-          productVariantId: { $first: "$items.productVariantId" },
+          productVariantId: {
+            $first: {
+              $ifNull: ["$items.productVariantId", "$items.variantId"],
+            },
+          },
           productName: { $first: "$items.productName" },
           variantName: { $first: "$items.variantName" },
           sku: { $first: "$items.sku" },
-          unitsSold: { $sum: "$items.quantity" },
+          unitsSold: {
+            $sum: {
+              $convert: {
+                input: "$items.quantity",
+                to: "double",
+                onError: 0,
+                onNull: 0,
+              },
+            },
+          },
+          returnedUnits: {
+            $sum: {
+              $convert: {
+                input: "$items.returnedQuantity",
+                to: "double",
+                onError: 0,
+                onNull: 0,
+              },
+            },
+          },
           grossSales: {
-            $sum: { $multiply: ["$items.unitPrice", "$items.quantity"] },
+            $sum: {
+              $multiply: [
+                {
+                  $convert: {
+                    input: "$items.unitPrice",
+                    to: "double",
+                    onError: 0,
+                    onNull: 0,
+                  },
+                },
+                {
+                  $convert: {
+                    input: "$items.quantity",
+                    to: "double",
+                    onError: 0,
+                    onNull: 0,
+                  },
+                },
+              ],
+            },
           },
           discounts: {
-            $sum: { $ifNull: ["$items.discountTotal", 0] },
+            $sum: {
+              $convert: {
+                input: "$items.discountTotal",
+                to: "double",
+                onError: 0,
+                onNull: 0,
+              },
+            },
           },
           netSales: {
             $sum: {
               $subtract: [
-                { $multiply: ["$items.unitPrice", "$items.quantity"] },
-                { $ifNull: ["$items.discountTotal", 0] },
+                {
+                  $multiply: [
+                    {
+                      $convert: {
+                        input: "$items.unitPrice",
+                        to: "double",
+                        onError: 0,
+                        onNull: 0,
+                      },
+                    },
+                    {
+                      $convert: {
+                        input: "$items.quantity",
+                        to: "double",
+                        onError: 0,
+                        onNull: 0,
+                      },
+                    },
+                  ],
+                },
+                {
+                  $convert: {
+                    input: "$items.discountTotal",
+                    to: "double",
+                    onError: 0,
+                    onNull: 0,
+                  },
+                },
               ],
             },
           },
@@ -444,24 +740,106 @@ class AnalyticsRepository {
       {
         $lookup: {
           from: "inventories",
-          localField: "productVariantId",
-          foreignField: "productVariantId",
+          let: { pvId: "$productVariantId" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $ne: ["$$pvId", null] },
+                    { $eq: ["$productVariantId", "$$pvId"] },
+                  ],
+                },
+              },
+            },
+          ],
           as: "inventoryData",
         },
       },
       {
         $addFields: {
           currentStock: {
-            $ifNull: [{ $sum: "$inventoryData.onHand" }, 0],
+            $ifNull: [
+              {
+                $sum: {
+                  $map: {
+                    input: { $ifNull: ["$inventoryData", []] },
+                    as: "inv",
+                    in: {
+                      $convert: {
+                        input: "$$inv.onHand",
+                        to: "double",
+                        onError: 0,
+                        onNull: 0,
+                      },
+                    },
+                  },
+                },
+              },
+              0,
+            ],
           },
           availableStock: {
             $ifNull: [
               {
                 $sum: {
-                  $subtract: [
-                    "$inventoryData.onHand",
-                    { $ifNull: ["$inventoryData.reserved", 0] },
-                  ],
+                  $map: {
+                    input: { $ifNull: ["$inventoryData", []] },
+                    as: "inv",
+                    in: {
+                      $max: [
+                        0,
+                        {
+                          $subtract: [
+                            {
+                              $convert: {
+                                input: "$$inv.onHand",
+                                to: "double",
+                                onError: 0,
+                                onNull: 0,
+                              },
+                            },
+                            {
+                              $add: [
+                                {
+                                  $convert: {
+                                    input: "$$inv.reserved",
+                                    to: "double",
+                                    onError: 0,
+                                    onNull: 0,
+                                  },
+                                },
+                                {
+                                  $convert: {
+                                    input: "$$inv.damaged",
+                                    to: "double",
+                                    onError: 0,
+                                    onNull: 0,
+                                  },
+                                },
+                                {
+                                  $convert: {
+                                    input: "$$inv.defective",
+                                    to: "double",
+                                    onError: 0,
+                                    onNull: 0,
+                                  },
+                                },
+                                {
+                                  $convert: {
+                                    input: "$$inv.expired",
+                                    to: "double",
+                                    onError: 0,
+                                    onNull: 0,
+                                  },
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  },
                 },
               },
               0,
@@ -477,6 +855,8 @@ class AnalyticsRepository {
     if (sortBy === "grossSales") sortStage = { grossSales: dir, _id: 1 };
     else if (sortBy === "netSales") sortStage = { netSales: dir, _id: 1 };
     else if (sortBy === "productName") sortStage = { productName: dir, _id: 1 };
+    else if (sortBy === "currentStock" || sortBy === "totalStockOnHand") sortStage = { currentStock: dir, _id: 1 };
+    else if (sortBy === "availableStock" || sortBy === "totalAvailableStock") sortStage = { availableStock: dir, _id: 1 };
 
     const safePage = Math.max(Number(page) || 1, 1);
     const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);

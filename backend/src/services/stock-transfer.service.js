@@ -3,9 +3,12 @@ const crypto = require("crypto");
 const StockTransfer = require("../models/StockTransfer");
 const Warehouse = require("../models/Warehouse");
 const ProductVariant = require("../models/ProductVariant");
+const Product = require("../models/Product");
 const Inventory = require("../models/Inventory");
+const Vendor = require("../models/Vendor");
 const inventoryTransactionService = require("./inventory-transaction.service");
 const { syncVariantStockMirror } = require("./inventory.service");
+const { resolveApprovedVendor } = require("../middlewares/vendor.middleware");
 const withTransaction = require("../utils/withTransaction");
 const AppError = require("../errors/AppError");
 
@@ -223,6 +226,7 @@ const dispatchTransfer = async (idOrObj, maybeOptions = {}, maybeActor) => {
       await inventoryTransactionService.createTransaction({
         productVariantId: item.productVariantId,
         warehouseId: sourceWarehouseId,
+        vendorId: transfer.vendorId || null,
         type: "transfer",
         quantity: -item.requestedQuantity,
         onHandBefore,
@@ -356,6 +360,7 @@ const receiveTransfer = async (idOrObj, maybeOptions = {}, maybeActor) => {
         await inventoryTransactionService.createTransaction({
           productVariantId: item.productVariantId,
           warehouseId: destinationWarehouseId,
+          vendorId: transfer.vendorId || null,
           type: "transfer",
           quantity: acceptedQty,
           onHandBefore,
@@ -374,12 +379,12 @@ const receiveTransfer = async (idOrObj, maybeOptions = {}, maybeActor) => {
 
       item.receivedQuantity = (item.receivedQuantity || 0) + acceptedQty;
       item.rejectedQuantity = (item.rejectedQuantity || 0) + rejectedQty;
-      item.discrepancyQuantity = item.dispatchedQuantity - (item.receivedQuantity + item.rejectedQuantity);
+      item.discrepancyQuantity = Math.max(0, item.dispatchedQuantity - item.receivedQuantity);
       if (discrepancyReason) {
         item.discrepancyReason = discrepancyReason;
       }
 
-      if (item.receivedQuantity + item.rejectedQuantity < item.dispatchedQuantity) {
+      if (item.receivedQuantity < item.dispatchedQuantity) {
         allItemsFullyReceived = false;
       }
     }
@@ -506,6 +511,313 @@ const listTransfers = async ({ warehouseId, status, page = 1, limit = 20 } = {})
   };
 };
 
+/**
+ * ============================================================
+ * VENDOR-SPECIFIC WAREHOUSE STOCK TRANSFER METHODS
+ * ============================================================
+ */
+
+/**
+ * Create a vendor inter-warehouse stock transfer with strict variant ownership & stock checks.
+ */
+const createVendorTransfer = async ({
+  userId,
+  sourceWarehouseId,
+  destinationWarehouseId,
+  items,
+  notes,
+  idempotencyKey = null,
+}) => {
+  const vendor = await resolveApprovedVendor(userId);
+
+  if (!mongoose.isValidObjectId(sourceWarehouseId) || !mongoose.isValidObjectId(destinationWarehouseId)) {
+    throw new AppError("Invalid warehouse IDs", 400, "INVALID_WAREHOUSE_ID");
+  }
+
+  if (sourceWarehouseId.toString() === destinationWarehouseId.toString()) {
+    throw new AppError("Source and destination warehouses cannot be the same", 400, "SAME_WAREHOUSE_TRANSFER");
+  }
+
+  const [sourceWarehouse, destWarehouse] = await Promise.all([
+    Warehouse.findById(sourceWarehouseId),
+    Warehouse.findById(destinationWarehouseId),
+  ]);
+
+  if (!sourceWarehouse || !sourceWarehouse.isActive || sourceWarehouse.deletedAt) {
+    throw new AppError("Source fulfillment center not found or inactive", 404, "SOURCE_WAREHOUSE_NOT_FOUND");
+  }
+
+  if (!destWarehouse || !destWarehouse.isActive || destWarehouse.deletedAt) {
+    throw new AppError("Destination fulfillment center not found or inactive", 404, "DEST_WAREHOUSE_NOT_FOUND");
+  }
+
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new AppError("Transfer items must not be empty", 400, "EMPTY_TRANSFER_ITEMS");
+  }
+
+  // Idempotency check
+  if (idempotencyKey) {
+    const existing = await StockTransfer.findOne({
+      vendorId: vendor._id,
+      idempotencyKey,
+    });
+    if (existing) {
+      return existing;
+    }
+  }
+
+  const processedItems = [];
+  for (const item of items) {
+    if (!mongoose.isValidObjectId(item.productVariantId)) {
+      throw new AppError(`Invalid product variant ID: ${item.productVariantId}`, 400, "INVALID_VARIANT_ID");
+    }
+
+    const variant = await ProductVariant.findById(item.productVariantId).populate("productId");
+    if (!variant || variant.deletedAt) {
+      throw new AppError(`Product variant not found: ${item.productVariantId}`, 404, "VARIANT_NOT_FOUND");
+    }
+
+    // Strict Tenant Isolation: Ensure product belongs to authenticated merchant
+    const product = variant.productId;
+    if (!product || !product.vendorId || product.vendorId.toString() !== vendor._id.toString()) {
+      throw new AppError(
+        `Variant ${variant.sku} does not belong to your merchant account`,
+        403,
+        "VARIANT_ACCESS_DENIED"
+      );
+    }
+
+    const qty = Number(item.requestedQuantity ?? item.quantityRequested ?? item.quantity ?? 0);
+    if (!Number.isInteger(qty) || qty <= 0) {
+      throw new AppError("Transfer requested quantity must be a positive integer", 400, "INVALID_QUANTITY");
+    }
+
+    // Check available stock at source warehouse
+    const sourceInv = await Inventory.findOne({
+      productVariantId: variant._id,
+      warehouseId: sourceWarehouseId,
+    });
+
+    const nonSellable = (sourceInv?.damaged || 0) + (sourceInv?.defective || 0) + (sourceInv?.expired || 0);
+    const available = Math.max((sourceInv?.onHand || 0) - (sourceInv?.reserved || 0) - nonSellable, 0);
+
+    if (available < qty) {
+      throw new AppError(
+        `Insufficient available stock for SKU ${variant.sku} at source warehouse. Available: ${available}, Requested: ${qty}`,
+        409,
+        "INSUFFICIENT_STOCK_FOR_TRANSFER"
+      );
+    }
+
+    processedItems.push({
+      productVariantId: variant._id,
+      sku: variant.sku,
+      productName: product.name || product.title || variant.name || "Product",
+      requestedQuantity: qty,
+      dispatchedQuantity: 0,
+      receivedQuantity: 0,
+      rejectedQuantity: 0,
+      discrepancyQuantity: 0,
+    });
+  }
+
+  const transferNumber = generateTransferNumber();
+  const transfer = await StockTransfer.create({
+    transferNumber,
+    sourceWarehouseId,
+    destinationWarehouseId,
+    vendorId: vendor._id,
+    status: "approved", // Vendor requests are pre-authorized for their own stock
+    items: processedItems,
+    notes: notes?.trim() || null,
+    idempotencyKey: idempotencyKey || null,
+    createdBy: vendor.userId,
+    approvedBy: vendor.userId,
+    approvedAt: new Date(),
+  });
+
+  return transfer;
+};
+
+/**
+ * Dispatch a vendor transfer: deducts stock from source warehouse and marks in-transit.
+ */
+const dispatchVendorTransfer = async ({
+  userId,
+  id,
+  trackingReference,
+  carrierName,
+  idempotencyKey = null,
+}) => {
+  const vendor = await resolveApprovedVendor(userId);
+
+  if (!mongoose.isValidObjectId(id)) {
+    throw new AppError("Invalid transfer ID", 400, "INVALID_ID");
+  }
+
+  const transfer = await StockTransfer.findOne({ _id: id, vendorId: vendor._id });
+  if (!transfer) {
+    throw new AppError("Stock transfer not found", 404, "TRANSFER_NOT_FOUND");
+  }
+
+  return dispatchTransfer(
+    transfer._id,
+    {
+      trackingReference: trackingReference?.trim() || null,
+      carrierName: carrierName?.trim() || null,
+      idempotencyKey,
+    },
+    { _id: vendor.userId }
+  );
+};
+
+/**
+ * Receive a vendor transfer at destination warehouse.
+ */
+const receiveVendorTransfer = async ({
+  userId,
+  id,
+  receivedItems = [],
+  notes = null,
+  idempotencyKey = null,
+}) => {
+  const vendor = await resolveApprovedVendor(userId);
+
+  if (!mongoose.isValidObjectId(id)) {
+    throw new AppError("Invalid transfer ID", 400, "INVALID_ID");
+  }
+
+  const transfer = await StockTransfer.findOne({ _id: id, vendorId: vendor._id });
+  if (!transfer) {
+    throw new AppError("Stock transfer not found", 404, "TRANSFER_NOT_FOUND");
+  }
+
+  return receiveTransfer(
+    transfer._id,
+    {
+      receivedItems,
+      notes: notes?.trim() || null,
+      idempotencyKey,
+    },
+    { _id: vendor.userId }
+  );
+};
+
+/**
+ * Cancel a transfer before it is dispatched.
+ */
+const cancelVendorTransfer = async ({
+  userId,
+  id,
+  reason = "Cancelled by merchant",
+}) => {
+  const vendor = await resolveApprovedVendor(userId);
+
+  if (!mongoose.isValidObjectId(id)) {
+    throw new AppError("Invalid transfer ID", 400, "INVALID_ID");
+  }
+
+  const transfer = await StockTransfer.findOne({ _id: id, vendorId: vendor._id });
+  if (!transfer) {
+    throw new AppError("Stock transfer not found", 404, "TRANSFER_NOT_FOUND");
+  }
+
+  return cancelTransfer(transfer._id, reason, { _id: vendor.userId });
+};
+
+/**
+ * List stock transfers strictly partitioned to authenticated vendor.
+ */
+const listVendorTransfers = async ({
+  userId,
+  warehouseId,
+  status,
+  search,
+  page = 1,
+  limit = 20,
+}) => {
+  const vendor = await resolveApprovedVendor(userId);
+
+  const query = { vendorId: vendor._id };
+
+  if (warehouseId && mongoose.isValidObjectId(warehouseId)) {
+    query.$or = [{ sourceWarehouseId: warehouseId }, { destinationWarehouseId: warehouseId }];
+  }
+  if (status && status !== "all") {
+    query.status = status;
+  }
+  if (search && typeof search === "string" && search.trim().length > 0) {
+    const s = search.trim();
+    const searchMatch = [
+      { transferNumber: { $regex: s, $options: "i" } },
+      { carrierName: { $regex: s, $options: "i" } },
+      { trackingReference: { $regex: s, $options: "i" } },
+      { "items.sku": { $regex: s, $options: "i" } },
+      { "items.productName": { $regex: s, $options: "i" } },
+    ];
+    if (query.$or) {
+      query.$and = [{ $or: query.$or }, { $or: searchMatch }];
+      delete query.$or;
+    } else {
+      query.$or = searchMatch;
+    }
+  }
+
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+  const skip = (pageNum - 1) * limitNum;
+
+  const [total, items] = await Promise.all([
+    StockTransfer.countDocuments(query),
+    StockTransfer.find(query)
+      .populate("sourceWarehouseId", "name code address city state country")
+      .populate("destinationWarehouseId", "name code address city state country")
+      .populate("createdBy", "firstName lastName email")
+      .populate("dispatchedBy", "firstName lastName email")
+      .populate("receivedBy", "firstName lastName email")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean(),
+  ]);
+
+  return {
+    items,
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum) || 1,
+    },
+  };
+};
+
+/**
+ * Get transfer record details ensuring vendor ownership.
+ */
+const getVendorTransferRecord = async ({ userId, id }) => {
+  const vendor = await resolveApprovedVendor(userId);
+
+  if (!mongoose.isValidObjectId(id)) {
+    throw new AppError("Invalid transfer ID", 400, "INVALID_ID");
+  }
+
+  const transfer = await StockTransfer.findOne({ _id: id, vendorId: vendor._id })
+    .populate("sourceWarehouseId", "name code address city state country contactPhone contactEmail")
+    .populate("destinationWarehouseId", "name code address city state country contactPhone contactEmail")
+    .populate("createdBy", "firstName lastName email")
+    .populate("approvedBy", "firstName lastName email")
+    .populate("dispatchedBy", "firstName lastName email")
+    .populate("receivedBy", "firstName lastName email")
+    .lean();
+
+  if (!transfer) {
+    throw new AppError("Stock transfer not found", 404, "TRANSFER_NOT_FOUND");
+  }
+
+  return transfer;
+};
+
 module.exports = {
   createTransfer,
   approveTransfer,
@@ -514,4 +826,10 @@ module.exports = {
   cancelTransfer,
   getTransferRecord,
   listTransfers,
+  createVendorTransfer,
+  dispatchVendorTransfer,
+  receiveVendorTransfer,
+  cancelVendorTransfer,
+  listVendorTransfers,
+  getVendorTransferRecord,
 };

@@ -68,15 +68,26 @@ const returnItemSchema = new mongoose.Schema(
       type: String,
       required: true,
       enum: [
-        "defective",
+        "damaged_item",
+        "defective_product",
         "wrong_item",
+        "missing_parts",
         "not_as_described",
-        "damaged_packaging",
-        "size_fit_issue",
         "quality_issue",
+        "size_fit_issue",
         "changed_mind",
         "other",
+        // Backward compatibility & legacy aliases
+        "defective",
+        "damaged_packaging",
+        "buyer_remorse",
       ],
+    },
+    customerComments: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+      default: null,
     },
     condition: {
       type: String,
@@ -128,6 +139,12 @@ const returnRequestSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",
       required: true,
+      index: true,
+    },
+    vendorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Vendor",
+      default: null,
       index: true,
     },
     vendorIds: [
@@ -271,6 +288,17 @@ const returnRequestSchema = new mongoose.Schema(
       maxlength: 1000,
       default: null,
     },
+    customerComments: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+      default: null,
+    },
+    reason: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     refundAmount: {
       type: mongoose.Schema.Types.Decimal128,
       default: null,
@@ -287,6 +315,10 @@ const returnRequestSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Decimal128,
       default: 0,
     },
+    previouslyRefundedTotal: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: 0,
+    },
     discountDeductedTotal: {
       type: mongoose.Schema.Types.Decimal128,
       default: 0,
@@ -299,6 +331,28 @@ const returnRequestSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Refund",
       default: null,
+    },
+    gatewayRefundId: {
+      type: String,
+      default: null,
+      trim: true,
+      index: true,
+    },
+    arn: {
+      type: String,
+      default: null,
+      trim: true,
+      index: true,
+    },
+    refundProcessedAt: {
+      type: Date,
+      default: null,
+    },
+    refundApplicationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "RefundApplication",
+      default: null,
+      index: true,
     },
     creditNote: {
       creditNoteNumber: { type: String, default: null, trim: true },
@@ -343,13 +397,65 @@ const returnRequestSchema = new mongoose.Schema(
       },
       outcome: {
         type: String,
-        enum: ["resellable", "damaged", "defective", "missing_parts", "not_restockable", null],
         default: null,
       },
+      status: {
+        type: String,
+        enum: ["pending", "passed", "failed", "partially_passed"],
+        default: "pending",
+      },
+      receivedCondition: {
+        type: String,
+        default: null,
+      },
+      packagingCondition: {
+        type: String,
+        default: null,
+      },
+      productCondition: {
+        type: String,
+        default: null,
+      },
+      missingAccessories: {
+        type: Boolean,
+        default: false,
+      },
+      missingAccessoriesNotes: {
+        type: String,
+        default: null,
+      },
+      photos: [
+        {
+          url: { type: String, required: true },
+          publicId: { type: String, default: null },
+          caption: { type: String, default: null },
+          uploadedAt: { type: Date, default: Date.now },
+        },
+      ],
       notes: {
         type: String,
         default: null,
       },
+      deductionAmount: {
+        type: mongoose.Schema.Types.Decimal128,
+        default: 0,
+      },
+      deductionReason: {
+        type: String,
+        default: null,
+      },
+      deductionCategory: {
+        type: String,
+        default: null,
+      },
+      restocked: {
+        type: Boolean,
+        default: false,
+      },
+    },
+    merchantInspection: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
     },
     timeline: [
       {

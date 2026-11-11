@@ -170,16 +170,160 @@ export const vendorService = {
     return vendorApiClient.get("/inventory/vendor/my", { params });
   },
 
-  async adjustInventory(id, { quantity, notes = null }) {
-    return vendorApiClient.patch(`/inventory/${id}/adjust`, { quantity, notes });
+  async adjustInventory(id, { quantity, reason = "other", condition = "sellable", notes = null, idempotencyKey = null }) {
+    return vendorApiClient.patch(`/inventory/vendor/my/${id}/adjust`, {
+      quantity,
+      reason,
+      condition,
+      notes,
+      idempotencyKey,
+    });
+  },
+
+  async updateInventoryThreshold(id, { lowStockThreshold, reorderLevel }) {
+    return vendorApiClient.patch(`/inventory/vendor/my/${id}/threshold`, {
+      lowStockThreshold,
+      reorderLevel,
+    });
   },
 
   async getMyWarehouses() {
     return vendorApiClient.get("/warehouses/vendor/my");
   },
 
-  async getMyWarehouseById(id) {
-    return vendorApiClient.get(`/warehouses/vendor/my/${id}`);
+  async getMyWarehouseById(id, params = {}) {
+    return vendorApiClient.get(`/warehouses/vendor/my/${id}`, { params });
+  },
+
+  // Inbound Stock Receiving
+  async getStockReceivingRecords(params = {}) {
+    return vendorApiClient.get("/inventory/vendor/receiving", { params });
+  },
+
+  async getStockReceivingById(id) {
+    return vendorApiClient.get(`/inventory/vendor/receiving/${id}`);
+  },
+
+  async createStockReceiving(data) {
+    return vendorApiClient.post("/inventory/vendor/receiving", data);
+  },
+
+  async confirmStockReceiving(id, data = {}) {
+    return vendorApiClient.post(`/inventory/vendor/receiving/${id}/confirm`, data);
+  },
+
+  async cancelStockReceiving(id, data = {}) {
+    return vendorApiClient.post(`/inventory/vendor/receiving/${id}/cancel`, data);
+  },
+
+  // Inter-Warehouse Stock Transfers
+  async getStockTransfers(params = {}) {
+    return vendorApiClient.get("/inventory/vendor/transfers", { params });
+  },
+
+  async getStockTransferById(id) {
+    return vendorApiClient.get(`/inventory/vendor/transfers/${id}`);
+  },
+
+  async createStockTransfer(data) {
+    return vendorApiClient.post("/inventory/vendor/transfers", data);
+  },
+
+  async dispatchStockTransfer(id, data = {}) {
+    return vendorApiClient.post(`/inventory/vendor/transfers/${id}/dispatch`, data);
+  },
+
+  async receiveStockTransfer(id, data = {}) {
+    return vendorApiClient.post(`/inventory/vendor/transfers/${id}/receive`, data);
+  },
+
+  async cancelStockTransfer(id, data = {}) {
+    return vendorApiClient.post(`/inventory/vendor/transfers/${id}/cancel`, data);
+  },
+
+  // Consolidated Stock Movement History
+  async getStockMovements(params = {}) {
+    return vendorApiClient.get("/inventory/vendor/movements", { params });
+  },
+
+  // Stock Counting & Cycle Audit Reconciliation
+  async getStockCounts(params = {}) {
+    return vendorApiClient.get("/inventory/vendor/counts", { params });
+  },
+
+  async getStockCountById(id) {
+    return vendorApiClient.get(`/inventory/vendor/counts/${id}`);
+  },
+
+  async createStockCount(data) {
+    return vendorApiClient.post("/inventory/vendor/counts", data);
+  },
+
+  async recordPhysicalCounts(id, data) {
+    return vendorApiClient.post(`/inventory/vendor/counts/${id}/record`, data);
+  },
+
+  async submitStockCount(id, data = {}) {
+    return vendorApiClient.post(`/inventory/vendor/counts/${id}/submit`, data);
+  },
+
+  async requestRecount(id, data = {}) {
+    return vendorApiClient.post(`/inventory/vendor/counts/${id}/recount`, data);
+  },
+
+  async approveStockCount(id, data = {}) {
+    return vendorApiClient.post(`/inventory/vendor/counts/${id}/approve`, data);
+  },
+
+  async rejectStockCount(id, data = {}) {
+    return vendorApiClient.post(`/inventory/vendor/counts/${id}/reject`, data);
+  },
+
+  async reconcileStockCount(id, data = {}) {
+    return vendorApiClient.post(`/inventory/vendor/counts/${id}/reconcile`, data);
+  },
+
+  async cancelStockCount(id, data = {}) {
+    return vendorApiClient.post(`/inventory/vendor/counts/${id}/cancel`, data);
+  },
+
+  async exportStockCount(id, params = {}) {
+    return vendorApiClient.get(`/inventory/vendor/counts/${id}/export`, { params, responseType: "blob" });
+  },
+
+  // 4B. Warehouse Analytics, Intelligence, Aging & Turnover
+  async getWarehouseAnalyticsOverview(params = {}) {
+    const res = await vendorApiClient.get("/inventory/vendor/analytics/overview", { params });
+    return res?.data?.data || res?.data || res;
+  },
+
+  async getWarehouseMovementAnalytics(params = {}) {
+    const res = await vendorApiClient.get("/inventory/vendor/analytics/movements", { params });
+    return res?.data?.data || res?.data || res;
+  },
+
+  async getWarehouseInventoryAging(params = {}) {
+    const res = await vendorApiClient.get("/inventory/vendor/analytics/aging", { params });
+    return res?.data?.data || res?.data || res;
+  },
+
+  async getWarehouseInventoryTurnover(params = {}) {
+    const res = await vendorApiClient.get("/inventory/vendor/analytics/turnover", { params });
+    return res?.data?.data || res?.data || res;
+  },
+
+  async getWarehouseReplenishmentIntelligence(params = {}) {
+    const res = await vendorApiClient.get("/inventory/vendor/analytics/replenishment", { params });
+    return res?.data?.data || res?.data || res;
+  },
+
+  async getWarehouseOperationsPerformance(params = {}) {
+    const res = await vendorApiClient.get("/inventory/vendor/analytics/operations", { params });
+    return res?.data?.data || res?.data || res;
+  },
+
+  async exportWarehouseAnalytics(params = {}) {
+    return vendorApiClient.get("/inventory/vendor/analytics/export", { params, responseType: "blob" });
   },
 
   // 5. Orders & Fulfillment
@@ -324,8 +468,16 @@ export const vendorService = {
     return vendorApiClient.post(`/vendors/me/returns/${returnId}/receive`, data);
   },
 
-  async refundReturn(returnId, notes = null) {
-    return vendorApiClient.post(`/vendors/me/returns/${returnId}/refund`, { notes });
+  async submitRefundApplication(returnId, data = {}) {
+    return vendorApiClient.post(`/vendors/me/returns/${returnId}/refund-application`, data);
+  },
+
+  async resubmitRefundApplication(returnId, data = {}) {
+    return vendorApiClient.post(`/vendors/me/returns/${returnId}/resubmit-refund-application`, data);
+  },
+
+  async getRefundApplication(returnId) {
+    return vendorApiClient.get(`/vendors/me/returns/${returnId}/refund-application`);
   },
 
   async inspectReturn(returnId, data = {}) {
@@ -346,6 +498,11 @@ export const vendorService = {
 
   async cancelReturn(returnId, data = {}) {
     return vendorApiClient.post(`/vendors/me/returns/${returnId}/cancel`, data);
+  },
+
+  // Direct refund is disallowed by governance; calling this triggers the backend 403 guard.
+  async refundReturn(returnId, data = {}) {
+    return vendorApiClient.post(`/vendors/me/returns/${returnId}/refund`, data);
   },
 
   // 8. Finance & Settlements

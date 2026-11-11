@@ -97,14 +97,24 @@ const stockTransferSchema = new mongoose.Schema(
       index: true,
     },
 
+    vendorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Vendor",
+      default: null,
+      index: true,
+    },
+
     status: {
       type: String,
       enum: [
         "draft",
+        "pending",
         "approved",
         "dispatched",
+        "in_transit",
         "partially_received",
         "received",
+        "rejected",
         "cancelled",
       ],
       default: "draft",
@@ -231,5 +241,7 @@ stockTransferSchema.virtual("requestedByUserId", {
 stockTransferSchema.index({ sourceWarehouseId: 1, status: 1 });
 stockTransferSchema.index({ destinationWarehouseId: 1, status: 1 });
 stockTransferSchema.index({ status: 1, createdAt: -1 });
+stockTransferSchema.index({ vendorId: 1, status: 1, createdAt: -1 });
+stockTransferSchema.index({ vendorId: 1, status: 1, dispatchedAt: -1 });
 
 module.exports = mongoose.model("StockTransfer", stockTransferSchema);

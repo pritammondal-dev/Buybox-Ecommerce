@@ -140,14 +140,17 @@ describe("Phase E7A — End-to-End Role & Permission Acceptance Audit Suite", ()
       await JobRole.deleteMany({ slug: /e7a-role-/ });
 
       // 1. Superadmin User
-      superAdminUser = await User.create({
-        firstName: "Platform",
-        lastName: "Superadmin",
-        email: `superadmin_${Date.now()}@test-e7a-auth.com`,
-        password: "SuperSecretPassword123!",
-        role: ROLES.SUPER_ADMIN,
-        isActive: true,
-      });
+      superAdminUser = await User.findOne({ role: ROLES.SUPER_ADMIN, isActive: true });
+      if (!superAdminUser) {
+        superAdminUser = await User.create({
+          firstName: "Platform",
+          lastName: "Superadmin",
+          email: `superadmin_${Date.now()}@test-e7a-auth.com`,
+          password: "SuperSecretPassword123!",
+          role: ROLES.SUPER_ADMIN,
+          isActive: true,
+        });
+      }
 
       // 2. Event Specialist User (Only cms.events.manage)
       eventSpecialistUser = await User.create({
@@ -328,14 +331,17 @@ describe("Phase E7A — End-to-End Role & Permission Acceptance Audit Suite", ()
       await EmployeePermissionGrant.deleteMany({});
       await EmployeePermissionRestriction.deleteMany({});
 
-      superAdminActor = await User.create({
-        firstName: "Super",
-        lastName: "Actor",
-        email: `sa_actor_${Date.now()}@test-e7a-prec.com`,
-        password: "SecretPassword123!",
-        role: ROLES.SUPER_ADMIN,
-        isActive: true,
-      });
+      superAdminActor = await User.findOne({ role: ROLES.SUPER_ADMIN, isActive: true });
+      if (!superAdminActor) {
+        superAdminActor = await User.create({
+          firstName: "Super",
+          lastName: "Actor",
+          email: `sa_actor_${Date.now()}@test-e7a-prec.com`,
+          password: "SecretPassword123!",
+          role: ROLES.SUPER_ADMIN,
+          isActive: true,
+        });
+      }
 
       // Role granting inventory.view, inventory.manage, warehouses.view
       baseJobRole = await JobRole.create({

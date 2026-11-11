@@ -164,6 +164,12 @@ const SECTION5_PERMISSIONS = {
   REFUNDS_VIEW: "refunds.view",
   REFUNDS_CREATE: "refunds.create",
   REFUNDS_APPROVE: "refunds.approve",
+  REFUND_APPLICATIONS_VIEW: "refund_applications.view",
+  REFUND_APPLICATIONS_REVIEW: "refund_applications.review",
+  REFUND_APPLICATIONS_APPROVE: "refund_applications.approve",
+  REFUND_APPLICATIONS_REJECT: "refund_applications.reject",
+  REFUND_APPLICATIONS_REVISE: "refund_applications.revise",
+  REFUND_DISBURSEMENT_INITIATE: "refund_disbursements.initiate",
 
   PAYMENTS_VIEW: "payments.view",
   PAYMENTS_RECONCILE: "payments.reconcile",
@@ -171,6 +177,9 @@ const SECTION5_PERMISSIONS = {
 
   SETTLEMENTS_VIEW: "settlements.view",
   SETTLEMENTS_MANAGE: "settlements.manage",
+
+  FINANCE_VIEW: "finance.view",
+  FINANCE_MANAGE_SEC5: "finance.manage",
 
   SHIPPING_VIEW: "shipping.view",
   SHIPPING_MANAGE: "shipping.manage",
@@ -341,11 +350,19 @@ const ALIAS_MAP = {
   "refunds.view": ["finance:read"],
   "refunds.create": ["finance:manage"],
   "refunds.approve": ["finance:manage"],
+  "refund_applications.view": ["refunds.view", "finance:read"],
+  "refund_applications.review": ["refunds.approve"],
+  "refund_applications.approve": ["refunds.approve"],
+  "refund_applications.reject": ["refunds.approve"],
+  "refund_applications.revise": ["refunds.approve"],
+  "refund_disbursements.initiate": ["refunds.create"],
   "payments.view": ["payments:read"],
   "payments.reconcile": ["payments:manage"],
   "payments.manage": ["payments:manage"],
   "settlements.view": ["finance:read"],
   "settlements.manage": ["finance:manage"],
+  "finance.view": ["finance:read", "settlements.view"],
+  "finance.manage": ["finance:manage", "settlements.manage"],
   "shipping.view": ["shipments:read"],
   "shipping.manage": ["shipments:manage"],
   "campaigns.view": ["campaigns:read"],
@@ -462,8 +479,9 @@ const ALIAS_MAP = {
   ],
   "payments:read": ["payments.view"],
   "payments:manage": ["payments.manage", "payments.reconcile"],
-  "finance:read": ["settlements.view", "partner_banks.view"],
+  "finance:read": ["finance.view", "settlements.view", "partner_banks.view"],
   "finance:manage": [
+    "finance.manage",
     "settlements.manage",
     "vendors.bank_accounts.view",
     "vendors.bank_accounts.review",
@@ -683,6 +701,12 @@ const SECTION5_CATALOG = Object.freeze([
       { slug: "refunds.view", name: "View Refunds", description: "View financial refund records" },
       { slug: "refunds.create", name: "Create Refunds", description: "Initiate refund requests" },
       { slug: "refunds.approve", name: "Approve Refunds", description: "Authorize payment gateway refunds" },
+      { slug: "refund_applications.view", name: "View Refund Applications", description: "View merchant refund applications queue" },
+      { slug: "refund_applications.review", name: "Review Refund Applications", description: "Review and inspect merchant refund applications" },
+      { slug: "refund_applications.approve", name: "Approve Refund Applications", description: "Authorize merchant refund applications" },
+      { slug: "refund_applications.reject", name: "Reject Refund Applications", description: "Decline merchant refund applications with reason" },
+      { slug: "refund_applications.revise", name: "Request Application Revision", description: "Request inspection or evidence revisions from merchant" },
+      { slug: "refund_disbursements.initiate", name: "Initiate Refund Disbursement", description: "Execute live customer refund disbursement via payment gateway" },
     ],
   },
   {
@@ -698,6 +722,13 @@ const SECTION5_CATALOG = Object.freeze([
     permissions: [
       { slug: "settlements.view", name: "View Settlements", description: "View vendor settlement periods and balances" },
       { slug: "settlements.manage", name: "Manage Settlements", description: "Approve payouts and finalize settlements" },
+    ],
+  },
+  {
+    category: "Finance",
+    permissions: [
+      { slug: "finance.view", name: "View Finance", description: "View financial ledger, wallets, and reconciliation overviews" },
+      { slug: "finance.manage", name: "Manage Finance", description: "Manage commission policies, payouts, and ledger adjustments" },
     ],
   },
   {
@@ -843,10 +874,18 @@ const SECTION5_CATALOG = Object.freeze([
       { slug: "platform_credentials.manage", name: "Manage Platform Credentials", description: "Update encrypted third-party credentials" },
     ],
   },
+  {
+    category: "Authentication Methods",
+    permissions: [
+      { slug: "authentication.login_methods.read", name: "View Login Methods", description: "View configured customer and vendor login authentication methods" },
+      { slug: "authentication.login_methods.manage", name: "Manage Login Methods", description: "Configure customer and vendor authentication methods, OTP, and SSO" },
+    ],
+  },
 ]);
 
 module.exports = {
   PERMISSIONS,
+  SECTION5_PERMISSIONS,
   ALIAS_MAP,
   resolvePermissionAliases,
   SECTION5_CATALOG,

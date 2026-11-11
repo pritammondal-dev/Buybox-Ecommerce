@@ -14,205 +14,49 @@ import {
   Grid,
   CheckSquare,
   Square,
+  Lock,
+  UserCheck,
 } from "lucide-react";
 import {
   staffService,
   permissionService,
 } from "@/services/admin/admin.service.js";
 import { useAdminAuth } from "@/hooks/useAdminAuth.js";
+import { SECTION5_CATALOG } from "@/constants/permissions.js";
 
-// Section 5 Master Permission Catalog Definitions
-const PERMISSION_GROUPS = [
-  {
-    namespace: "Dashboard",
-    permissions: [
-      { slug: "dashboard.view", label: "Dashboard View", desc: "Access real-time platform metrics and KPIs" },
-    ],
-  },
-  {
-    namespace: "Customers",
-    permissions: [
-      { slug: "customers.view", label: "View Customers", desc: "View customer lists and details" },
-      { slug: "customers.create", label: "Create Customers", desc: "Provision customer accounts manually" },
-      { slug: "customers.edit", label: "Edit Customers", desc: "Update customer records" },
-      { slug: "customers.suspend", label: "Suspend Customers", desc: "Deactivate or suspend customer accounts" },
-      { slug: "customers.export", label: "Export Customers", desc: "Export customer datasets" },
-    ],
-  },
-  {
-    namespace: "Vendors",
-    permissions: [
-      { slug: "vendors.view", label: "View Vendors", desc: "View vendor accounts and onboarding queue" },
-      { slug: "vendors.approve", label: "Approve Vendors", desc: "Authorize vendor onboarding applications" },
-      { slug: "vendors.reject", label: "Reject Vendors", desc: "Decline vendor onboarding applications" },
-      { slug: "vendors.request_changes", label: "Request Changes", desc: "Request onboarding corrections from vendor" },
-      { slug: "vendors.suspend", label: "Suspend Vendors", desc: "Suspend active vendors" },
-      { slug: "vendors.edit", label: "Edit Vendors", desc: "Update vendor details and settings" },
-      { slug: "vendors.export", label: "Export Vendors", desc: "Export vendor lists" },
-    ],
-  },
-  {
-    namespace: "Products & Catalog",
-    permissions: [
-      { slug: "products.view", label: "View Products", desc: "Browse catalog and product details" },
-      { slug: "products.create", label: "Create Products", desc: "Add new product listings" },
-      { slug: "products.edit", label: "Edit Products", desc: "Modify product pricing, descriptions, and variants" },
-      { slug: "products.delete", label: "Delete Products", desc: "Remove products from catalog" },
-      { slug: "products.approve", label: "Approve Products", desc: "Moderate and approve vendor products" },
-      { slug: "products.reject", label: "Reject Products", desc: "Reject submitted vendor products" },
-      { slug: "products.export", label: "Export Products", desc: "Export catalog records" },
-      { slug: "categories.view", label: "View Categories", desc: "Browse category hierarchy" },
-      { slug: "categories.create", label: "Create Categories", desc: "Add new category nodes" },
-      { slug: "categories.edit", label: "Edit Categories", desc: "Update categories" },
-      { slug: "categories.delete", label: "Delete Categories", desc: "Delete category nodes" },
-      { slug: "brands.view", label: "View Brands", desc: "View brand list" },
-      { slug: "brands.create", label: "Create Brands", desc: "Add new brands" },
-      { slug: "brands.edit", label: "Edit Brands", desc: "Update brand details" },
-      { slug: "brands.delete", label: "Delete Brands", desc: "Remove brands" },
-      { slug: "attributes.view", label: "View Attributes", desc: "View product attributes and values" },
-      { slug: "attributes.create", label: "Create Attributes", desc: "Create product attributes" },
-      { slug: "attributes.edit", label: "Edit Attributes", desc: "Update product attributes" },
-      { slug: "attributes.delete", label: "Delete Attributes", desc: "Remove product attributes" },
-    ],
-  },
-  {
-    namespace: "Inventory & Warehouses",
-    permissions: [
-      { slug: "inventory.view", label: "View Inventory", desc: "Inspect inventory levels across warehouses" },
-      { slug: "inventory.create", label: "Create Inventory", desc: "Add inventory stock batches" },
-      { slug: "inventory.manage", label: "Manage Inventory", desc: "Manage inventory settings and allocations" },
-      { slug: "inventory.adjust", label: "Adjust Stock", desc: "Perform manual stock adjustments" },
-      { slug: "inventory.transfer", label: "Transfer Stock", desc: "Initiate stock transfers" },
-      { slug: "inventory.export", label: "Export Inventory", desc: "Export inventory datasets" },
-      { slug: "warehouses.view", label: "View Warehouses", desc: "View warehouse facilities" },
-      { slug: "warehouses.create", label: "Create Warehouses", desc: "Add new warehouse locations" },
-      { slug: "warehouses.edit", label: "Edit Warehouses", desc: "Update warehouse details" },
-      { slug: "warehouses.manage", label: "Manage Warehouses", desc: "Configure warehouse operational rules" },
-      { slug: "warehouses.manage_inventory", label: "Manage Inventory", desc: "Allocate warehouse stock" },
-      { slug: "warehouses.delete", label: "Delete Warehouses", desc: "Decommission warehouse locations" },
-    ],
-  },
-  {
-    namespace: "Orders, Returns & Refunds",
-    permissions: [
-      { slug: "orders.view", label: "View Orders", desc: "Inspect customer orders and details" },
-      { slug: "orders.edit", label: "Edit Orders", desc: "Update delivery notes and customer details" },
-      { slug: "orders.manage", label: "Manage Orders", desc: "Manage order workflows and lifecycle" },
-      { slug: "orders.cancel", label: "Cancel Orders", desc: "Cancel unfulfilled orders" },
-      { slug: "orders.export", label: "Export Orders", desc: "Export order records" },
-      { slug: "returns.view", label: "View Returns", desc: "Inspect return requests queue" },
-      { slug: "returns.approve", label: "Approve Returns", desc: "Authorize returns" },
-      { slug: "returns.reject", label: "Reject Returns", desc: "Decline returns" },
-      { slug: "refunds.view", label: "View Refunds", desc: "View refund records" },
-      { slug: "refunds.create", label: "Create Refunds", desc: "Initiate payment gateway refunds" },
-      { slug: "refunds.approve", label: "Approve Refunds", desc: "Authorize refunds" },
-    ],
-  },
-  {
-    namespace: "Payments & Shipping",
-    permissions: [
-      { slug: "payments.view", label: "View Payments", desc: "View payment gateway transactions" },
-      { slug: "payments.reconcile", label: "Reconcile Payments", desc: "Reconcile payment balances" },
-      { slug: "payments.manage", label: "Manage Payments", desc: "Manage gateway payment rules" },
-      { slug: "settlements.view", label: "View Settlements", desc: "View vendor settlements" },
-      { slug: "settlements.manage", label: "Manage Settlements", desc: "Process payouts and finalize settlements" },
-      { slug: "shipping.view", label: "View Shipping", desc: "View shipments and tracking" },
-      { slug: "shipping.manage", label: "Manage Shipping", desc: "Dispatch or reassign courier shipments" },
-    ],
-  },
-  {
-    namespace: "Marketing, Promotions & CMS",
-    permissions: [
-      { slug: "campaigns.view", label: "View Campaigns", desc: "View campaigns" },
-      { slug: "campaigns.create", label: "Create Campaigns", desc: "Create promotional campaigns" },
-      { slug: "campaigns.edit", label: "Edit Campaigns", desc: "Update campaigns" },
-      { slug: "campaigns.delete", label: "Delete Campaigns", desc: "Remove campaigns" },
-      { slug: "coupons.view", label: "View Coupons", desc: "View coupons" },
-      { slug: "coupons.create", label: "Create Coupons", desc: "Create coupon codes" },
-      { slug: "coupons.edit", label: "Edit Coupons", desc: "Update coupons" },
-      { slug: "coupons.delete", label: "Delete Coupons", desc: "Deactivate coupons" },
-      { slug: "discounts.view", label: "View Discounts", desc: "View discounts and promotions" },
-      { slug: "discounts.manage", label: "Manage Discounts", desc: "Manage promotional pricing and rules" },
-      { slug: "promotions.override_floor", label: "Override Price Floor", desc: "Override minimum promotional price floors" },
-      { slug: "cms.view", label: "View CMS", desc: "View CMS content and banners" },
-      { slug: "cms.create", label: "Create CMS", desc: "Draft banners and pages" },
-      { slug: "cms.edit", label: "Edit CMS", desc: "Modify pages and navigation" },
-      { slug: "cms.publish", label: "Publish CMS", desc: "Publish CMS content live" },
-      { slug: "cms.delete", label: "Delete CMS", desc: "Remove banners or pages" },
-      { slug: "cms.events.view", label: "View Special Events", desc: "View Special Event pages" },
-      { slug: "cms.events.manage", label: "Manage Special Events", desc: "Create, schedule, and publish Special Event pages" },
-    ],
-  },
-  {
-    namespace: "Support & Reviews",
-    permissions: [
-      { slug: "reviews.view", label: "View Reviews", desc: "View product reviews" },
-      { slug: "reviews.moderate", label: "Moderate Reviews", desc: "Approve or flag reviews" },
-      { slug: "support.view", label: "View Support", desc: "View support tickets" },
-      { slug: "support.respond", label: "Respond to Support", desc: "Answer customer/vendor tickets" },
-      { slug: "support.assign", label: "Assign Support", desc: "Reassign support tickets" },
-    ],
-  },
-  {
-    namespace: "Analytics & Tasks",
-    permissions: [
-      { slug: "analytics.view", label: "View Analytics", desc: "Access reports and analytics" },
-      { slug: "analytics.export", label: "Export Analytics", desc: "Export analytics datasets" },
-      { slug: "tasks.view", label: "View Tasks", desc: "View team tasks" },
-      { slug: "tasks.create", label: "Create Tasks", desc: "Create new tasks" },
-      { slug: "tasks.assign", label: "Assign Tasks", desc: "Assign tasks to employees" },
-      { slug: "tasks.edit", label: "Edit Tasks", desc: "Update tasks and notes" },
-      { slug: "tasks.complete", label: "Complete Tasks", desc: "Mark tasks completed" },
-      { slug: "activity_logs.view", label: "View Activity Logs", desc: "Inspect immutable audit logs" },
-      { slug: "activity_logs.export", label: "Export Activity Logs", desc: "Export audit trails" },
-    ],
-  },
-  {
-    namespace: "Tax & Regional Settings",
-    permissions: [
-      { slug: "tax.view", label: "View Tax", desc: "View tax rates and jurisdictions" },
-      { slug: "tax.manage", label: "Manage Tax", desc: "Configure tax rules, rates, and exemptions" },
-    ],
-  },
-  {
-    namespace: "Governance & Platform",
-    permissions: [
-      { slug: "staff.view", label: "View Staff", desc: "View staff list" },
-      { slug: "staff.create", label: "Create Staff", desc: "Provision staff members" },
-      { slug: "staff.edit", label: "Edit Staff", desc: "Modify staff records" },
-      { slug: "staff.suspend", label: "Suspend Staff", desc: "Suspend staff access" },
-      { slug: "job_roles.view", label: "View Job Roles", desc: "View dynamic job roles" },
-      { slug: "job_roles.create", label: "Create Job Roles", desc: "Create dynamic job roles" },
-      { slug: "job_roles.edit", label: "Edit Job Roles", desc: "Modify job role permissions" },
-      { slug: "job_roles.delete", label: "Delete Job Roles", desc: "Remove dynamic job roles" },
-      { slug: "permissions.view", label: "View Permissions", desc: "View permission matrix" },
-      { slug: "permissions.manage", label: "Manage Permissions", desc: "Manage employee permissions" },
-      { slug: "platform_settings.view", label: "View Platform Settings", desc: "Inspect system configurations" },
-      { slug: "platform_settings.manage", label: "Manage Platform Settings", desc: "Modify marketplace settings" },
-      { slug: "platform_credentials.view", label: "View Platform Credentials", desc: "View credential statuses" },
-      { slug: "platform_credentials.manage", label: "Manage Platform Credentials", desc: "Update encrypted credentials" },
-    ],
-  },
-];
+// Map SECTION5_CATALOG into UI permission groups
+const PERMISSION_GROUPS = SECTION5_CATALOG.map((group) => ({
+  namespace: group.category,
+  permissions: group.permissions.map((p) => ({
+    slug: p.slug,
+    label: p.name,
+    desc: p.description,
+  })),
+}));
 
+// Comprehensive matrix definition covering all platform domains and features
 const MATRIX_MODULES = [
   { module: "Dashboard", view: "dashboard.view", create: null, edit: null, delete: null, approve: null, export: null },
   { module: "Customers", view: "customers.view", create: "customers.create", edit: "customers.edit", delete: "customers.suspend", approve: null, export: "customers.export" },
   { module: "Vendors", view: "vendors.view", create: null, edit: "vendors.edit", delete: "vendors.suspend", approve: "vendors.approve", export: "vendors.export" },
+  { module: "Vendor Bank Accounts", view: "vendors.bank_accounts.view", create: "vendors.bank_accounts.review", edit: "vendors.bank_accounts.manage", delete: "vendors.bank_accounts.reject", approve: "vendors.bank_accounts.approve", export: "vendors.bank_accounts.view_unmasked" },
+  { module: "Partner Banks", view: "partner_banks.view", create: null, edit: "partner_banks.manage", delete: null, approve: null, export: null },
+  { module: "Vendor KYC & Compliance", view: "vendors.kyc.view", create: "vendors.kyc.review", edit: null, delete: "vendors.kyc.reject", approve: "vendors.kyc.approve", export: null },
   { module: "Products", view: "products.view", create: "products.create", edit: "products.edit", delete: "products.delete", approve: "products.approve", export: "products.export" },
   { module: "Categories", view: "categories.view", create: "categories.create", edit: "categories.edit", delete: "categories.delete", approve: null, export: null },
   { module: "Brands", view: "brands.view", create: "brands.create", edit: "brands.edit", delete: "brands.delete", approve: null, export: null },
   { module: "Attributes", view: "attributes.view", create: "attributes.create", edit: "attributes.edit", delete: "attributes.delete", approve: null, export: null },
-  { module: "Inventory", view: "inventory.view", create: "inventory.create", edit: "inventory.manage", delete: null, approve: null, export: "inventory.export" },
-  { module: "Warehouses", view: "warehouses.view", create: "warehouses.create", edit: "warehouses.manage", delete: "warehouses.delete", approve: null, export: null },
-  { module: "Orders", view: "orders.view", create: null, edit: "orders.edit", delete: "orders.cancel", approve: null, export: "orders.export" },
+  { module: "Inventory", view: "inventory.view", create: "inventory.create", edit: "inventory.manage", delete: null, approve: "inventory.adjust", export: "inventory.export" },
+  { module: "Warehouses", view: "warehouses.view", create: "warehouses.create", edit: "warehouses.manage", delete: "warehouses.delete", approve: "warehouses.manage_inventory", export: null },
+  { module: "Orders", view: "orders.view", create: null, edit: "orders.edit", delete: "orders.cancel", approve: "orders.manage", export: "orders.export" },
   { module: "Returns", view: "returns.view", create: null, edit: null, delete: "returns.reject", approve: "returns.approve", export: null },
   { module: "Refunds", view: "refunds.view", create: "refunds.create", edit: null, delete: null, approve: "refunds.approve", export: null },
-  { module: "Payments", view: "payments.view", create: null, edit: "payments.manage", delete: null, approve: null, export: null },
+  { module: "Payments", view: "payments.view", create: null, edit: "payments.manage", delete: null, approve: "payments.reconcile", export: null },
   { module: "Settlements", view: "settlements.view", create: null, edit: "settlements.manage", delete: null, approve: null, export: null },
+  { module: "Finance & Ledgers", view: "finance.view", create: null, edit: "finance.manage", delete: null, approve: null, export: null },
   { module: "Shipping", view: "shipping.view", create: null, edit: "shipping.manage", delete: null, approve: null, export: null },
   { module: "Coupons", view: "coupons.view", create: "coupons.create", edit: "coupons.edit", delete: "coupons.delete", approve: null, export: null },
-  { module: "Discounts", view: "discounts.view", create: null, edit: "discounts.manage", delete: null, approve: null, export: null },
+  { module: "Discounts", view: "discounts.view", create: null, edit: "discounts.manage", delete: null, approve: "promotions.override_floor", export: null },
   { module: "Campaigns", view: "campaigns.view", create: "campaigns.create", edit: "campaigns.edit", delete: "campaigns.delete", approve: null, export: null },
   { module: "CMS Content", view: "cms.view", create: "cms.create", edit: "cms.edit", delete: "cms.delete", approve: "cms.publish", export: null },
   { module: "CMS Special Events", view: "cms.events.view", create: null, edit: "cms.events.manage", delete: null, approve: null, export: null },
@@ -222,11 +66,13 @@ const MATRIX_MODULES = [
   { module: "Tasks", view: "tasks.view", create: "tasks.create", edit: "tasks.edit", delete: null, approve: "tasks.complete", export: null },
   { module: "Activity Logs", view: "activity_logs.view", create: null, edit: null, delete: null, approve: null, export: "activity_logs.export" },
   { module: "Staff", view: "staff.view", create: "staff.create", edit: "staff.edit", delete: "staff.suspend", approve: null, export: null },
-  { module: "Job Roles", view: "job_roles.view", create: "job_roles.create", edit: "job_roles.edit", delete: "job_roles.delete", approve: null, export: null },
+  { module: "Job Roles", view: "job_roles.view", create: "job_roles.create", edit: "job_roles.edit", delete: "job_roles.delete", approve: "job_roles.reorder", export: "job_roles.migrate" },
+  { module: "Employee Governance", view: "employee.view", create: "employee.create", edit: "employee.edit", delete: "employee.delete", approve: "employee.assign_role", export: "governance.superadmin_transfer" },
   { module: "Permissions", view: "permissions.view", create: null, edit: "permissions.manage", delete: null, approve: null, export: null },
-  { module: "Tax", view: "tax.view", create: null, edit: "tax.manage", delete: null, approve: null, export: null },
+  { module: "Tax Rules", view: "tax.view", create: null, edit: "tax.manage", delete: null, approve: null, export: null },
   { module: "Platform Settings", view: "platform_settings.view", create: null, edit: "platform_settings.manage", delete: null, approve: null, export: null },
-  { module: "Credentials", view: "platform_credentials.view", create: null, edit: "platform_credentials.manage", delete: null, approve: null, export: null },
+  { module: "Platform Credentials", view: "platform_credentials.view", create: null, edit: "platform_credentials.manage", delete: null, approve: null, export: null },
+  { module: "Authentication Methods", view: "authentication.login_methods.read", create: null, edit: "authentication.login_methods.manage", delete: null, approve: null, export: null },
 ];
 
 export default function PermissionSettingsPage() {
@@ -256,10 +102,12 @@ export default function PermissionSettingsPage() {
         const list = result?.staff || [];
         setStaffList(list);
 
-        // Auto-select first non-superadmin staff member
+        // Auto-select first non-superadmin staff member if available
         const firstEditable = list.find((s) => s.role !== "super_admin");
         if (firstEditable) {
           setSelectedStaffId(firstEditable.id);
+        } else if (list.length > 0) {
+          setSelectedStaffId(list[0].id);
         }
       } catch (err) {
         setError("Failed to load staff list");
@@ -292,17 +140,29 @@ export default function PermissionSettingsPage() {
     loadDetails();
   }, [selectedStaffId]);
 
-  // Compute dirty state
-  const isDirty = useMemo(() => {
-    if (selectedPermissions.size !== persistedPermissions.size) return true;
+  // Compute dirty state and diff counts
+  const { isDirty, addedCount, removedCount } = useMemo(() => {
+    let added = 0;
+    let removed = 0;
+
     for (const p of selectedPermissions) {
-      if (!persistedPermissions.has(p)) return true;
+      if (!persistedPermissions.has(p)) added++;
     }
-    return false;
+    for (const p of persistedPermissions) {
+      if (!selectedPermissions.has(p)) removed++;
+    }
+
+    const dirty = added > 0 || removed > 0;
+    return { isDirty: dirty, addedCount: added, removedCount: removed };
   }, [selectedPermissions, persistedPermissions]);
 
+  const isSelectedUserSuperadmin = useMemo(() => {
+    const role = (selectedStaffDetails?.role || "").toLowerCase();
+    return role === "super_admin" || role === "superadmin";
+  }, [selectedStaffDetails]);
+
   const togglePermission = (slug) => {
-    if (!slug) return;
+    if (!slug || isSelectedUserSuperadmin) return;
     setSelectedPermissions((prev) => {
       const next = new Set(prev);
       if (next.has(slug)) {
@@ -314,7 +174,29 @@ export default function PermissionSettingsPage() {
     });
   };
 
+  // Row-level selection toggle for matrix view
+  const handleToggleRow = (row) => {
+    if (isSelectedUserSuperadmin) return;
+    const rowSlugs = [row.view, row.create, row.edit, row.delete, row.approve, row.export].filter(Boolean);
+    if (rowSlugs.length === 0) return;
+
+    setSelectedPermissions((prev) => {
+      const next = new Set(prev);
+      const allSelected = rowSlugs.every((slug) => next.has(slug));
+      rowSlugs.forEach((slug) => {
+        if (allSelected) {
+          next.delete(slug);
+        } else {
+          next.add(slug);
+        }
+      });
+      return next;
+    });
+  };
+
+  // Group toggle for card view
   const handleSelectAllGroup = (permissions) => {
+    if (isSelectedUserSuperadmin) return;
     setSelectedPermissions((prev) => {
       const next = new Set(prev);
       const allSelected = permissions.every((p) => next.has(p.slug));
@@ -341,7 +223,11 @@ export default function PermissionSettingsPage() {
         });
       });
     } else {
-      PERMISSION_GROUPS.filter((g) => g.namespace.toLowerCase().includes(filter) || g.permissions.some(p => p.label.toLowerCase().includes(filter))).forEach((group) => {
+      PERMISSION_GROUPS.filter(
+        (g) =>
+          g.namespace.toLowerCase().includes(filter) ||
+          g.permissions.some((p) => p.label.toLowerCase().includes(filter) || p.slug.toLowerCase().includes(filter))
+      ).forEach((group) => {
         group.permissions.forEach((p) => slugs.add(p.slug));
       });
     }
@@ -349,6 +235,7 @@ export default function PermissionSettingsPage() {
   };
 
   const handleSelectAllVisible = () => {
+    if (isSelectedUserSuperadmin) return;
     const visibleSlugs = getVisibleSlugs();
     setSelectedPermissions((prev) => {
       const next = new Set(prev);
@@ -358,6 +245,7 @@ export default function PermissionSettingsPage() {
   };
 
   const handleClearAllVisible = () => {
+    if (isSelectedUserSuperadmin) return;
     const visibleSlugs = getVisibleSlugs();
     setSelectedPermissions((prev) => {
       const next = new Set(prev);
@@ -374,7 +262,7 @@ export default function PermissionSettingsPage() {
 
   const handleSavePermissions = async () => {
     if (!selectedStaffDetails?.employee?.id) {
-      setError("Selected staff member lacks an employee profile");
+      setError("Selected staff member lacks an employee profile record");
       return;
     }
 
@@ -396,8 +284,10 @@ export default function PermissionSettingsPage() {
       setSelectedPermissions(freshPerms);
       setPersistedPermissions(new Set(freshPerms));
 
-      setSuccess("Permissions updated and verified. Immediate session invalidation applied.");
-      setTimeout(() => setSuccess(null), 5000);
+      setSuccess(
+        `Permissions updated for ${selectedStaffDetails.firstName || "employee"}. ${freshPerms.size} active permissions saved with immediate session version bump.`
+      );
+      setTimeout(() => setSuccess(null), 6000);
     } catch (err) {
       setError(
         err?.response?.data?.message ||
@@ -407,6 +297,45 @@ export default function PermissionSettingsPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const getRoleBadge = (roleName) => {
+    const r = (roleName || "").toLowerCase();
+    if (r === "super_admin" || r === "superadmin") {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 border border-purple-200 uppercase">
+          <ShieldCheck className="size-3 text-purple-700" />
+          Superadmin
+        </span>
+      );
+    }
+    if (r === "admin") {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200 uppercase">
+          <UserCheck className="size-3 text-blue-700" />
+          Admin
+        </span>
+      );
+    }
+    if (r === "manager") {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200 uppercase">
+          Manager
+        </span>
+      );
+    }
+    if (r === "editor") {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200 uppercase">
+          Editor
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-800 border border-slate-200 uppercase">
+        {roleName || "Staff"}
+      </span>
+    );
   };
 
   if (!isSuperadmin) {
@@ -428,10 +357,10 @@ export default function PermissionSettingsPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
             <KeyRound className="size-6 text-emerald-600" />
-            <span>Permission Settings &amp; Governance</span>
+            <span>Role &amp; Permission Governance</span>
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Superadmin-controlled granular permission matrix with immediate session revocation
+            Superadmin-controlled granular permission matrix across all 35+ platform modules with instant session revocation
           </p>
         </div>
 
@@ -442,7 +371,7 @@ export default function PermissionSettingsPage() {
               type="button"
               onClick={() => setViewMode("matrix")}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                viewMode === "matrix" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500"
+                viewMode === "matrix" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-900"
               }`}
             >
               <Table className="size-3.5" />
@@ -452,7 +381,7 @@ export default function PermissionSettingsPage() {
               type="button"
               onClick={() => setViewMode("cards")}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                viewMode === "cards" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500"
+                viewMode === "cards" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-900"
               }`}
             >
               <Grid className="size-3.5" />
@@ -476,8 +405,8 @@ export default function PermissionSettingsPage() {
           {/* Save Button */}
           <button
             onClick={handleSavePermissions}
-            disabled={saving || loading || !isDirty || selectedStaffDetails?.role === "super_admin"}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-all shadow-xs disabled:opacity-50"
+            disabled={saving || loading || !isDirty || isSelectedUserSuperadmin}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Save className={`size-4 ${saving ? "animate-spin" : ""}`} />
             <span>{saving ? "Saving Changes..." : "Save Permissions"}</span>
@@ -520,7 +449,7 @@ export default function PermissionSettingsPage() {
 
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           {/* Quick Select Actions */}
-          {selectedStaffDetails?.role !== "super_admin" && (
+          {!isSelectedUserSuperadmin && (
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -529,7 +458,7 @@ export default function PermissionSettingsPage() {
                 title="Select all visible permissions"
               >
                 <CheckSquare className="size-3 text-emerald-600" />
-                <span>Select All</span>
+                <span>Select All Visible</span>
               </button>
               <button
                 type="button"
@@ -538,7 +467,7 @@ export default function PermissionSettingsPage() {
                 title="Clear all visible permissions"
               >
                 <Square className="size-3 text-rose-600" />
-                <span>Clear All</span>
+                <span>Clear All Visible</span>
               </button>
             </div>
           )}
@@ -547,7 +476,7 @@ export default function PermissionSettingsPage() {
             <Search className="size-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Filter modules..."
+              placeholder="Search module or permission..."
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
               className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-emerald-500"
@@ -555,18 +484,15 @@ export default function PermissionSettingsPage() {
           </div>
 
           {selectedStaffDetails && (
-            <div className="flex items-center gap-3 text-xs text-slate-500 whitespace-nowrap">
-              <span>
-                Role: <strong className="text-slate-800 uppercase">{selectedStaffDetails.role}</strong>
-              </span>
+            <div className="flex items-center gap-2.5 text-xs text-slate-600 whitespace-nowrap">
+              {getRoleBadge(selectedStaffDetails.role)}
               <span>•</span>
               <span>
-                Effective:{" "}
-                <strong className="text-emerald-700">{selectedPermissions.size}</strong>
+                Effective: <strong className="text-emerald-700 font-bold">{selectedPermissions.size}</strong>
               </span>
               {isDirty && (
-                <span className="text-[11px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                  Unsaved Changes
+                <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                  Unsaved ({addedCount > 0 ? `+${addedCount}` : ""}{addedCount > 0 && removedCount > 0 ? ", " : ""}{removedCount > 0 ? `-${removedCount}` : ""})
                 </span>
               )}
             </div>
@@ -574,12 +500,12 @@ export default function PermissionSettingsPage() {
         </div>
       </div>
 
-      {selectedStaffDetails?.role === "super_admin" && (
-        <div className="p-4 rounded-2xl bg-purple-50 border border-purple-200 text-purple-800 text-xs flex items-center gap-3">
+      {isSelectedUserSuperadmin && (
+        <div className="p-4 rounded-2xl bg-purple-50 border border-purple-200 text-purple-900 text-xs flex items-center gap-3">
           <ShieldCheck className="size-5 text-purple-600 shrink-0" />
-          <span>
-            Superadmin holds platform-level authority and unconditionally possesses all permissions. Superadmin permissions cannot be modified or restricted.
-          </span>
+          <div>
+            <strong className="font-bold">Protected Superadmin Role:</strong> Superadmin holds platform-level root authority and unconditionally possesses all permissions. Superadmin permissions cannot be modified, restricted, or revoked via this interface.
+          </div>
         </div>
       )}
 
@@ -588,31 +514,39 @@ export default function PermissionSettingsPage() {
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50/80 text-slate-600 uppercase tracking-wider font-bold border-b border-slate-200">
+              <thead className="bg-slate-50/90 text-slate-600 uppercase tracking-wider font-bold border-b border-slate-200">
                 <tr>
-                  <th className="px-6 py-4">Module</th>
+                  <th className="px-6 py-4">Module Name</th>
+                  <th className="px-3 py-4 text-center">Row Quick Toggle</th>
                   <th className="px-4 py-4 text-center">View</th>
                   <th className="px-4 py-4 text-center">Create</th>
                   <th className="px-4 py-4 text-center">Edit</th>
                   <th className="px-4 py-4 text-center">Delete</th>
                   <th className="px-4 py-4 text-center">Approve</th>
-                  <th className="px-4 py-4 text-center">Export</th>
+                  <th className="px-4 py-4 text-center">Export / Special</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                 {MATRIX_MODULES.filter((m) =>
-                  m.module.toLowerCase().includes(searchFilter.toLowerCase())
+                  m.module.toLowerCase().includes(searchFilter.toLowerCase()) ||
+                  [m.view, m.create, m.edit, m.delete, m.approve, m.export].some(
+                    (s) => s && s.toLowerCase().includes(searchFilter.toLowerCase())
+                  )
                 ).map((row) => {
+                  const rowSlugs = [row.view, row.create, row.edit, row.delete, row.approve, row.export].filter(Boolean);
+                  const activeInRow = rowSlugs.filter((s) => selectedPermissions.has(s)).length;
+                  const allInRow = rowSlugs.length > 0 && activeInRow === rowSlugs.length;
+
                   const renderCell = (slug) => {
                     if (!slug) {
-                      return <span className="text-slate-200 text-sm">—</span>;
+                      return <span className="text-slate-200 text-sm select-none">—</span>;
                     }
                     const isChecked = selectedPermissions.has(slug);
                     return (
                       <input
                         type="checkbox"
                         checked={isChecked}
-                        disabled={selectedStaffDetails?.role === "super_admin"}
+                        disabled={isSelectedUserSuperadmin}
                         onChange={() => togglePermission(slug)}
                         title={slug}
                         className="size-4 rounded text-emerald-600 border-slate-300 focus:ring-emerald-500 cursor-pointer disabled:cursor-not-allowed"
@@ -621,8 +555,30 @@ export default function PermissionSettingsPage() {
                   };
 
                   return (
-                    <tr key={row.module} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="px-6 py-3.5 font-bold text-slate-900">{row.module}</td>
+                    <tr key={row.module} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="px-6 py-3.5">
+                        <div className="font-bold text-slate-900">{row.module}</div>
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                          {activeInRow}/{rowSlugs.length} permissions
+                        </div>
+                      </td>
+                      <td className="px-3 py-3.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleRow(row)}
+                          disabled={isSelectedUserSuperadmin}
+                          className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                            allInRow
+                              ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                              : activeInRow > 0
+                              ? "bg-amber-100 text-amber-800 hover:bg-amber-200"
+                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          }`}
+                          title={`Toggle all ${rowSlugs.length} permissions for ${row.module}`}
+                        >
+                          {allInRow ? "Deselect" : "Select All"}
+                        </button>
+                      </td>
                       <td className="px-4 py-3.5 text-center">{renderCell(row.view)}</td>
                       <td className="px-4 py-3.5 text-center">{renderCell(row.create)}</td>
                       <td className="px-4 py-3.5 text-center">{renderCell(row.edit)}</td>
@@ -641,13 +597,21 @@ export default function PermissionSettingsPage() {
       {/* CATEGORY CARDS VIEW */}
       {viewMode === "cards" && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {PERMISSION_GROUPS.filter((g) =>
-            g.namespace.toLowerCase().includes(searchFilter.toLowerCase()) ||
-            g.permissions.some((p) => p.label.toLowerCase().includes(searchFilter.toLowerCase()))
+          {PERMISSION_GROUPS.filter(
+            (g) =>
+              g.namespace.toLowerCase().includes(searchFilter.toLowerCase()) ||
+              g.permissions.some(
+                (p) =>
+                  p.label.toLowerCase().includes(searchFilter.toLowerCase()) ||
+                  p.slug.toLowerCase().includes(searchFilter.toLowerCase())
+              )
           ).map((group) => {
             const allSelected = group.permissions.every((p) =>
               selectedPermissions.has(p.slug)
             );
+            const selectedInGroup = group.permissions.filter((p) =>
+              selectedPermissions.has(p.slug)
+            ).length;
 
             return (
               <div
@@ -656,14 +620,19 @@ export default function PermissionSettingsPage() {
               >
                 <div>
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <h3 className="text-sm font-bold text-slate-900 tracking-tight">
-                      {group.namespace}
-                    </h3>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 tracking-tight">
+                        {group.namespace}
+                      </h3>
+                      <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                        {selectedInGroup} of {group.permissions.length} selected
+                      </div>
+                    </div>
                     <button
                       type="button"
                       onClick={() => handleSelectAllGroup(group.permissions)}
-                      disabled={selectedStaffDetails?.role === "super_admin"}
-                      className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 transition-colors disabled:opacity-40"
+                      disabled={isSelectedUserSuperadmin}
+                      className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {allSelected ? "Deselect All" : "Select All"}
                     </button>
@@ -678,10 +647,10 @@ export default function PermissionSettingsPage() {
                           key={p.slug}
                           className={`flex items-start gap-3 p-2 rounded-xl transition-colors cursor-pointer ${
                             isChecked
-                              ? "bg-emerald-50/60 text-slate-900"
+                              ? "bg-emerald-50/60 text-slate-900 font-medium"
                               : "hover:bg-slate-50 text-slate-700"
                           } ${
-                            selectedStaffDetails?.role === "super_admin"
+                            isSelectedUserSuperadmin
                               ? "cursor-not-allowed opacity-60"
                               : ""
                           }`}
@@ -689,14 +658,17 @@ export default function PermissionSettingsPage() {
                           <input
                             type="checkbox"
                             checked={isChecked}
-                            disabled={selectedStaffDetails?.role === "super_admin"}
+                            disabled={isSelectedUserSuperadmin}
                             onChange={() => togglePermission(p.slug)}
                             className="size-4 mt-0.5 rounded-md text-emerald-600 border-slate-300 focus:ring-emerald-500"
                           />
                           <div className="text-xs">
-                            <div className="font-semibold">{p.label}</div>
+                            <div className="font-semibold text-slate-900">{p.label}</div>
                             <div className="text-[10px] text-slate-400 mt-0.5">
                               {p.desc}
+                            </div>
+                            <div className="text-[9px] text-slate-400 font-mono mt-0.5">
+                              {p.slug}
                             </div>
                           </div>
                         </label>

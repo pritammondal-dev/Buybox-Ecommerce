@@ -2,6 +2,8 @@ const ProductQuestion = require("../models/ProductQuestion");
 const Product = require("../models/Product");
 const Customer = require("../models/Customer");
 const User = require("../models/User");
+const Vendor = require("../models/Vendor");
+const { ROLES } = require("../constants/auth.constants");
 const AppError = require("../errors/AppError");
 const apiResponse = require("../utils/apiResponse");
 
@@ -84,16 +86,63 @@ const addAnswer = async (req, res) => {
   }
 
   const user = await User.findById(userId);
-  const role = req.user.role === "admin" ? "admin" : req.user.role === "vendor" ? "vendor" : "customer";
+
+  const staffRoles = [
+    ROLES.SUPER_ADMIN,
+    ROLES.ADMIN,
+    ROLES.MANAGER,
+    ROLES.EDITOR,
+    ROLES.SUPPORT,
+  ];
+
+  const isStaff =
+    staffRoles.includes(req.user.role) ||
+    req.user.context === "administrator";
+
+  let authorRole = "customer";
+  let isVerified = false;
+  let authorName = user?.name || user?.firstName || "Customer";
+
+  if (isStaff) {
+    authorRole = "admin";
+    isVerified = true;
+    authorName = user?.name || user?.firstName || "Buybox Support";
+  } else if (req.user.role === ROLES.VENDOR || req.user.context === "vendor") {
+    // Verify product ownership: vendor must own the product being asked about
+    const product = await Product.findById(questionDoc.productId).lean();
+    const vendor = await Vendor.findOne({
+      userId: req.user.id,
+      isActive: true,
+      deletedAt: null,
+    }).lean();
+
+    const isProductOwner = Boolean(
+      product &&
+      vendor &&
+      product.vendorId &&
+      product.vendorId.toString() === vendor._id.toString()
+    );
+
+    if (isProductOwner) {
+      authorRole = "vendor";
+      isVerified = true;
+      authorName = vendor.businessName || vendor.storeName || user?.name || "Verified Seller";
+    } else {
+      // Vendor answering on a rival product does not receive verified seller badge
+      authorRole = "customer";
+      isVerified = false;
+      authorName = user?.name || user?.firstName || "Customer";
+    }
+  }
 
   const newAnswer = {
     authorId: userId,
-    authorName: user?.name || user?.firstName || "Customer",
-    authorRole: role,
+    authorName,
+    authorRole,
     answer: answerText.trim(),
     helpfulCount: 0,
     helpfulVoters: [],
-    isVerified: role !== "customer",
+    isVerified,
   };
 
   questionDoc.answers.push(newAnswer);

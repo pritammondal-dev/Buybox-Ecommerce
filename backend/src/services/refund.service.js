@@ -1196,8 +1196,417 @@ const createRefund = async ({
   }
 };
 
+/**
+ * Reconciles a local refund record against authoritative payment gateway state (Razorpay/PayPal).
+ * Queries gateway directly using gatewayRefundId and transactionally synchronizes local records.
+ */
+const reconcileGatewayRefund = async ({
+  refundId,
+  gatewayRefundId,
+  userId = null,
+  role = "admin",
+  ipAddress = null,
+  userAgent = null,
+}) => {
+  let refund = null;
+  if (refundId) {
+    refund = await refundRepository.findById(refundId);
+  }
+  if (!refund && gatewayRefundId) {
+    refund = await refundRepository.findByGatewayRefundId(PAYMENT_GATEWAY, gatewayRefundId);
+    if (!refund) {
+      refund = await refundRepository.findByGatewayRefundId("paypal", gatewayRefundId);
+    }
+  }
+
+  if (!refund) {
+    throw new AppError("Refund record not found", 404, "REFUND_NOT_FOUND");
+  }
+
+  const effectiveGatewayRefundId = gatewayRefundId || refund.gatewayRefundId;
+  if (!effectiveGatewayRefundId) {
+    throw new AppError(
+      "Cannot reconcile refund without gateway refund ID",
+      400,
+      "MISSING_GATEWAY_REFUND_ID"
+    );
+  }
+
+  const payment = await paymentRepository.findById(refund.paymentId);
+  if (!payment) {
+    throw new AppError("Associated payment record not found", 404, "PAYMENT_NOT_FOUND");
+  }
+
+  const order = await orderRepository.findById(refund.orderId);
+  if (!order) {
+    throw new AppError("Associated order not found", 404, "ORDER_NOT_FOUND");
+  }
+
+  const gateway = refund.gateway || payment.gateway || PAYMENT_GATEWAY;
+  let gatewayRefund = null;
+
+  try {
+    if (gateway === "paypal") {
+      gatewayRefund = await paypalProvider.fetchRefund(effectiveGatewayRefundId);
+    } else {
+      gatewayRefund = await razorpayRefundProvider.fetchRefund(effectiveGatewayRefundId);
+    }
+  } catch (err) {
+    throw new AppError(
+      `Unable to fetch gateway refund status: ${err.message}`,
+      502,
+      "GATEWAY_FETCH_FAILED"
+    );
+  }
+
+  if (!gatewayRefund || gatewayRefund.id !== effectiveGatewayRefundId) {
+    throw new AppError(
+      "Gateway refund record could not be verified",
+      409,
+      "REFUND_RECONCILIATION_FAILED"
+    );
+  }
+
+  // Identity validation
+  if (gatewayRefund.payment_id && payment.gatewayPaymentId && gatewayRefund.payment_id !== payment.gatewayPaymentId) {
+    throw new AppError(
+      "Gateway refund belongs to a different payment",
+      409,
+      "REFUND_PAYMENT_MISMATCH"
+    );
+  }
+
+  // Amount validation (in minor units)
+  const localMinor = decimalToMinorUnits(refund.amount);
+  if (gatewayRefund.amount !== undefined && Number(gatewayRefund.amount) !== localMinor) {
+    throw new AppError(
+      "Gateway refund amount does not match local refund record",
+      409,
+      "REFUND_AMOUNT_MISMATCH"
+    );
+  }
+
+  // Canonical mapping
+  let mappedStatus = "pending";
+  if (gateway === "paypal") {
+    if (gatewayRefund.status === "COMPLETED") mappedStatus = "processed";
+    else if (gatewayRefund.status === "FAILED") mappedStatus = "failed";
+    else mappedStatus = "pending";
+  } else {
+    if (gatewayRefund.status === "processed") mappedStatus = "processed";
+    else if (gatewayRefund.status === "failed") mappedStatus = "failed";
+    else if (gatewayRefund.status === "reversed") mappedStatus = "reversed";
+    else mappedStatus = "pending";
+  }
+
+  const previousStatus = refund.status;
+  const requestedAmountDecimal = minorUnitsToDecimal(localMinor);
+
+  const arn = gatewayRefund.acquirer_data?.arn || gatewayRefund.arn || gatewayRefund.acquirer_data?.rrn || null;
+  const acquirerData = gatewayRefund.acquirer_data || {};
+  const speedProcessed = gatewayRefund.speed_processed || null;
+
+  const session = await mongoose.startSession();
+  let syncResult;
+  let updatedRefund;
+  let returnIds = [];
+  let matchedReturnDocs = [];
+
+  try {
+    session.startTransaction();
+
+    const updateFields = {
+      gatewayRefundId: effectiveGatewayRefundId,
+      gatewayStatus: gatewayRefund.status || mappedStatus,
+      arn,
+      acquirerData,
+      speedProcessed,
+      normalizedGatewayMessage:
+        gatewayRefund.error_description ||
+        gatewayRefund.error_reason ||
+        (mappedStatus === "processed"
+          ? `Refund processed successfully via gateway${arn ? ` (ARN/RRN: ${arn})` : ""}`
+          : mappedStatus === "pending"
+          ? "Refund pending at gateway"
+          : "Gateway refund failed"),
+      lastReconciledAt: new Date(),
+    };
+
+    if (gatewayRefund.created_at) {
+      updateFields.gatewayCreatedAt = new Date(Number(gatewayRefund.created_at) * 1000);
+    }
+
+    if (mappedStatus === "processed") {
+      updateFields.status = "processed";
+      updateFields.processedAt = updateFields.gatewayCreatedAt || new Date();
+      updateFields.failureReason = null;
+
+      if (previousStatus !== "processed") {
+        await releaseRefundReservation({
+          paymentId: payment._id,
+          amount: requestedAmountDecimal,
+          session,
+        });
+      }
+    } else if (mappedStatus === "failed") {
+      updateFields.status = "failed";
+      updateFields.failureReason = updateFields.normalizedGatewayMessage;
+
+      if (previousStatus === "pending" || previousStatus === "created") {
+        await releaseRefundReservation({
+          paymentId: payment._id,
+          amount: requestedAmountDecimal,
+          session,
+        });
+      }
+    } else if (mappedStatus === "reversed") {
+      updateFields.status = "reversed";
+      updateFields.failureReason = "Refund reversed by bank/gateway";
+    } else {
+      updateFields.status = "pending";
+    }
+
+    updatedRefund = await refundRepository.updateById(refund._id, updateFields, { session });
+
+    syncResult = await synchronizePaymentRefundState({
+      payment,
+      order,
+      options: { session },
+    });
+
+    // Synchronize ReturnRequest
+    const ReturnRequest = require("../models/ReturnRequest");
+    matchedReturnDocs = await ReturnRequest.find({
+      $or: [
+        { refundId: refund._id },
+        { orderId: order._id, status: { $in: ["refund_pending", "inspected", "approved", "refunded"] } },
+      ],
+    }).session(session);
+
+    returnIds = matchedReturnDocs.map((r) => r._id);
+
+    if (mappedStatus === "processed") {
+      const arnDisplay = arn ? ` (ARN/RRN: ${arn})` : "";
+      await ReturnRequest.updateMany(
+        {
+          _id: { $in: returnIds },
+        },
+        {
+          $set: {
+            status: "refunded",
+            refundId: refund._id,
+            gatewayRefundId: effectiveGatewayRefundId,
+            arn,
+            refundProcessedAt: updateFields.processedAt,
+            resolutionNotes: `Refund confirmed via gateway reconciliation${arnDisplay}`,
+          },
+          $push: {
+            timeline: {
+              status: "refunded",
+              notes: `Refund processed and confirmed by gateway (${effectiveGatewayRefundId})${arnDisplay}. Funds typically reflect in 5-7 working days.`,
+              timestamp: new Date(),
+            },
+          },
+        },
+        { session }
+      );
+
+      try {
+        if (order.items && order.items.length > 0) {
+          for (const retDoc of matchedReturnDocs) {
+            for (const item of retDoc.items || []) {
+              const matchedOi = (order.items || []).find((x) => x._id.toString() === item.orderItemId?.toString());
+              if (matchedOi) {
+                matchedOi.returnStatus = "returned";
+                matchedOi.fulfillmentStatus = "returned";
+              }
+            }
+          }
+          const allItemsReturned = order.items.every((it) => it.returnStatus === "returned");
+          if (allItemsReturned && order.fulfillmentStatus !== "returned") {
+            order.fulfillmentStatus = "returned";
+            await orderRepository.updateById(
+              order._id,
+              { fulfillmentStatus: "returned" },
+              { session }
+            );
+          }
+        }
+      } catch {}
+    } else if (mappedStatus === "failed") {
+      await ReturnRequest.updateMany(
+        {
+          _id: { $in: returnIds },
+        },
+        {
+          $set: {
+            resolutionNotes: `Refund failed at gateway: ${updateFields.normalizedGatewayMessage}`,
+          },
+          $push: {
+            timeline: {
+              status: "refund_pending",
+              notes: `Gateway reported refund failure: ${updateFields.normalizedGatewayMessage}. Available for administrative review.`,
+              timestamp: new Date(),
+            },
+          },
+        },
+        { session }
+      );
+    }
+
+    // Synchronize RefundApplication if one exists
+    const RefundApplication = require("../models/RefundApplication");
+    const appUpdate = {
+      disbursementReference: refund._id,
+      gatewayRefundId: effectiveGatewayRefundId,
+      gatewayStatus: gatewayRefund.status || mappedStatus,
+      arn,
+      acquirerData,
+      normalizedGatewayMessage: updateFields.normalizedGatewayMessage,
+      lastReconciledAt: new Date(),
+    };
+
+    if (mappedStatus === "processed") {
+      appUpdate.applicationStatus = "disbursed";
+      appUpdate.disbursementStatus = "disbursed";
+      appUpdate.disbursedAt = updateFields.processedAt;
+      appUpdate.disbursedAmount = refund.amount;
+      appUpdate.approvedAmount = refund.amount;
+      appUpdate.failureDetails = null;
+    } else if (mappedStatus === "failed") {
+      appUpdate.applicationStatus = "disbursement_failed";
+      appUpdate.disbursementStatus = "failed";
+      appUpdate.failureDetails = {
+        code: gatewayRefund.error_code || "GATEWAY_FAILED",
+        message: updateFields.normalizedGatewayMessage,
+        failedAt: new Date(),
+      };
+    } else if (mappedStatus === "pending") {
+      appUpdate.applicationStatus = "pending_confirmation";
+      appUpdate.disbursementStatus = "pending";
+    }
+
+    await RefundApplication.updateMany(
+      {
+        $or: [
+          { disbursementReference: refund._id },
+          { returnId: { $in: returnIds } },
+          { orderId: order._id, applicationStatus: { $in: ["submitted", "under_review", "disbursement_processing", "pending_confirmation", "approved", "disbursement_failed"] } },
+          { gatewayRefundId: effectiveGatewayRefundId },
+        ],
+      },
+      {
+        $set: appUpdate,
+        $push: {
+          reconciliationHistory: {
+            reconciledAt: new Date(),
+            reconciledBy: userId,
+            previousStatus,
+            newStatus: mappedStatus,
+            gatewayStatus: gatewayRefund.status,
+            message: updateFields.normalizedGatewayMessage,
+            rawMetadata: {
+              arn,
+              acquirerData,
+            },
+          },
+          timeline: {
+            status: appUpdate.applicationStatus || mappedStatus,
+            notes: `Disbursement confirmed via authoritative gateway reconciliation (${effectiveGatewayRefundId})${arn ? ` [ARN: ${arn}]` : ""}`,
+            timestamp: new Date(),
+            actor: { actorType: "admin", actorId: userId, role: "admin" },
+          },
+        },
+      },
+      { session }
+    );
+
+    // Record immutable audit event
+    try {
+      const AuditLog = require("../models/AuditLog");
+      if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+        await AuditLog.create(
+          [
+            {
+              actorId: userId,
+              targetId: refund._id,
+              action: "REFUND_GATEWAY_RECONCILED_SUCCESS",
+              entityType: "Refund",
+              beforeState: {
+                status: previousStatus,
+                paymentStatus: payment.status,
+                refundReservedAmount: payment.refundReservedAmount ? Number(payment.refundReservedAmount.toString()) : 0,
+                refundedAmount: payment.refundedAmount ? Number(payment.refundedAmount.toString()) : 0,
+              },
+              afterState: {
+                status: mappedStatus,
+                paymentStatus: syncResult?.paymentStatus,
+                refundReservedAmount: syncResult?.updatedPayment?.refundReservedAmount ? Number(syncResult.updatedPayment.refundReservedAmount.toString()) : 0,
+                refundedAmount: syncResult?.updatedPayment?.refundedAmount ? Number(syncResult.updatedPayment.refundedAmount.toString()) : 0,
+                arn,
+                gatewayRefundId: effectiveGatewayRefundId,
+              },
+              reason: `Authoritative gateway reconciliation synchronized processed refund (${effectiveGatewayRefundId}) with ARN ${arn || "N/A"}`,
+              ipAddress: ipAddress || null,
+              userAgent: userAgent || null,
+            },
+          ],
+          { session }
+        );
+      }
+    } catch {}
+
+    await session.commitTransaction();
+  } catch (err) {
+    try {
+      await session.abortTransaction();
+    } catch {}
+    throw err;
+  } finally {
+    await session.endSession();
+  }
+
+  // Post-commit side effects outside transaction session (non-blocking)
+  if (mappedStatus === "processed") {
+    try {
+      const { generateCreditNoteForReturn } = require("./return-request.service");
+      for (const retDoc of matchedReturnDocs) {
+        await generateCreditNoteForReturn({
+          returnDoc: retDoc,
+          orderDoc: order,
+          refundDoc: updatedRefund,
+        }).catch(() => {});
+      }
+    } catch {}
+
+    try {
+      const financialLedgerService = require("./financial-ledger.service");
+      const isSettled = Boolean(order.items?.some((it) => it.settlementId));
+      const primaryVendorId = order.items?.[0]?.vendorId;
+      await financialLedgerService.postRefundReversalJournal(updatedRefund, {
+        orderDoc: order,
+        vendorId: primaryVendorId,
+        isSettled,
+        actorId: userId,
+      });
+    } catch {}
+  }
+
+  return {
+    reconciled: true,
+    previousStatus,
+    newStatus: mappedStatus,
+    gatewayStatus: gatewayRefund.status,
+    arn,
+    refund: updatedRefund,
+    payment: syncResult.updatedPayment,
+    order: syncResult.updatedOrder,
+  };
+};
+
 module.exports = {
   createRefund,
+  reconcileGatewayRefund,
   decimalToMinorUnits,
   minorUnitsToDecimal,
   getRefundTotals,

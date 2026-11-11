@@ -16,6 +16,13 @@ const inventoryTransactionSchema = new mongoose.Schema(
       index: true,
     },
 
+    vendorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Vendor",
+      default: null,
+      index: true,
+    },
+
     type: {
       type: String,
       enum: [
@@ -115,6 +122,24 @@ inventoryTransactionSchema.index({
 
 inventoryTransactionSchema.index({
   warehouseId: 1,
+  createdAt: -1,
+});
+
+inventoryTransactionSchema.index({
+  vendorId: 1,
+  createdAt: -1,
+});
+
+inventoryTransactionSchema.index({
+  vendorId: 1,
+  type: 1,
+  createdAt: -1,
+});
+
+inventoryTransactionSchema.index({
+  vendorId: 1,
+  warehouseId: 1,
+  type: 1,
   createdAt: -1,
 });
 

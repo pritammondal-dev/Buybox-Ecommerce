@@ -159,6 +159,12 @@ const createAuthMiddleware = (options = {}) => {
       }
     }
 
+    if (decoded.sub && mongoose.connection.readyState === 1 && !dbUser && !options.optional) {
+      return next(
+        new AppError("User account not found or has been removed", 401, "USER_NOT_FOUND")
+      );
+    }
+
     if (dbUser) {
       if (dbUser.isActive === false || dbUser.deletedAt) {
         return next(
@@ -283,6 +289,9 @@ const createAuthMiddleware = (options = {}) => {
       _id: resolvedUserId,
       role: activeRole,
       roles: userRoles,
+      permissions: Array.isArray(decoded.permissions)
+        ? decoded.permissions
+        : (dbUser && Array.isArray(dbUser.permissions) ? dbUser.permissions : []),
       context: decoded.context || null,
       isEmailVerified: Boolean(dbUser ? dbUser.isEmailVerified : decoded.isEmailVerified),
       authVersion: tokenAuthVersion,

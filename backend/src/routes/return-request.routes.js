@@ -1,6 +1,7 @@
 const express = require("express");
 const multer = require("multer");
 const returnRequestController = require("../controllers/return-request.controller");
+const refundApplicationController = require("../controllers/refund-application.controller");
 const { authenticate, authenticateVendor } = require("../middlewares/authentication.middleware");
 const {
   requireRoles,
@@ -18,6 +19,10 @@ const {
   returnActionNotesSchema,
   cancelReturnSchema,
 } = require("../validators/order/return-request.validator");
+const {
+  submitRefundApplicationSchema,
+  resubmitRefundApplicationSchema,
+} = require("../validators/order/refund-application.validator");
 const { ROLES } = require("../constants/auth.constants");
 const { PERMISSIONS } = require("../constants/permissions.constants");
 const AppError = require("../errors/AppError");
@@ -80,6 +85,8 @@ router.post(
 );
 
 // Admin returns management (must precede generic routes)
+router.use("/admin", requireRoles(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER, ROLES.SUPPORT));
+
 router.get(
   "/admin",
   requirePermissions(PERMISSIONS.RETURNS_VIEW),
@@ -153,6 +160,19 @@ router.post(
   returnRequestController.refundReturn
 );
 
+router.post(
+  "/admin/:id/retry-refund",
+  requirePermissions(PERMISSIONS.REFUNDS_CREATE),
+  validate(returnActionNotesSchema),
+  returnRequestController.refundReturn
+);
+
+router.post(
+  "/admin/:id/reconcile-refund",
+  requirePermissions(PERMISSIONS.REFUNDS_CREATE),
+  returnRequestController.reconcileReturnRefund
+);
+
 // Vendor-scoped returns (must precede generic /:id)
 router.use("/vendor", authenticateVendor);
 router.get(
@@ -222,10 +242,37 @@ router.post(
 );
 
 router.post(
-  "/vendor/my/:returnId/refund",
+  "/vendor/my/:returnId/refund-application",
   requireRoles(ROLES.VENDOR),
-  validate(returnActionNotesSchema),
-  returnRequestController.refundReturn
+  validate(submitRefundApplicationSchema),
+  refundApplicationController.submitRefundApplication
+);
+
+router.post(
+  "/vendor/my/:returnId/resubmit-refund-application",
+  requireRoles(ROLES.VENDOR),
+  validate(resubmitRefundApplicationSchema),
+  refundApplicationController.resubmitRefundApplication
+);
+
+router.get(
+  "/vendor/my/:returnId/refund-application",
+  requireRoles(ROLES.VENDOR),
+  refundApplicationController.getMyRefundApplication
+);
+
+router.post(
+  ["/vendor/my/:returnId/refund", "/me/:returnId/refund", "/vendor/my/:returnId/reconcile-refund"],
+  requireRoles(ROLES.VENDOR),
+  (req, res, next) => {
+    return next(
+      new AppError(
+        "Merchants do not have authority to disburse refunds directly. Please submit a Refund Disbursement Application for Admin/Superadmin approval.",
+        403,
+        "MERCHANT_DISBURSEMENT_UNAUTHORIZED"
+      )
+    );
+  }
 );
 
 // Customer endpoints

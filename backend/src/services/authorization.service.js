@@ -10,6 +10,7 @@ const EmployeePermissionRestriction = require("../models/EmployeePermissionRestr
 const { ROLE_PERMISSIONS } = require("../constants/role-permissions.constants");
 const {
   PERMISSIONS,
+  SECTION5_PERMISSIONS,
   resolvePermissionAliases,
 } = require("../constants/permissions.constants");
 const AppError = require("../errors/AppError");
@@ -60,7 +61,11 @@ const getEffectivePermissions = async (userId, options = {}) => {
 
   // Superadmin platform authority: unconditionally possesses all system permissions
   if (user.role === "super_admin") {
-    return Object.values(PERMISSIONS).sort();
+    const all = new Set([
+      ...Object.values(PERMISSIONS),
+      ...(SECTION5_PERMISSIONS ? Object.values(SECTION5_PERMISSIONS) : []),
+    ]);
+    return Array.from(all).sort();
   }
 
   // 2. Resolve Employee Profile
@@ -90,7 +95,11 @@ const getEffectivePermissions = async (userId, options = {}) => {
     const jobRole = await JobRole.findById(employee.jobRoleId).lean();
     if (jobRole && jobRole.isActive) {
       if (jobRole.isSuperadminRole) {
-        return Object.values(PERMISSIONS).sort();
+        const all = new Set([
+          ...Object.values(PERMISSIONS),
+          ...(SECTION5_PERMISSIONS ? Object.values(SECTION5_PERMISSIONS) : []),
+        ]);
+        return Array.from(all).sort();
       }
       if (Array.isArray(jobRole.permissions)) {
         for (const p of jobRole.permissions) {

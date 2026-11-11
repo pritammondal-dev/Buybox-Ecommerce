@@ -25,6 +25,8 @@ import {
   XCircle,
   Clock,
   ExternalLink,
+  Warehouse,
+  Boxes,
 } from "lucide-react";
 import { toast } from "sonner";
 import { vendorService } from "@/services/vendor.service";
@@ -80,6 +82,8 @@ export default function VendorAnalyticsPage() {
   const [overviewData, setOverviewData] = useState(null);
   const [trendData, setTrendData] = useState([]);
   const [productsData, setProductsData] = useState([]);
+  const [productPerformanceLoading, setProductPerformanceLoading] = useState(false);
+  const [productPerformanceError, setProductPerformanceError] = useState(null);
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 10,
@@ -134,6 +138,8 @@ export default function VendorAnalyticsPage() {
   // Fetch Product Performance Table
   const fetchProductPerformance = useCallback(async () => {
     try {
+      setProductPerformanceLoading(true);
+      setProductPerformanceError(null);
       const { sortBy: cleanSortBy, sortOrder: cleanSortOrder } = normalizeSortParams(sortBy, sortOrder);
 
       const params = {
@@ -165,7 +171,11 @@ export default function VendorAnalyticsPage() {
       }
     } catch (err) {
       console.error("Failed to load product performance:", err);
-      toast.error(err?.response?.data?.message || "Failed to load product performance");
+      const errorMsg = err?.response?.data?.message || "Failed to load product performance";
+      setProductPerformanceError(errorMsg);
+      toast.error(errorMsg);
+    } finally {
+      setProductPerformanceLoading(false);
     }
   }, [period, pagination.page, pagination.limit, debouncedSearch, sortBy, sortOrder, customStartDate, customEndDate]);
 
@@ -186,7 +196,7 @@ export default function VendorAnalyticsPage() {
     else setIsLoading(true);
 
     try {
-      await Promise.all([fetchOverviewAndTrends(), fetchProductPerformance()]);
+      await Promise.allSettled([fetchOverviewAndTrends(), fetchProductPerformance()]);
       if (isManualRefresh) {
         toast.success("Analytics updated with live marketplace data");
       }
@@ -452,6 +462,33 @@ export default function VendorAnalyticsPage() {
         </div>
       )}
 
+      {/* Warehouse Intelligence Quick-Access Banner */}
+      <div className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50/70 via-white to-blue-50/50 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="size-10 rounded-xl bg-indigo-600/10 text-indigo-700 flex items-center justify-center shrink-0">
+            <Warehouse className="size-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-slate-900">Warehouse Analytics & Inventory Intelligence</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                Phase 04 Active
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Inspect multi-warehouse stock aging (FIFO), cost turnover, DIO, operational fulfillment rates, and replenishment risks.
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/vendor/inventory?tab=analytics"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-xs transition-colors shrink-0"
+        >
+          <span>Open Warehouse Intelligence</span>
+          <ArrowUpRight className="size-3.5" />
+        </Link>
+      </div>
+
       {/* 3. Authoritative Wallet Balance Banner */}
       <div className="rounded-xl border border-emerald-900/20 bg-gradient-to-r from-[#003828] to-[#004D38] p-5 text-white shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -529,19 +566,21 @@ export default function VendorAnalyticsPage() {
         />
 
         <VendorKpiCard
-          title="Net Merchandise Sales"
-          value={formatCurrency(metrics.merchandiseSales)}
+          title="Net Sales"
+          value={formatCurrency(metrics.netSales !== undefined ? metrics.netSales : metrics.merchandiseSales)}
           subtitle={
-            compare && comparison.merchandiseSales
-              ? `${comparison.merchandiseSales.display} vs prev period`
+            compare && comparison.netSales
+              ? `${comparison.netSales.display} vs prev period`
+              : Number(metrics.refunds || 0) > 0
+              ? `Discounts: ${formatCurrency(metrics.discounts)} • Refunds: ${formatCurrency(metrics.refunds)}`
               : `Discounts applied: ${formatCurrency(metrics.discounts)}`
           }
           icon={TrendingUp}
           trend={
-            compare && comparison.merchandiseSales
+            compare && comparison.netSales
               ? {
-                  direction: comparison.merchandiseSales.direction === "negative" ? "down" : "up",
-                  value: comparison.merchandiseSales.display,
+                  direction: comparison.netSales.direction === "negative" ? "down" : "up",
+                  value: comparison.netSales.display,
                 }
               : null
           }
@@ -761,7 +800,26 @@ export default function VendorAnalyticsPage() {
         </div>
 
         {/* Table Content */}
-        {productsData.length === 0 ? (
+        {productPerformanceError ? (
+          <div className="p-6">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl border border-rose-200 bg-rose-50 text-rose-900">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="size-5 text-rose-600 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold">Unable to load product performance metrics</p>
+                  <p className="text-xs text-rose-700">{productPerformanceError}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => fetchProductPerformance()}
+                className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-rose-600 text-white hover:bg-rose-700 transition-colors shadow-sm shrink-0"
+              >
+                Retry Table
+              </button>
+            </div>
+          </div>
+        ) : productsData.length === 0 ? (
           <div className="py-12">
             <VendorEmptyState
               title="No Product Performance Records"
@@ -854,14 +912,14 @@ export default function VendorAnalyticsPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {productsData.map((prod) => {
-                  const onHand = Number(prod.totalStockOnHand || 0);
-                  const available = Number(prod.totalAvailableStock || 0);
+                  const onHand = Number(prod.totalStockOnHand ?? prod.currentStock ?? 0);
+                  const available = Number(prod.totalAvailableStock ?? prod.availableStock ?? 0);
                   const isOutOfStock = available <= 0;
                   const isLowStock = available > 0 && available <= 5;
 
                   return (
                     <tr
-                      key={`${prod.productId}_${prod.variantId || "default"}`}
+                      key={`${prod.productId}_${prod.variantId || prod.productVariantId || prod.sku || "default"}`}
                       className="hover:bg-slate-50/70 transition-colors"
                     >
                       <td className="py-3 px-4">

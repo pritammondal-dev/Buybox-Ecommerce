@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { jobRoleService, permissionService } from "@/services/admin/admin.service.js";
 import { useAdminAuth } from "@/hooks/useAdminAuth.js";
+import { SECTION5_CATALOG } from "@/constants/permissions.js";
 
 export default function JobRoleDetailPage() {
   const params = useParams();
@@ -57,7 +58,41 @@ export default function JobRoleDetailPage() {
       const fetchedRole = roleData?.role || roleData;
       setRole(fetchedRole);
       setAllRoles(allRolesData?.roles || []);
-      setPermissionsCatalog(catalogData || []);
+
+      // Normalize permissionsCatalog to ensure grouped structure:
+      // [ { category: "...", permissions: [ { slug, name, description } ] } ]
+      let normalizedCatalog = [];
+      if (Array.isArray(catalogData) && catalogData.length > 0) {
+        if (Array.isArray(catalogData[0]?.permissions)) {
+          normalizedCatalog = catalogData;
+        } else {
+          const groupMap = new Map();
+          for (const item of catalogData) {
+            const catName =
+              item.category ||
+              (item.module
+                ? item.module.charAt(0).toUpperCase() + item.module.slice(1).replace(/_/g, " ")
+                : "General");
+            if (!groupMap.has(catName)) {
+              groupMap.set(catName, []);
+            }
+            groupMap.get(catName).push({
+              slug: item.slug || item,
+              name: item.name || item.slug || item,
+              description: item.description || "",
+            });
+          }
+          normalizedCatalog = Array.from(groupMap.entries()).map(
+            ([category, permissions]) => ({ category, permissions })
+          );
+        }
+      }
+
+      if (normalizedCatalog.length === 0) {
+        normalizedCatalog = Array.from(SECTION5_CATALOG);
+      }
+
+      setPermissionsCatalog(normalizedCatalog);
 
       setSelectedPermissions(new Set(fetchedRole.permissions || []));
       setSelectedScope(
@@ -336,10 +371,35 @@ export default function JobRoleDetailPage() {
                 >
                   <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center justify-between">
                     <span>{categoryName}</span>
-                    <span className="text-xs font-normal text-slate-400">
-                      {perms.filter((p) => selectedPermissions.has(p.slug || p)).length} /{" "}
-                      {perms.length} enabled
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-normal text-slate-400">
+                        {perms.filter((p) => selectedPermissions.has(p.slug || p)).length} /{" "}
+                        {perms.length} enabled
+                      </span>
+                      {!role.isSuperadminRole && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const groupSlugs = perms.map((p) => p.slug || p);
+                            const allGroupSelected = groupSlugs.every((s) => selectedPermissions.has(s));
+                            setSelectedPermissions((prev) => {
+                              const next = new Set(prev);
+                              groupSlugs.forEach((s) => {
+                                if (allGroupSelected) {
+                                  next.delete(s);
+                                } else {
+                                  next.add(s);
+                                }
+                              });
+                              return next;
+                            });
+                          }}
+                          className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 transition-colors ml-2"
+                        >
+                          {perms.every((p) => selectedPermissions.has(p.slug || p)) ? "Deselect Group" : "Select Group"}
+                        </button>
+                      )}
+                    </div>
                   </h3>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

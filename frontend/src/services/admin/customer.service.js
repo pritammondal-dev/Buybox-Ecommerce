@@ -99,7 +99,7 @@ export const adminCustomerService = {
   },
 
   /**
-   * Soft-deactivate customer account preserving historical orders and transactions
+   * Permanently delete customer account and session records while preserving historical orders and transactions
    */
   async delete(id, reason) {
     const res = await apiClient.delete(`/admin/customers/${encodeURIComponent(id)}`, {
@@ -109,7 +109,7 @@ export const adminCustomerService = {
   },
 
   /**
-   * Soft-deactivate alias
+   * Delete alias
    */
   async deactivate(id, reason) {
     return this.delete(id, reason);

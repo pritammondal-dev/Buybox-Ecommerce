@@ -30,11 +30,11 @@ router.get(
   reviewController.getMyVendorReviews
 );
 
-// Admin list all reviews
+// Admin list all reviews (strictly requires moderation permission)
 router.get(
   "/",
   authenticate,
-  requirePermissions(PERMISSIONS.REVIEWS_READ),
+  requirePermissions(PERMISSIONS.REVIEWS_MODERATE),
   reviewController.listAllReviews
 );
 

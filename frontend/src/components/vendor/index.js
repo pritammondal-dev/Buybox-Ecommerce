@@ -16,4 +16,5 @@ export { VendorKpiCard } from "./VendorKpiCard.jsx";
 export { VendorStatusBadge, resolveStatusMeta } from "./VendorStatusBadge.jsx";
 export { VendorEmptyState } from "./VendorEmptyState.jsx";
 export { default as VendorTablePagination } from "./VendorTablePagination.jsx";
+export { default as WarehouseAnalyticsTab } from "./WarehouseAnalyticsTab.jsx";
 

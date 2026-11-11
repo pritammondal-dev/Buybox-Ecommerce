@@ -15,6 +15,7 @@ import {
 import { toast } from "sonner";
 import { vendorService } from "@/services/vendor.service";
 import { getVendorReturnUrl } from "@/utils/secure-id.util";
+import { formatCurrency, parsePrice } from "@/utils/formatCurrency";
 import VendorTablePagination from "@/components/vendor/VendorTablePagination";
 import {
   VendorPageHeader,
@@ -183,6 +184,7 @@ export default function VendorReturnsPage() {
                   <th className="px-6 py-3.5">Type</th>
                   <th className="px-6 py-3.5">Status</th>
                   <th className="px-6 py-3.5">Reason</th>
+                  <th className="px-6 py-3.5 text-right">Refund Amount</th>
                   <th className="px-6 py-3.5">Date</th>
                   <th className="px-6 py-3.5 text-right">Action</th>
                 </tr>
@@ -205,6 +207,9 @@ export default function VendorReturnsPage() {
                       </td>
                       <td className="px-6 py-4 text-slate-600 max-w-xs truncate">
                         {ret.reason || "Customer Return Request"}
+                      </td>
+                      <td className="px-6 py-4 text-right font-bold text-slate-900">
+                        {formatCurrency(parsePrice(ret.refundAmount))}
                       </td>
                       <td className="px-6 py-4 text-slate-500 whitespace-nowrap">
                         {ret.createdAt ? new Date(ret.createdAt).toLocaleDateString("en-IN") : "N/A"}

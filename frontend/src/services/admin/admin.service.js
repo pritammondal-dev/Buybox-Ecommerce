@@ -95,8 +95,10 @@ export const taskService = {
 };
 
 export const permissionService = {
-  list: async () => {
-    const res = await apiClient.get("/admin/governance/permissions");
+  list: async (params = {}) => {
+    const res = await apiClient.get("/admin/governance/permissions", {
+      params: { grouped: true, ...params },
+    });
     return res?.data?.data?.permissions || res?.data?.data || [];
   },
   updateEmployeePermissions: async (employeeId, permissions) => {
@@ -762,7 +764,16 @@ export const adminOperationsService = {
   // Returns
   listReturns: async (params = {}) => {
     const res = await apiClient.get("/returns/admin", { params });
-    return res?.data?.data || res?.data || res;
+    const payload = res?.data || res;
+    const items = payload?.data || (Array.isArray(payload) ? payload : []);
+    const meta = payload?.meta || {};
+    const kpis = payload?.meta?.kpis || payload?.kpis || {};
+    return {
+      items: Array.isArray(items) ? items : [],
+      data: Array.isArray(items) ? items : [],
+      meta,
+      kpis,
+    };
   },
   getReturn: async (id) => {
     const res = await apiClient.get(`/returns/admin/${id}`);
@@ -774,6 +785,14 @@ export const adminOperationsService = {
   },
   rejectReturn: async (id, reason = "") => {
     const res = await apiClient.post(`/returns/admin/${id}/reject`, { reason });
+    return res?.data?.data || res?.data || res;
+  },
+  overrideReturn: async (id, { action, reason }) => {
+    if (action === "approve") {
+      const res = await apiClient.post(`/returns/admin/${id}/approve`, { notes: reason, reason });
+      return res?.data?.data || res?.data || res;
+    }
+    const res = await apiClient.post(`/returns/admin/${id}/reject`, { reason, notes: reason });
     return res?.data?.data || res?.data || res;
   },
   scheduleReturnPickup: async (id, data = {}) => {
@@ -803,6 +822,18 @@ export const adminOperationsService = {
     const res = await apiClient.post(`/returns/admin/${id}/refund`, { notes });
     return res?.data?.data || res?.data || res;
   },
+  retryRefundReturn: async (id, notes = "") => {
+    const res = await apiClient.post(`/returns/admin/${id}/retry-refund`, { notes });
+    return res?.data?.data || res?.data || res;
+  },
+  reconcileReturnRefund: async (id) => {
+    const res = await apiClient.post(`/returns/admin/${id}/reconcile-refund`);
+    return res?.data?.data || res?.data || res;
+  },
+  cancelReturn: async (id, reason = "") => {
+    const res = await apiClient.post(`/returns/admin/${id}/cancel`, { reason });
+    return res?.data?.data || res?.data || res;
+  },
 
   // Refunds
   listRefunds: async (params = {}) => {
@@ -818,6 +849,49 @@ export const adminOperationsService = {
       amount,
       reason,
     });
+    return res?.data?.data || res?.data || res;
+  },
+
+  // Refund Applications (Governance)
+  listRefundApplications: async (params = {}) => {
+    const res = await apiClient.get("/refund-applications/admin", { params });
+    const payload = res?.data || res;
+    return {
+      items: payload?.data || [],
+      kpis: payload?.meta?.kpis || {},
+      meta: payload?.meta || {},
+    };
+  },
+  getRefundApplication: async (id) => {
+    const res = await apiClient.get(`/refund-applications/admin/${id}`);
+    return res?.data?.data || res?.data || res;
+  },
+  reviewRefundApplication: async (id, data = {}) => {
+    const res = await apiClient.post(`/refund-applications/admin/${id}/review`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  approveRefundApplication: async (id, data = {}) => {
+    const res = await apiClient.post(`/refund-applications/admin/${id}/approve`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  rejectRefundApplication: async (id, data = {}) => {
+    const res = await apiClient.post(`/refund-applications/admin/${id}/reject`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  requestRefundApplicationRevision: async (id, data = {}) => {
+    const res = await apiClient.post(`/refund-applications/admin/${id}/request-revision`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  disburseRefundApplication: async (id, data = {}) => {
+    const res = await apiClient.post(`/refund-applications/admin/${id}/disburse`, data);
+    return res?.data?.data || res?.data || res;
+  },
+  retryRefundApplicationDisbursement: async (id) => {
+    const res = await apiClient.post(`/refund-applications/admin/${id}/retry-disbursement`, {});
+    return res?.data?.data || res?.data || res;
+  },
+  reconcileRefundApplication: async (id) => {
+    const res = await apiClient.post(`/refund-applications/admin/${id}/reconcile`, {});
     return res?.data?.data || res?.data || res;
   },
 

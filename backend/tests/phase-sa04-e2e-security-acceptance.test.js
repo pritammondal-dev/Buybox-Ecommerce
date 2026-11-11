@@ -894,44 +894,39 @@ describe("Phase SA-04: End-to-End Security & Acceptance Verification", () => {
         country: "IN",
       });
 
-      // 4. Execute soft-deactivation
+      // 4. Execute permanent deletion
       const delRes = await request(app)
         .delete(`/api/v1/admin/customers/${customerUser._id}`)
         .set("Authorization", `Bearer ${superadminToken}`)
         .send({ reason: "Customer requested permanent account erasure under privacy policy" });
 
       expect(delRes.status).toBe(200);
+      expect(delRes.body.data.permanentlyDeleted).toBe(true);
 
-      // Verify User & Customer soft-deleted
+      // Verify User & Customer permanently deleted from MongoDB
       const userAfter = await User.findById(customerUser._id);
-      expect(userAfter.isActive).toBe(false);
-      expect(userAfter.deletedAt).not.toBeNull();
-      expect(userAfter.authVersion).toBe(2);
+      expect(userAfter).toBeNull();
 
       const custAfter = await Customer.findOne({ userId: customerUser._id });
-      expect(custAfter.isActive).toBe(false);
-      expect(custAfter.deletedAt).not.toBeNull();
+      expect(custAfter).toBeNull();
 
       // Verify cart was purged
       const activeCart = await Cart.findOne({ customerId: customerUser._id });
       expect(activeCart).toBeNull();
 
-      // Verify historical order and address remain intact
+      // Verify historical order remains intact for financial compliance
       const preservedOrder = await Order.findById(historicalOrder._id);
       expect(preservedOrder).not.toBeNull();
       expect(preservedOrder.customerId.toString()).toBe(customerUser._id.toString());
 
-      const preservedAddress = await Address.findById(savedAddress._id);
-      expect(preservedAddress).not.toBeNull();
-
-      // Repeated deactivation returns 400
+      // Repeated deletion returns 404 as user document is removed
       const repeatDel = await request(app)
         .delete(`/api/v1/admin/customers/${customerUser._id}`)
         .set("Authorization", `Bearer ${superadminToken}`)
         .send({ reason: "Repeated customer deactivation attempt" });
 
-      expect(repeatDel.status).toBe(400);
-      expect(repeatDel.body.code).toBe("ACCOUNT_ALREADY_DEACTIVATED");
+      expect(repeatDel.status).toBe(404);
+      expect(repeatDel.body.code).toBe("CUSTOMER_NOT_FOUND");
     });
   });
 

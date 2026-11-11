@@ -4,20 +4,27 @@ const objectId = z
   .string()
   .regex(/^[a-fA-F0-9]{24}$/, "Invalid ObjectId");
 
+const SUPPORT_TICKET_CATEGORIES = [
+  "order",
+  "payment",
+  "shipping",
+  "product",
+  "refund",
+  "account",
+  "technical",
+  "general",
+  "catalog",
+  "finance",
+  "shipment",
+  "returns",
+  "other",
+];
+
 const createSupportTicketSchema = z.object({
   subject: z.string().trim().min(1).max(200),
   description: z.string().trim().min(1).max(5000),
   category: z
-    .enum([
-      "order",
-      "payment",
-      "shipping",
-      "product",
-      "refund",
-      "account",
-      "technical",
-      "other",
-    ])
+    .enum(SUPPORT_TICKET_CATEGORIES)
     .optional(),
   priority: z
     .enum(["low", "medium", "high", "urgent"])
@@ -31,16 +38,7 @@ const updateSupportTicketSchema = z
     subject: z.string().trim().min(1).max(200).optional(),
     description: z.string().trim().min(1).max(5000).optional(),
     category: z
-      .enum([
-        "order",
-        "payment",
-        "shipping",
-        "product",
-        "refund",
-        "account",
-        "technical",
-        "other",
-      ])
+      .enum(SUPPORT_TICKET_CATEGORIES)
       .optional(),
     priority: z
       .enum(["low", "medium", "high", "urgent"])

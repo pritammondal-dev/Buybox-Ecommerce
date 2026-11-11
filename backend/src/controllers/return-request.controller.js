@@ -131,10 +131,11 @@ const createReturn = async (req, res) => {
     type: req.body.type,
     items: req.body.items,
     reason: req.body.reason,
-    description: req.body.description || req.body.customerNotes,
+    description: req.body.description || req.body.customerNotes || req.body.customerComments,
     orderItemId: req.body.orderItemId,
     idempotencyKey: req.body.idempotencyKey,
-    customerNotes: req.body.customerNotes || req.body.description,
+    customerNotes: req.body.customerNotes || req.body.customerComments || req.body.description,
+    customerComments: req.body.customerComments || req.body.customerNotes || req.body.description,
     replacementVariantId: req.body.replacementVariantId,
     images: req.body.images,
     pickupAddress: req.body.pickupAddress,
@@ -333,6 +334,16 @@ const inspectReturn = async (req, res) => {
     returnId: req.params.returnId || req.params.id,
     passed: req.body.passed,
     outcome: req.body.outcome,
+    condition: req.body.condition || req.body.receivedCondition,
+    receivedCondition: req.body.receivedCondition || req.body.condition,
+    packagingCondition: req.body.packagingCondition,
+    productCondition: req.body.productCondition,
+    missingAccessories: req.body.missingAccessories,
+    missingAccessoriesNotes: req.body.missingAccessoriesNotes,
+    photos: req.body.photos,
+    deductionAmount: req.body.deductionAmount,
+    deductionReason: req.body.deductionReason,
+    deductionCategory: req.body.deductionCategory,
     notes: req.body.notes || req.body.note,
     items: req.body.items,
     strict: false,
@@ -394,6 +405,27 @@ const refundReturn = async (req, res) => {
   });
 };
 
+const reconcileReturnRefund = async (req, res) => {
+  const isAdmin =
+    req.user?.role === "admin" ||
+    req.user?.role === "super_admin" ||
+    req.user?.roles?.includes?.("admin") ||
+    req.user?.roles?.includes?.("super_admin");
+  const returnReq = await returnRequestService.reconcileReturnRefund({
+    userId: req.user.id || req.user._id,
+    returnId: req.params.returnId || req.params.id,
+    strict: !isAdmin,
+    ipAddress: req.ip,
+    userAgent: req.get("user-agent"),
+    isAdmin,
+  });
+
+  return apiResponse.sendSuccess(res, {
+    message: "Return refund reconciled with gateway successfully",
+    data: returnReq,
+  });
+};
+
 const getAdminReturns = async (req, res) => {
   const result = await returnRequestService.getAdminReturns({
     query: req.query,
@@ -402,7 +434,10 @@ const getAdminReturns = async (req, res) => {
   return apiResponse.sendSuccess(res, {
     message: "Admin return requests retrieved successfully",
     data: result.items,
-    meta: result.meta,
+    meta: {
+      ...result.meta,
+      kpis: result.kpis,
+    },
   });
 };
 
@@ -456,6 +491,7 @@ module.exports = {
   fulfillExchange,
   receiveReturn,
   refundReturn,
+  reconcileReturnRefund,
   getAdminReturns,
   getAdminReturnById,
 };

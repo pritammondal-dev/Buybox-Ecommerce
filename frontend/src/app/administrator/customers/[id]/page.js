@@ -196,13 +196,11 @@ export default function CustomerDetailPage() {
     setModalError(null);
     try {
       await adminCustomerService.delete(customer._id || customer.id, reason);
-      toast.success("Customer account safely deactivated and active sessions invalidated.");
-      setActionSuccess("Customer account deactivated successfully");
-      setTimeout(() => setActionSuccess(null), 4000);
-      setCustomer((prev) => (prev ? { ...prev, deletedAt: new Date().toISOString(), isActive: false } : null));
+      toast.success("Customer account permanently deleted successfully.");
       setShowDeactivateModal(false);
+      router.push("/administrator/customers");
     } catch (err) {
-      const msg = err?.response?.data?.message || err?.message || "Failed to deactivate customer account";
+      const msg = err?.response?.data?.message || err?.message || "Failed to delete customer account";
       setModalError(msg);
       toast.error(msg);
     } finally {
@@ -486,7 +484,7 @@ export default function CustomerDetailPage() {
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-colors"
               >
                 <Trash2 className="size-3.5" />
-                <span>Deactivate Account</span>
+                <span>Permanently Delete Account</span>
               </button>
             )}
           </div>
@@ -1253,7 +1251,7 @@ export default function CustomerDetailPage() {
         }
       />
 
-      {/* Customer Soft-Deactivation Modal */}
+      {/* Customer Permanent Deletion Modal */}
       <ReasonConfirmModal
         isOpen={showDeactivateModal}
         onClose={() => {
@@ -1264,13 +1262,13 @@ export default function CustomerDetailPage() {
         isLoading={actionLoading}
         errorMessage={modalError}
         targetIdentity={`${customer?.firstName || ""} ${customer?.lastName || ""} (${customer?.email || ""})`.trim()}
-        actionType="deactivate"
+        actionType="delete"
         isDestructive={true}
         requireAcknowledgment={true}
-        acknowledgmentText="I acknowledge that deactivating this customer account revokes login access, clears active carts, and preserves all historical orders, invoices, and transaction records."
-        title="Soft-Deactivate Customer Account"
-        description="Soft-deactivation will immediately block account login, invalidate all active tokens and sessions, and purge active shopping carts. In accordance with legal, financial, and tax compliance policies, all past orders, payments, refunds, and addresses are retained in the database."
-        confirmLabel="Confirm Account Deactivation"
+        acknowledgmentText="I acknowledge that permanently deleting this customer account removes authentication credentials and active sessions, while preserving historical orders, payments, and invoices for legal compliance."
+        title="Permanently Delete Customer Account"
+        description="Permanent customer deletion removes the user authentication record from the database, invalidates all sessions and tokens, and clears active shopping carts. This frees the email address for new registrations or Google Sign-In. In accordance with financial and legal compliance policies, all completed orders, invoices, payments, and refunds remain intact in the database."
+        confirmLabel="Permanently Delete Customer"
       />
     </div>
   );

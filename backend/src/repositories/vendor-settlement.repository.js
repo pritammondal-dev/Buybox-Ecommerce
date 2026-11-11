@@ -73,6 +73,106 @@ const findAll = async ({ filter = {}, skip = 0, limit = 20, sort = { createdAt: 
   return { items, total };
 };
 
+const findPaginatedByVendor = async ({
+  vendorId,
+  page = 1,
+  limit = 20,
+  status,
+  startDate,
+  endDate,
+  search,
+  options = {},
+}) => {
+  const mongoose = require("mongoose");
+  const safePage = Math.max(Number(page) || 1, 1);
+  const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  const skip = (safePage - 1) * safeLimit;
+
+  const match = {
+    vendorId:
+      vendorId instanceof mongoose.Types.ObjectId
+        ? vendorId
+        : new mongoose.Types.ObjectId(vendorId),
+  };
+
+  if (status && status !== "all") {
+    match.status = status;
+  }
+
+  if (startDate || endDate) {
+    match.createdAt = {};
+    if (startDate) match.createdAt.$gte = new Date(startDate);
+    if (endDate) match.createdAt.$lte = new Date(endDate);
+  }
+
+  if (search && search.trim()) {
+    const searchRegex = new RegExp(search.trim(), "i");
+    match.$or = [
+      { settlementNumber: searchRegex },
+      { payoutReference: searchRegex },
+    ];
+  }
+
+  const pipeline = [
+    { $match: match },
+    {
+      $facet: {
+        paginatedItems: [
+          { $sort: { createdAt: -1 } },
+          { $skip: skip },
+          { $limit: safeLimit },
+        ],
+        totalCount: [{ $count: "count" }],
+        summary: [
+          {
+            $group: {
+              _id: null,
+              totalGrossVolume: { $sum: "$grossSales" },
+              totalSettledAmount: {
+                $sum: {
+                  $cond: [{ $eq: ["$status", "paid"] }, "$netPayable", 0],
+                },
+              },
+              pendingDisbursements: {
+                $sum: {
+                  $cond: [{ $ne: ["$status", "paid"] }, "$netPayable", 0],
+                },
+              },
+            },
+          },
+        ],
+      },
+    },
+  ];
+
+  const aggregateQuery = VendorSettlement.aggregate(pipeline);
+  if (options.session) {
+    aggregateQuery.session(options.session);
+  }
+  const [result] = await aggregateQuery;
+
+  const paginatedItems = result?.paginatedItems || [];
+  const totalCount = result?.totalCount?.[0]?.count || 0;
+  const summaryResult = result?.summary?.[0] || {
+    totalGrossVolume: 0,
+    totalSettledAmount: 0,
+    pendingDisbursements: 0,
+  };
+
+  return {
+    items: paginatedItems,
+    total: totalCount,
+    page: safePage,
+    limit: safeLimit,
+    totalPages: Math.ceil(totalCount / safeLimit) || 1,
+    summary: {
+      totalGrossVolume: Number(summaryResult.totalGrossVolume?.toString() || 0).toFixed(2),
+      totalSettledAmount: Number(summaryResult.totalSettledAmount?.toString() || 0).toFixed(2),
+      pendingDisbursements: Number(summaryResult.pendingDisbursements?.toString() || 0).toFixed(2),
+    },
+  };
+};
+
 module.exports = {
   create,
   findById,
@@ -82,4 +182,5 @@ module.exports = {
   findByPeriod,
   updateById,
   findAll,
+  findPaginatedByVendor,
 };

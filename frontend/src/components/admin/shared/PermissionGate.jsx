@@ -1,5 +1,1 @@
-export function PermissionGate() {
-  return null;
-}
-
-export default PermissionGate;
+export { PermissionGate, default } from "../PermissionGate.jsx";

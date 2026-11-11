@@ -6,6 +6,11 @@ const orderFulfillmentController = require("../controllers/order-fulfillment.con
 const fulfillmentOpsController = require("../controllers/fulfillment-operations.controller");
 const shipmentController = require("../controllers/shipment.controller");
 const returnRequestController = require("../controllers/return-request.controller");
+const refundApplicationController = require("../controllers/refund-application.controller");
+const {
+  submitRefundApplicationSchema,
+  resubmitRefundApplicationSchema,
+} = require("../validators/order/refund-application.validator");
 const vendorSettlementController = require("../controllers/vendor-settlement.controller");
 const vendorBankAccountController = require("../controllers/vendor-bank-account.controller");
 const vendorWalletController = require("../controllers/vendor-wallet.controller");
@@ -380,10 +385,37 @@ router.post(
 );
 
 router.post(
+  "/me/returns/:returnId/refund-application",
+  requireApprovedVendor,
+  validate(submitRefundApplicationSchema),
+  refundApplicationController.submitRefundApplication
+);
+
+router.post(
+  "/me/returns/:returnId/resubmit-refund-application",
+  requireApprovedVendor,
+  validate(resubmitRefundApplicationSchema),
+  refundApplicationController.resubmitRefundApplication
+);
+
+router.get(
+  "/me/returns/:returnId/refund-application",
+  requireApprovedVendor,
+  refundApplicationController.getMyRefundApplication
+);
+
+router.post(
   "/me/returns/:returnId/refund",
   requireApprovedVendor,
-  validate(returnActionNotesSchema),
-  returnRequestController.refundReturn
+  (req, res, next) => {
+    return next(
+      new AppError(
+        "Merchants do not have authority to disburse refunds directly. Please submit a Refund Disbursement Application for Admin/Superadmin approval.",
+        403,
+        "MERCHANT_DISBURSEMENT_UNAUTHORIZED"
+      )
+    );
+  }
 );
 
 /*

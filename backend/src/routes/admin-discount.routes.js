@@ -1,5 +1,5 @@
 const express = require("express");
-const authenticate = require("../middlewares/authentication.middleware");
+const { authenticateAdministrator } = require("../middlewares/authentication.middleware");
 const { requirePermissions } = require("../middlewares/authorization.middleware");
 const { PERMISSIONS } = require("../constants/permissions.constants");
 const validate = require("../middlewares/validate.middleware");
@@ -14,7 +14,7 @@ const {
 
 const router = express.Router();
 
-router.use(authenticate);
+router.use(authenticateAdministrator);
 
 // Preview promotional pricing calculation without saving
 router.post(

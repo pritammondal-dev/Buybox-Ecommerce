@@ -5,8 +5,10 @@ const Warehouse = require("../models/Warehouse");
 const ProductVariant = require("../models/ProductVariant");
 const Product = require("../models/Product");
 const Inventory = require("../models/Inventory");
+const Vendor = require("../models/Vendor");
 const inventoryTransactionService = require("./inventory-transaction.service");
 const { syncVariantStockMirror } = require("./inventory.service");
+const { resolveApprovedVendor } = require("../middlewares/vendor.middleware");
 const withTransaction = require("../utils/withTransaction");
 const AppError = require("../errors/AppError");
 
@@ -290,6 +292,7 @@ const confirmReceiving = async (idOrObj, maybeActor, maybeOptions = {}) => {
         await inventoryTransactionService.createTransaction({
           productVariantId: item.productVariantId,
           warehouseId,
+          vendorId: record.vendorId || null,
           type: "receive",
           quantity: acceptedQty,
           onHandBefore,
@@ -358,6 +361,240 @@ const cancelReceiving = async (idOrObj, maybeReason = "Cancelled by user", maybe
   return record;
 };
 
+/**
+ * ============================================================
+ * VENDOR-SPECIFIC INBOUND GOODS RECEIVING METHODS
+ * ============================================================
+ */
+
+/**
+ * Create a vendor-authorized stock receiving record with strict variant ownership verification.
+ */
+const createVendorReceivingRecord = async ({
+  userId,
+  warehouseId,
+  destinationWarehouseId,
+  supplierName,
+  referenceDocNumber,
+  items,
+  notes,
+  autoConfirm = false,
+  idempotencyKey = null,
+}) => {
+  const vendor = await resolveApprovedVendor(userId);
+  const targetWarehouseId = warehouseId || destinationWarehouseId;
+
+  if (!mongoose.isValidObjectId(targetWarehouseId)) {
+    throw new AppError("Invalid warehouse ID", 400, "INVALID_WAREHOUSE_ID");
+  }
+
+  const warehouse = await Warehouse.findById(targetWarehouseId);
+  if (!warehouse || !warehouse.isActive || warehouse.deletedAt) {
+    throw new AppError("Fulfillment center not found or inactive", 404, "WAREHOUSE_NOT_FOUND");
+  }
+
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new AppError("Receiving items must not be empty", 400, "EMPTY_RECEIVING_ITEMS");
+  }
+
+  // Idempotency check
+  if (idempotencyKey) {
+    const existing = await StockReceiving.findOne({
+      vendorId: vendor._id,
+      idempotencyKey,
+    });
+    if (existing) {
+      return existing;
+    }
+  }
+
+  const processedItems = [];
+  for (const item of items) {
+    if (!mongoose.isValidObjectId(item.productVariantId)) {
+      throw new AppError(`Invalid product variant ID: ${item.productVariantId}`, 400, "INVALID_VARIANT_ID");
+    }
+
+    const variant = await ProductVariant.findById(item.productVariantId).populate("productId");
+    if (!variant || variant.deletedAt) {
+      throw new AppError(`Product variant not found: ${item.productVariantId}`, 404, "VARIANT_NOT_FOUND");
+    }
+
+    // Strict Tenant Isolation: Ensure product belongs to authenticated merchant
+    const product = variant.productId;
+    if (!product || !product.vendorId || product.vendorId.toString() !== vendor._id.toString()) {
+      throw new AppError(
+        `Variant ${variant.sku} does not belong to your merchant account`,
+        403,
+        "VARIANT_ACCESS_DENIED"
+      );
+    }
+
+    const expectedQty = Number(item.expectedQuantity ?? item.quantityExpected ?? item.quantity ?? 0);
+    const receivedQty = Number(item.receivedQuantity ?? item.quantityReceived ?? expectedQty);
+    const rejectedQty = Number(item.rejectedQuantity ?? item.quantityRejected ?? 0);
+
+    if (!Number.isInteger(expectedQty) || expectedQty <= 0) {
+      throw new AppError("Expected quantity must be a positive integer", 400, "INVALID_QUANTITY");
+    }
+    if (!Number.isInteger(receivedQty) || receivedQty < 0) {
+      throw new AppError("Received quantity must be a non-negative integer", 400, "INVALID_QUANTITY");
+    }
+    if (!Number.isInteger(rejectedQty) || rejectedQty < 0) {
+      throw new AppError("Rejected quantity must be a non-negative integer", 400, "INVALID_QUANTITY");
+    }
+
+    processedItems.push({
+      productId: product._id,
+      productVariantId: variant._id,
+      sku: variant.sku,
+      productName: product.name || product.title || variant.name || "Product",
+      expectedQuantity: expectedQty,
+      receivedQuantity: receivedQty,
+      rejectedQuantity: rejectedQty,
+      rejectionReason: item.rejectionReason || null,
+      notes: item.notes || null,
+    });
+  }
+
+  const receivingNumber = generateReceivingNumber();
+  const receiving = await StockReceiving.create({
+    receivingNumber,
+    warehouseId: targetWarehouseId,
+    vendorId: vendor._id,
+    supplierName: supplierName?.trim() || null,
+    referenceDocNumber: referenceDocNumber?.trim() || null,
+    status: "draft",
+    items: processedItems,
+    notes: notes?.trim() || null,
+    idempotencyKey: idempotencyKey || null,
+    receivedBy: vendor.userId,
+  });
+
+  if (autoConfirm) {
+    return confirmReceiving(receiving._id, { _id: vendor.userId }, { idempotencyKey });
+  }
+
+  return receiving;
+};
+
+/**
+ * List receiving records strictly partitioned to authenticated vendor.
+ */
+const listVendorReceivingRecords = async ({
+  userId,
+  warehouseId,
+  status,
+  search,
+  page = 1,
+  limit = 20,
+}) => {
+  const vendor = await resolveApprovedVendor(userId);
+
+  const query = { vendorId: vendor._id };
+
+  if (warehouseId && mongoose.isValidObjectId(warehouseId)) {
+    query.warehouseId = warehouseId;
+  }
+  if (status && status !== "all") {
+    query.status = status;
+  }
+  if (search && typeof search === "string" && search.trim().length > 0) {
+    const s = search.trim();
+    query.$or = [
+      { receivingNumber: { $regex: s, $options: "i" } },
+      { supplierName: { $regex: s, $options: "i" } },
+      { referenceDocNumber: { $regex: s, $options: "i" } },
+      { "items.sku": { $regex: s, $options: "i" } },
+      { "items.productName": { $regex: s, $options: "i" } },
+    ];
+  }
+
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+  const skip = (pageNum - 1) * limitNum;
+
+  const [total, items] = await Promise.all([
+    StockReceiving.countDocuments(query),
+    StockReceiving.find(query)
+      .populate("warehouseId", "name code address city state country")
+      .populate("receivedBy", "firstName lastName email")
+      .populate("confirmedBy", "firstName lastName email")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean(),
+  ]);
+
+  return {
+    items,
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum) || 1,
+    },
+  };
+};
+
+/**
+ * Get receiving record details ensuring vendor ownership.
+ */
+const getVendorReceivingRecord = async ({ userId, id }) => {
+  const vendor = await resolveApprovedVendor(userId);
+
+  if (!mongoose.isValidObjectId(id)) {
+    throw new AppError("Invalid receiving ID", 400, "INVALID_ID");
+  }
+
+  const record = await StockReceiving.findOne({ _id: id, vendorId: vendor._id })
+    .populate("warehouseId", "name code address contactEmail contactPhone city state country")
+    .populate("receivedBy", "firstName lastName email")
+    .populate("confirmedBy", "firstName lastName email")
+    .lean();
+
+  if (!record) {
+    throw new AppError("Stock receiving record not found", 404, "RECEIVING_NOT_FOUND");
+  }
+
+  return record;
+};
+
+/**
+ * Confirm a draft receiving record for the authenticated vendor.
+ */
+const confirmVendorReceiving = async ({ userId, id, idempotencyKey = null }) => {
+  const vendor = await resolveApprovedVendor(userId);
+
+  if (!mongoose.isValidObjectId(id)) {
+    throw new AppError("Invalid receiving ID", 400, "INVALID_ID");
+  }
+
+  const record = await StockReceiving.findOne({ _id: id, vendorId: vendor._id });
+  if (!record) {
+    throw new AppError("Stock receiving record not found", 404, "RECEIVING_NOT_FOUND");
+  }
+
+  return confirmReceiving(record._id, { _id: vendor.userId }, { idempotencyKey });
+};
+
+/**
+ * Cancel a draft receiving record for the authenticated vendor.
+ */
+const cancelVendorReceiving = async ({ userId, id, reason = "Cancelled by merchant" }) => {
+  const vendor = await resolveApprovedVendor(userId);
+
+  if (!mongoose.isValidObjectId(id)) {
+    throw new AppError("Invalid receiving ID", 400, "INVALID_ID");
+  }
+
+  const record = await StockReceiving.findOne({ _id: id, vendorId: vendor._id });
+  if (!record) {
+    throw new AppError("Stock receiving record not found", 404, "RECEIVING_NOT_FOUND");
+  }
+
+  return cancelReceiving(record._id, reason, { _id: vendor.userId });
+};
+
 module.exports = {
   createReceivingRecord,
   getReceivingRecord,
@@ -365,4 +602,9 @@ module.exports = {
   updateReceivingRecord,
   confirmReceiving,
   cancelReceiving,
+  createVendorReceivingRecord,
+  listVendorReceivingRecords,
+  getVendorReceivingRecord,
+  confirmVendorReceiving,
+  cancelVendorReceiving,
 };

@@ -21,7 +21,8 @@ const createReview = async (req, res, next) => {
 const getReviewById = async (req, res, next) => {
   try {
     const review = await reviewService.getReviewById(
-      req.params.reviewId
+      req.params.reviewId,
+      { user: req.user }
     );
 
     return sendSuccess(res, {

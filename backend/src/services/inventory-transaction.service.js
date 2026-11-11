@@ -1,4 +1,6 @@
 const inventoryTransactionRepository = require("../repositories/inventory-transaction.repository");
+const ProductVariant = require("../models/ProductVariant");
+const Product = require("../models/Product");
 const AppError = require("../errors/AppError");
 
 const TRANSACTION_TYPES = Object.freeze([
@@ -16,6 +18,7 @@ const TRANSACTION_TYPES = Object.freeze([
 const createTransaction = async ({
   productVariantId,
   warehouseId,
+  vendorId = null,
   type,
   quantity,
   onHandBefore,
@@ -99,11 +102,27 @@ const createTransaction = async ({
     }
   }
 
+  let resolvedVendorId = vendorId;
+  if (!resolvedVendorId && productVariantId) {
+    try {
+      const variant = await ProductVariant.findById(productVariantId).select("productId").lean();
+      if (variant?.productId) {
+        const product = await Product.findById(variant.productId).select("vendorId").lean();
+        if (product?.vendorId) {
+          resolvedVendorId = product.vendorId;
+        }
+      }
+    } catch {
+      // non-blocking fallback
+    }
+  }
+
   try {
     return await inventoryTransactionRepository.create(
       {
         productVariantId,
         warehouseId,
+        vendorId: resolvedVendorId,
         type,
         quantity,
         onHandBefore,

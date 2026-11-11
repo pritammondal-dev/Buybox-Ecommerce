@@ -7,6 +7,7 @@ const returnItemInputSchema = z.object({
   quantity: z.coerce.number().int().positive("Quantity must be at least 1"),
   reason: z.string().trim().optional().nullable(),
   condition: z.string().trim().optional().nullable(),
+  customerComments: z.string().trim().max(1000).optional().nullable(),
   images: z
     .array(
       z.union([
@@ -55,6 +56,7 @@ const createReturnRequestSchema = z.object({
   description: z.string().trim().max(1000).optional().nullable(),
   items: z.array(returnItemInputSchema).min(1, "At least one item is required"),
   customerNotes: z.string().trim().max(1000).optional().nullable(),
+  customerComments: z.string().trim().max(1000).optional().nullable(),
   replacementVariantId: z.string().trim().optional().nullable(),
   idempotencyKey: z.string().trim().max(128).optional().nullable(),
   images: z
@@ -98,9 +100,30 @@ const fulfillExchangeSchema = z.object({
 
 const inspectReturnSchema = z.object({
   notes: z.string().trim().max(500).optional().nullable(),
-  condition: z.enum(["unopened", "opened_unused", "defective_in_box", "damaged", "missing_parts"]).optional().nullable(),
+  condition: z.string().trim().optional().nullable(),
+  receivedCondition: z.string().trim().optional().nullable(),
+  packagingCondition: z.string().trim().optional().nullable(),
+  productCondition: z.string().trim().optional().nullable(),
+  missingAccessories: z.boolean().optional(),
+  missingAccessoriesNotes: z.string().trim().max(500).optional().nullable(),
+  photos: z
+    .array(
+      z.union([
+        z.string().trim(),
+        z.object({
+          url: z.string().trim().min(1),
+          publicId: z.string().trim().optional().nullable(),
+          caption: z.string().trim().optional().nullable(),
+        }),
+      ])
+    )
+    .optional()
+    .nullable(),
+  deductionAmount: z.union([z.number(), z.string()]).optional().nullable(),
+  deductionReason: z.string().trim().max(500).optional().nullable(),
+  deductionCategory: z.string().trim().max(100).optional().nullable(),
   passed: z.boolean().optional(),
-  outcome: z.enum(["resellable", "damaged", "defective", "missing_parts", "not_restockable"]).optional().nullable(),
+  outcome: z.string().trim().optional().nullable(),
   restock: z.boolean().optional(),
   warehouseId: z.string().trim().optional().nullable(),
   items: z
@@ -108,7 +131,7 @@ const inspectReturnSchema = z.object({
       z.object({
         productId: z.string().trim().optional(),
         productVariantId: z.string().trim().optional().nullable(),
-        condition: z.enum(["unopened", "opened_unused", "defective_in_box", "damaged", "missing_parts"]).optional(),
+        condition: z.string().trim().optional(),
         passed: z.boolean().optional(),
         notes: z.string().trim().max(500).optional().nullable(),
         restock: z.boolean().optional(),

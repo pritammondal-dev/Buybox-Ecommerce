@@ -89,6 +89,13 @@ const stockReceivingSchema = new mongoose.Schema(
       index: true,
     },
 
+    vendorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Vendor",
+      default: null,
+      index: true,
+    },
+
     supplierName: {
       type: String,
       default: null,
@@ -175,5 +182,6 @@ const stockReceivingSchema = new mongoose.Schema(
 );
 
 stockReceivingSchema.index({ warehouseId: 1, status: 1, createdAt: -1 });
+stockReceivingSchema.index({ vendorId: 1, warehouseId: 1, status: 1, createdAt: -1 });
 
 module.exports = mongoose.model("StockReceiving", stockReceivingSchema);
