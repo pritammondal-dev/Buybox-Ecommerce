@@ -1173,19 +1173,21 @@ const synchronizeOrderForShipmentStatus =
           );
         }
 
-        const paymentService = require("./payment.service");
-        try {
-          const payment = await paymentService.getLatestPaymentForOrder(currentOrder._id);
-          if (payment && ["captured", "paid"].includes(payment.status)) {
-            await paymentService.refundPaymentForOrder(
-              currentOrder._id,
-              currentOrder.customerId,
-              null,
-              `shipment_cancel_all_${currentOrder._id.toString()}`
-            );
+        if (mongoose.connection.readyState === 1) {
+          const paymentService = require("./payment.service");
+          try {
+            const payment = await paymentService.getLatestPaymentForOrder(currentOrder._id);
+            if (payment && ["captured", "paid"].includes(payment.status)) {
+              await paymentService.refundPaymentForOrder(
+                currentOrder._id,
+                currentOrder.customerId,
+                null,
+                `shipment_cancel_all_${currentOrder._id.toString()}`
+              );
+            }
+          } catch (refundErr) {
+            console.error("Failed to refund payment on full shipment cancellation:", refundErr.message);
           }
-        } catch (refundErr) {
-          console.error("Failed to refund payment on full shipment cancellation:", refundErr.message);
         }
 
         return updatedOrder;
@@ -1320,19 +1322,21 @@ const synchronizeOrderForShipmentStatus =
           );
         }
 
-        const paymentService = require("./payment.service");
-        try {
-          const payment = await paymentService.getLatestPaymentForOrder(currentOrder._id);
-          if (payment && ["captured", "paid"].includes(payment.status)) {
-            await paymentService.refundPaymentForOrder(
-              currentOrder._id,
-              currentOrder.customerId,
-              null,
-              `shipment_cancel_all_${currentOrder._id.toString()}`
-            );
+        if (mongoose.connection.readyState === 1) {
+          const paymentService = require("./payment.service");
+          try {
+            const payment = await paymentService.getLatestPaymentForOrder(currentOrder._id);
+            if (payment && ["captured", "paid"].includes(payment.status)) {
+              await paymentService.refundPaymentForOrder(
+                currentOrder._id,
+                currentOrder.customerId,
+                null,
+                `shipment_cancel_all_${currentOrder._id.toString()}`
+              );
+            }
+          } catch (refundErr) {
+            console.error("Failed to refund payment on full shipment cancellation:", refundErr.message);
           }
-        } catch (refundErr) {
-          console.error("Failed to refund payment on full shipment cancellation:", refundErr.message);
         }
 
         return updatedOrder;

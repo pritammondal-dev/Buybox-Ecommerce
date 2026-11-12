@@ -518,6 +518,7 @@ const calculateVendorEligibleSettlement = async ({ vendorId }) => {
                 orderItem.promotionDiscountAmount != null
               ) {
                 const promoDiscountPerUnit = Number(orderItem.promotionDiscountAmount?.toString() || 0);
+                const retQty = item.quantity || 1;
                 const subsidyReversal = promoDiscountPerUnit * retQty;
                 platformSubsidyNum = Math.max(0, platformSubsidyNum - subsidyReversal);
               }

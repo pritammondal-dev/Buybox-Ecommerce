@@ -179,6 +179,7 @@ async function verifyRestore(options = {}) {
 
       if (fs.existsSync(indexFilePath)) {
         const indexes = JSON.parse(fs.readFileSync(indexFilePath, "utf8"));
+        const indexSpecs = [];
         for (const idx of indexes) {
           if (idx.name === "_id_") continue;
           const { key, name, unique, sparse, partialFilterExpression, expireAfterSeconds, weights, default_language } = idx;
@@ -189,13 +190,23 @@ async function verifyRestore(options = {}) {
           if (expireAfterSeconds !== undefined) opt.expireAfterSeconds = expireAfterSeconds;
           if (weights) opt.weights = weights;
           if (default_language) opt.default_language = default_language;
+          indexSpecs.push({ key, ...opt });
+        }
 
+        if (indexSpecs.length > 0) {
           try {
-            await targetCollection.createIndex(key, opt);
-            report.restoration.indexesRestored++;
-          } catch (idxErr) {
-            // Log non-fatal index warning
-            console.warn(`[WARN] Rebuilding index ${name} on ${colName}: ${idxErr.message}`);
+            await targetCollection.createIndexes(indexSpecs);
+            report.restoration.indexesRestored += indexSpecs.length;
+          } catch (batchErr) {
+            for (const spec of indexSpecs) {
+              const { key, ...opt } = spec;
+              try {
+                await targetCollection.createIndex(key, opt);
+                report.restoration.indexesRestored++;
+              } catch (idxErr) {
+                console.warn(`[WARN] Rebuilding index ${opt.name} on ${colName}: ${idxErr.message}`);
+              }
+            }
           }
         }
       }

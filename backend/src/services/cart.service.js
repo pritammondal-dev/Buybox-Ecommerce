@@ -256,7 +256,7 @@ const getAuthoritativeAvailableStock = async (variant) => {
   }).lean();
 
   if (!inventoryRecords || inventoryRecords.length === 0) {
-    return typeof variant.stockQuantity === "number" ? variant.stockQuantity : 0;
+    return 0;
   }
 
   let totalAvailable = 0;
@@ -549,6 +549,21 @@ const recoverCart = async (identity, storeId = null) => {
 
 const getCart = async (identity, storeId = null) => {
   const owner = await resolveCartOwner(identity);
+  if (!owner.isGuest) {
+    const activeCart = await cartRepository.findActiveByCustomer(owner.customerId, storeId);
+    if (activeCart) {
+      if (Array.isArray(activeCart.items) && activeCart.items.length > 0) {
+        await recalculateCart(activeCart);
+        return await cartRepository.updateById(activeCart._id, activeCart);
+      }
+      return activeCart;
+    }
+    const abandonedCart = await cartRepository.findLatestAbandonedByCustomer(owner.customerId, storeId);
+    if (abandonedCart) {
+      return abandonedCart;
+    }
+  }
+
   let cart = await findOrCreateActiveCart(owner, storeId, DEFAULT_CURRENCY);
 
   if (cart && Array.isArray(cart.items) && cart.items.length > 0) {

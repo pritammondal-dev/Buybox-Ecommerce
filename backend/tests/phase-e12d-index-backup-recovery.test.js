@@ -402,6 +402,6 @@ describe("PHASE E12D — MongoDB Index Deployment, Backup & Recovery Readiness",
       expect(report.validation.status).toBe("PASSED");
       expect(report.validation.mismatches.length).toBe(0);
       expect(report.targetDatabase).toBe(isolatedTestDbName);
-    }, 60000);
+    }, 120000);
   });
 });

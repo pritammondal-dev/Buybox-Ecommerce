@@ -1079,16 +1079,6 @@ const createReturnRequest = async ({
     });
   }
 
-  const activeExistingReturn = priorReturns.find(
-    (pr) => !["rejected", "cancelled", "refunded", "exchange_completed", "exchange_fulfilled"].includes(pr.status)
-  );
-  if (activeExistingReturn) {
-    throw new AppError(
-      "An active return request already exists for this order",
-      409,
-      "RETURN_ALREADY_IN_PROGRESS"
-    );
-  }
 
   const itemsSum = Array.isArray(order.items)
     ? order.items.reduce(

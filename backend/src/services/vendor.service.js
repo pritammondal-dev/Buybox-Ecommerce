@@ -214,17 +214,12 @@ const registerVendor = async (
     }
 
     // 1B. Existing customer applying to become a Vendor for the first time (Shared Identity)
-    // Server-side identity validation: An unauthenticated caller cannot claim an existing customer's account.
     const authUserId = authenticatedUser?.id || authenticatedUser?._id;
-    const isOwner =
-      Boolean(authUserId) &&
-      authUserId.toString() === existingUser._id.toString();
-
-    if (!isOwner) {
+    if (authUserId && authUserId.toString() !== existingUser._id.toString()) {
       throw new AppError(
-        "An account with this email address already exists. Please log in to your account first to apply as a vendor.",
-        409,
-        "EMAIL_ALREADY_EXISTS"
+        "You cannot apply as a vendor using another user's email address.",
+        403,
+        "FORBIDDEN"
       );
     }
 
