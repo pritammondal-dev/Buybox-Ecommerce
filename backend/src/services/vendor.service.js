@@ -10,7 +10,7 @@ const ReturnRequest = require("../models/ReturnRequest");
 const { VendorSettlement } = require("../models/VendorSettlement");
 const AuditLog = require("../models/AuditLog");
 const RefreshToken = require("../models/RefreshToken");
-const { hashPassword } = require("../utils/password");
+const { hashPassword, comparePassword } = require("../utils/password");
 const { ROLES } = require("../constants/auth.constants");
 const AppError = require("../errors/AppError");
 const { encodeSecureId, decodeSecureId } = require("../utils/secure-id.util");
@@ -63,7 +63,7 @@ const registerVendor = async (
       .replace(/^-+|-+$/g, "") + `-${Date.now().toString(36)}`;
 
   // 1. Check for existing user account
-  const existingUser = await User.findOne({ email: normalizedEmail });
+  const existingUser = await User.findOne({ email: normalizedEmail }).select("+password");
   if (existingUser) {
     // Internal platform staff accounts cannot register as marketplace vendors
     if (["super_admin", "admin", "editor", "manager", "support"].includes(existingUser.role)) {
@@ -220,6 +220,19 @@ const registerVendor = async (
         "You cannot apply as a vendor using another user's email address.",
         403,
         "FORBIDDEN"
+      );
+    }
+
+    const isOwner = Boolean(
+      (authUserId && authUserId.toString() === existingUser._id.toString()) ||
+      (password && existingUser.password && (await comparePassword(password, existingUser.password)))
+    );
+
+    if (!isOwner) {
+      throw new AppError(
+        "An account with this email address already exists. Please log in to your account first to apply as a vendor.",
+        409,
+        "EMAIL_ALREADY_EXISTS"
       );
     }
 

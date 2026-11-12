@@ -245,15 +245,10 @@ const getAuthoritativeAvailableStock = async (variant) => {
   }).select("_id").lean();
 
   if (!activeWarehouses || activeWarehouses.length === 0) {
-    return typeof variant.stockQuantity === "number" ? variant.stockQuantity : 0;
+    return 0;
   }
 
   const activeWarehouseIds = activeWarehouses.map((w) => w._id);
-
-  const anyInventoryExists = await Inventory.exists({ productVariantId: variant._id });
-  if (!anyInventoryExists) {
-    return typeof variant.stockQuantity === "number" ? variant.stockQuantity : 0;
-  }
 
   const inventoryRecords = await Inventory.find({
     productVariantId: variant._id,
