@@ -81,12 +81,7 @@ jobs:
 
       - name: Create Backend Test Environment File
         working-directory: ./backend
-        run: |
-          if [ -f .env.example ]; then
-            cp .env.example .env
-          else
-            touch .env
-          fi
+        run: touch .env
 
       - name: Run Backend Unit & Integration Tests
         working-directory: ./backend
