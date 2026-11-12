@@ -619,6 +619,239 @@ describe("PHASE CUSTOMER-PERMANENT-DELETE-02: Permanent Customer Account Deletio
         spy.mockRestore();
       }
     });
+
+    it("blocks repeat Google Sign-In attempts consistently without recreating documents", async () => {
+      const email = `repeat-deleted-${Date.now()}@perm-del-test.com`;
+      const googleSub = `google-sub-repeat-${Date.now()}`;
+
+      // 1. Create and permanently delete account
+      const user = await User.create({
+        email,
+        firstName: "Repeat",
+        lastName: "Test",
+        role: ROLES.CUSTOMER,
+        roles: [ROLES.CUSTOMER],
+        isActive: true,
+        isEmailVerified: true,
+        authProviders: { google: { id: googleSub, email, linkedAt: new Date() } },
+      });
+      createdUserIds.push(user._id);
+      const cust = await Customer.create({ userId: user._id });
+      createdCustomerIds.push(cust._id);
+
+      const customerToken = generateAccessToken(
+        { sub: user._id.toString(), role: ROLES.CUSTOMER, roles: [ROLES.CUSTOMER], authVersion: 1, permissionVersion: 1 },
+        { context: TOKEN_CONTEXTS.CUSTOMER, audience: TOKEN_AUDIENCES.CUSTOMER }
+      );
+
+      await request(app)
+        .delete("/api/v1/customers/account")
+        .set("Authorization", `Bearer ${customerToken}`)
+        .send({ confirmation: "DELETE MY ACCOUNT" });
+
+      // 2. Attempt Google Sign-In 3 times consecutively
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const spy = jest.spyOn(googleAuthService, "verifyIdToken").mockResolvedValueOnce({
+          sub: googleSub,
+          email,
+          emailVerified: true,
+          firstName: "Repeat",
+          lastName: "Test",
+        });
+
+        try {
+          const res = await request(app)
+            .post("/api/v1/auth/google")
+            .send({ idToken: "repeat.token" });
+
+          expect(res.status).toBe(403);
+          expect(res.body.code).toBe("ACCOUNT_DELETED");
+
+          // Ensure User remains null
+          const checkUser = await User.findOne({ email });
+          expect(checkUser).toBeNull();
+        } finally {
+          spy.mockRestore();
+        }
+      }
+    });
+
+    it("preserves 403 ACCOUNT_LINKING_VERIFICATION_REQUIRED for legitimate unverified active accounts", async () => {
+      const unverifiedEmail = `legit-unverified-${Date.now()}@perm-del-test.com`;
+
+      // Legitimate unverified active user (registered via email/password, not deleted)
+      const user = await User.create({
+        email: unverifiedEmail,
+        password: await hashPassword("Password123!"),
+        firstName: "Legit",
+        lastName: "Unverified",
+        role: ROLES.CUSTOMER,
+        roles: [ROLES.CUSTOMER],
+        isActive: true,
+        isEmailVerified: false, // NOT VERIFIED
+        deletedAt: null, // NOT DELETED
+      });
+      createdUserIds.push(user._id);
+      const cust = await Customer.create({ userId: user._id });
+      createdCustomerIds.push(cust._id);
+
+      const spy = jest.spyOn(googleAuthService, "verifyIdToken").mockResolvedValueOnce({
+        sub: `google-sub-unverified-${Date.now()}`,
+        email: unverifiedEmail,
+        emailVerified: true,
+        firstName: "Legit",
+        lastName: "Unverified",
+      });
+
+      try {
+        const res = await request(app)
+          .post("/api/v1/auth/google")
+          .send({ idToken: "unverified.id.token" });
+
+        expect(res.status).toBe(403);
+        expect(res.body.code).toBe("ACCOUNT_LINKING_VERIFICATION_REQUIRED");
+        expect(res.body.message).toContain("An unverified account exists with this email address");
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("successfully links and logs in legitimate verified active accounts", async () => {
+      const verifiedEmail = `legit-verified-${Date.now()}@perm-del-test.com`;
+      const googleSub = `google-sub-legit-${Date.now()}`;
+
+      // Legitimate verified active user (registered via email/password)
+      const user = await User.create({
+        email: verifiedEmail,
+        password: await hashPassword("Password123!"),
+        firstName: "Verified",
+        lastName: "Customer",
+        role: ROLES.CUSTOMER,
+        roles: [ROLES.CUSTOMER],
+        isActive: true,
+        isEmailVerified: true, // VERIFIED
+        deletedAt: null, // NOT DELETED
+      });
+      createdUserIds.push(user._id);
+      const cust = await Customer.create({ userId: user._id });
+      createdCustomerIds.push(cust._id);
+
+      const spy = jest.spyOn(googleAuthService, "verifyIdToken").mockResolvedValueOnce({
+        sub: googleSub,
+        email: verifiedEmail,
+        emailVerified: true,
+        firstName: "Verified",
+        lastName: "Customer",
+      });
+
+      try {
+        const res = await request(app)
+          .post("/api/v1/auth/google")
+          .send({ idToken: "legit.verified.id.token" });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+
+        const updatedUser = await User.findById(user._id);
+        expect(updatedUser.authProviders?.google?.id).toBe(googleSub);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("rejects residual soft-deleted accounts with 403 ACCOUNT_DELETED and does NOT throw unverified account error", async () => {
+      const legacyDeletedEmail = `legacy-deleted-${Date.now()}@perm-del-test.com`;
+
+      // Simulate a legacy soft-deleted customer (deleted before CUSTOMER-PERMANENT-DELETE-02, isEmailVerified false)
+      const user = await User.create({
+        email: legacyDeletedEmail,
+        firstName: "Legacy",
+        lastName: "Deleted",
+        role: ROLES.CUSTOMER,
+        roles: [ROLES.CUSTOMER],
+        isActive: false,
+        isEmailVerified: false, // RESIDUAL UNVERIFIED FLAG
+        deletedAt: new Date(Date.now() - 86400000), // SOFT-DELETED YESTERDAY
+      });
+      createdUserIds.push(user._id);
+      const cust = await Customer.create({ userId: user._id, deletedAt: new Date(Date.now() - 86400000) });
+      createdCustomerIds.push(cust._id);
+
+      const spy = jest.spyOn(googleAuthService, "verifyIdToken").mockResolvedValueOnce({
+        sub: `google-sub-legacy-${Date.now()}`,
+        email: legacyDeletedEmail,
+        emailVerified: true,
+        firstName: "Legacy",
+        lastName: "Deleted",
+      });
+
+      try {
+        const res = await request(app)
+          .post("/api/v1/auth/google")
+          .send({ idToken: "legacy.deleted.id.token" });
+
+        // MUST be 403 ACCOUNT_DELETED, NOT 403 ACCOUNT_LINKING_VERIFICATION_REQUIRED
+        expect(res.status).toBe(403);
+        expect(res.body.code).toBe("ACCOUNT_DELETED");
+        expect(res.body.code).not.toBe("ACCOUNT_LINKING_VERIFICATION_REQUIRED");
+
+        // Verify that residual user was upgraded and purged per Option A
+        const userInDb = await User.findById(user._id);
+        expect(userInDb).toBeNull();
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("matches tombstone fingerprints across email case and whitespace normalization", async () => {
+      const canonicalEmail = `norm-test-${Date.now()}@perm-del-test.com`;
+      const googleSub = `google-sub-norm-${Date.now()}`;
+
+      const user = await User.create({
+        email: canonicalEmail,
+        firstName: "Norm",
+        lastName: "User",
+        role: ROLES.CUSTOMER,
+        roles: [ROLES.CUSTOMER],
+        isActive: true,
+        isEmailVerified: true,
+        authProviders: { google: { id: googleSub, email: canonicalEmail, linkedAt: new Date() } },
+      });
+      createdUserIds.push(user._id);
+      const cust = await Customer.create({ userId: user._id });
+      createdCustomerIds.push(cust._id);
+
+      const customerToken = generateAccessToken(
+        { sub: user._id.toString(), role: ROLES.CUSTOMER, roles: [ROLES.CUSTOMER], authVersion: 1, permissionVersion: 1 },
+        { context: TOKEN_CONTEXTS.CUSTOMER, audience: TOKEN_AUDIENCES.CUSTOMER }
+      );
+
+      await request(app)
+        .delete("/api/v1/customers/account")
+        .set("Authorization", `Bearer ${customerToken}`)
+        .send({ confirmation: "DELETE MY ACCOUNT" });
+
+      // Incoming Google token with UPPERCASE and whitespace
+      const upperEmail = `  ${canonicalEmail.toUpperCase()}  `;
+      const spy = jest.spyOn(googleAuthService, "verifyIdToken").mockResolvedValueOnce({
+        sub: `different-google-sub-${Date.now()}`,
+        email: upperEmail,
+        emailVerified: true,
+        firstName: "Norm",
+        lastName: "User",
+      });
+
+      try {
+        const res = await request(app)
+          .post("/api/v1/auth/google")
+          .send({ idToken: "different.sub.same.email" });
+
+        expect(res.status).toBe(403);
+        expect(res.body.code).toBe("ACCOUNT_DELETED");
+      } finally {
+        spy.mockRestore();
+      }
+    });
   });
 
   /* =========================================================================

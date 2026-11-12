@@ -77,11 +77,86 @@ const isIdentityTombstoned = async ({ email = null, googleSub = null }, keyVersi
     return false;
   }
 
+  // 1. Check explicit tombstone registry
   const match = await DeletedAccountTombstone.findOne({
     identityFingerprint: { $in: fingerprints },
   }).lean();
 
-  return Boolean(match);
+  if (match) {
+    return true;
+  }
+
+  // 2. Check for legacy/residual deleted user documents
+  try {
+    const User = require("../models/User");
+    const queryConditions = [];
+    if (googleSub) {
+      queryConditions.push({ "authProviders.google.id": String(googleSub).trim() });
+    }
+    if (email) {
+      queryConditions.push({ email: String(email).trim().toLowerCase() });
+    }
+
+    if (queryConditions.length > 0) {
+      const residualDeletedUser = await User.findOne({
+        $or: queryConditions,
+        deletedAt: { $ne: null },
+      }).lean();
+
+      if (residualDeletedUser) {
+        // Upgrade legacy soft-deleted record to Option A permanent tombstone
+        if (residualDeletedUser.email) {
+          const legacyEmailFp = generateIdentityFingerprint("email", residualDeletedUser.email, keyVersion);
+          if (legacyEmailFp) {
+            await DeletedAccountTombstone.updateOne(
+              { identityFingerprint: legacyEmailFp },
+              {
+                $set: {
+                  identityFingerprint: legacyEmailFp,
+                  fingerprintType: "email",
+                  keyVersion,
+                  deletedAt: residualDeletedUser.deletedAt || new Date(),
+                  reason: "Legacy deleted customer upgraded to tombstone registry",
+                },
+              },
+              { upsert: true }
+            );
+          }
+        }
+
+        const legacyGoogleId = googleSub || residualDeletedUser.authProviders?.google?.id;
+        if (legacyGoogleId) {
+          const legacyGoogleFp = generateIdentityFingerprint("google_sub", legacyGoogleId, keyVersion);
+          if (legacyGoogleFp) {
+            await DeletedAccountTombstone.updateOne(
+              { identityFingerprint: legacyGoogleFp },
+              {
+                $set: {
+                  identityFingerprint: legacyGoogleFp,
+                  fingerprintType: "google_sub",
+                  keyVersion,
+                  deletedAt: residualDeletedUser.deletedAt || new Date(),
+                  reason: "Legacy deleted customer upgraded to tombstone registry",
+                },
+              },
+              { upsert: true }
+            );
+          }
+        }
+
+        // Purge residual user and customer documents per Option A
+        const Customer = require("../models/Customer");
+        await Customer.deleteMany({ userId: residualDeletedUser._id }).catch(() => {});
+        await User.deleteOne({ _id: residualDeletedUser._id }).catch(() => {});
+
+        return true;
+      }
+    }
+  } catch {
+    // Non-blocking fallback; continue evaluation
+  }
+
+  return false;
 };
 
 module.exports = {

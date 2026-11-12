@@ -1164,6 +1164,14 @@ const authenticateGoogleUser = async ({ idToken, ipAddress = null, userAgent = n
     let user = await User.findOne({ "authProviders.google.id": payload.sub });
 
     if (user) {
+      if (user.deletedAt || !user.isActive) {
+        throw new AppError(
+          "This account was permanently deleted. Automatic recreation via Google Sign-In is blocked.",
+          403,
+          "ACCOUNT_DELETED"
+        );
+      }
+
       actorId = user._id;
       const session = await createCustomerSession({ user, ipAddress, userAgent });
       await AuthAuditService.recordEvent({
@@ -1177,10 +1185,23 @@ const authenticateGoogleUser = async ({ idToken, ipAddress = null, userAgent = n
     }
 
     // 2. Check if a user with the same verified email already exists
-    const existingEmailUser = await User.findOne({ email: payload.email });
+    const normalizedPayloadEmail = payload.email ? String(payload.email).trim().toLowerCase() : null;
+    const existingEmailUser = normalizedPayloadEmail
+      ? await User.findOne({ email: normalizedPayloadEmail })
+      : null;
 
     if (existingEmailUser) {
       actorId = existingEmailUser._id;
+
+      // Anti-resurrection guard for residual deleted accounts
+      if (existingEmailUser.deletedAt || !existingEmailUser.isActive) {
+        throw new AppError(
+          "This account was permanently deleted. Automatic recreation via Google Sign-In is blocked.",
+          403,
+          "ACCOUNT_DELETED"
+        );
+      }
+
       // Safe Account Linking: Require existing account to be independently verified
       if (!existingEmailUser.isEmailVerified) {
         throw new AppError(
