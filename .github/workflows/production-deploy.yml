@@ -125,6 +125,7 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: https://api.buybox.com/api/v1
           NEXT_PUBLIC_APP_URL: https://buybox.com
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: npm run build
 
   security-audit:
