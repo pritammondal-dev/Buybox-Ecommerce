@@ -250,6 +250,11 @@ const getAuthoritativeAvailableStock = async (variant) => {
 
   const activeWarehouseIds = activeWarehouses.map((w) => w._id);
 
+  const anyInventoryExists = await Inventory.exists({ productVariantId: variant._id });
+  if (!anyInventoryExists) {
+    return typeof variant.stockQuantity === "number" ? variant.stockQuantity : 0;
+  }
+
   const inventoryRecords = await Inventory.find({
     productVariantId: variant._id,
     warehouseId: { $in: activeWarehouseIds },

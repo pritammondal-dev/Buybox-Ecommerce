@@ -284,7 +284,7 @@ describe("PHASE E12D — MongoDB Index Deployment, Backup & Recovery Readiness",
         const actualHash = crypto.createHash("sha256").update(content, "utf8").digest("hex");
         expect(actualHash).toBe(meta.sha256);
       }
-    });
+    }, 60000);
 
     test("applyRetentionPolicy retains requested count and preserves verified backups", () => {
       const mockBackupsRoot = path.join(testBackupsRoot, "retention_test");

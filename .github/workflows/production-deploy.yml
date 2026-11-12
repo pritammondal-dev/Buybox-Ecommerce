@@ -79,11 +79,19 @@ jobs:
         working-directory: ./backend
         run: npm ci
 
+      - name: Create Backend Test Environment File
+        working-directory: ./backend
+        run: |
+          if [ -f .env.example ]; then
+            cp .env.example .env
+          else
+            touch .env
+          fi
+
       - name: Run Backend Unit & Integration Tests
         working-directory: ./backend
         env:
           NODE_ENV: test
-          NODE_OPTIONS: "--max-old-space-size=6144"
           MONGODB_URI: mongodb://127.0.0.1:27017/buybox_test?replicaSet=rs0&directConnection=true
           REDIS_URL: redis://127.0.0.1:6379
           JWT_ACCESS_SECRET: test_jwt_access_secret_for_ci_pipeline_32char
