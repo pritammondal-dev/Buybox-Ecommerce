@@ -80,6 +80,14 @@ inventorySchema.index(
   }
 );
 
+inventorySchema.virtual("quantityOnHand").get(function () {
+  return this.onHand;
+});
+
+inventorySchema.virtual("quantityReserved").get(function () {
+  return this.reserved;
+});
+
 inventorySchema.virtual("available").get(function () {
   const nonSellable =
     (this.damaged || 0) + (this.defective || 0) + (this.expired || 0);

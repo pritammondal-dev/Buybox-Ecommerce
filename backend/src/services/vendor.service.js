@@ -2253,11 +2253,7 @@ const deleteVendor = async (vendorId, { reason, actorId, req } = {}) => {
   }
 
   if (vendor.deletedAt) {
-    return {
-      success: true,
-      message: "Vendor account is already deactivated",
-      vendor: vendor.toObject(),
-    };
+    throw new AppError("Vendor account is already deactivated", 400, "VENDOR_ALREADY_DEACTIVATED");
   }
 
   if (actorId && String(actorId) === String(vendor.userId)) {

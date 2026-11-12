@@ -159,6 +159,8 @@ describe("Buybox Final Launch Readiness End-to-End Audit Suite", () => {
       userId: testVendorUser._id,
       businessName: "Launch Acoustics",
       businessSlug: `launch-acoustics-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+      status: "approved",
+      onboardingStatus: "approved",
       isActive: true,
     });
 

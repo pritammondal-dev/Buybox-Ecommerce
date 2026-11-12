@@ -445,7 +445,8 @@ describe("Buybox Phase 2L.1 — Admin Catalog Remediation Integration Suite", ()
       expect(res.status).toBe(200);
       const variants = res.body.data.product.variants || [];
       expect(variants.length).toBe(1);
-      expect(variants[0].sku).toBe("P2L-VAR-001-ACT");
+      expect(variants[0]._id).toBe(activeVariant._id.toString());
+      expect(variants[0].sku).toBeUndefined();
     });
   });
 

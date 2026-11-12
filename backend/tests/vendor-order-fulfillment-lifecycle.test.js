@@ -13,6 +13,7 @@ const Inventory = require("../src/models/Inventory");
 const Warehouse = require("../src/models/Warehouse");
 const Order = require("../src/models/Order");
 const Shipment = require("../src/models/Shipment");
+const Payment = require("../src/models/Payment");
 const ReturnRequest = require("../src/models/ReturnRequest");
 const { VendorSettlement } = require("../src/models/VendorSettlement");
 const Role = require("../src/models/Role");
@@ -25,6 +26,7 @@ const { PERMISSIONS } = require("../src/constants/permissions.constants");
 const { ROLES } = require("../src/constants/auth.constants");
 const { generateAccessToken } = require("../src/services/token.service");
 const { encodeSecureId } = require("../src/utils/secure-id.util");
+const razorpayRefundProvider = require("../src/integrations/payments/razorpay-refund.provider");
 
 const TEST_MONGODB_URI = process.env.MONGODB_URI
   ? process.env.MONGODB_URI.replace("/buybox?", "/buybox_fulfillment_test?")
@@ -56,6 +58,18 @@ describe("Buybox End-to-End Vendor Fulfillment, Return & Settlement Suite", () =
   }
 
   beforeAll(async () => {
+    jest.spyOn(razorpayRefundProvider, "createRefund").mockImplementation(async ({ paymentId, amount, notes }) => {
+      return {
+        id: `rfnd_mock_${Date.now()}`,
+        entity: "refund",
+        amount,
+        currency: "INR",
+        payment_id: paymentId,
+        status: "processed",
+        notes,
+      };
+    });
+
     if (mongoose.connection.readyState !== 0) {
       await mongoose.disconnect();
     }
@@ -72,6 +86,7 @@ describe("Buybox End-to-End Vendor Fulfillment, Return & Settlement Suite", () =
         ProductVariant.deleteMany({}),
         Inventory.deleteMany({}),
         Order.deleteMany({}),
+        Payment.deleteMany({}),
         Shipment.deleteMany({}),
         ReturnRequest.deleteMany({}),
         VendorSettlement.deleteMany({}),
@@ -272,6 +287,7 @@ describe("Buybox End-to-End Vendor Fulfillment, Return & Settlement Suite", () =
         ProductVariant.deleteMany({}),
         Inventory.deleteMany({}),
         Order.deleteMany({}),
+        Payment.deleteMany({}),
         Shipment.deleteMany({}),
         ReturnRequest.deleteMany({}),
         VendorSettlement.deleteMany({}),
@@ -325,6 +341,23 @@ describe("Buybox End-to-End Vendor Fulfillment, Return & Settlement Suite", () =
           currency: "INR",
           inventoryStatus: "reserved",
           fulfillmentStatus: "unfulfilled",
+          vendorAcceptance: {
+            status: "accepted",
+            acceptedAt: new Date(),
+          },
+          assignedShipmentPartner: "Delhivery",
+          expectedDeliveryDate: new Date(Date.now() + 86400000 * 3),
+        },
+      ],
+      vendorFulfillments: [
+        {
+          vendorId: vendor._id,
+          acceptanceStatus: "accepted",
+          assignedShipmentPartner: "Delhivery",
+          expectedDeliveryDate: new Date(Date.now() + 86400000 * 3),
+          isFulfillmentConfirmed: true,
+          confirmedAt: new Date(),
+          version: 1,
         },
       ],
       pricing: {
@@ -333,6 +366,17 @@ describe("Buybox End-to-End Vendor Fulfillment, Return & Settlement Suite", () =
         grandTotal: 10000,
       },
       placedAt: new Date(),
+    });
+
+    await Payment.create({
+      orderId: createdOrder._id,
+      customerId: customer._id,
+      amount: mongoose.Types.Decimal128.fromString("10000.00"),
+      currency: "INR",
+      gateway: "razorpay",
+      gatewayPaymentId: `pay_test_${Date.now()}`,
+      status: "captured",
+      capturedAt: new Date(),
     });
 
     expect(createdOrder).toBeDefined();

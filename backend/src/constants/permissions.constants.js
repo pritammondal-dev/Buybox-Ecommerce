@@ -356,7 +356,7 @@ const ALIAS_MAP = {
   "coupons.create": ["coupons:manage"],
   "coupons.edit": ["coupons:manage"],
   "coupons.delete": ["coupons:manage"],
-  "cms.view": ["settings:read"],
+  "cms.view": ["settings:read", "settings:manage"],
   "cms.create": ["settings:manage"],
   "cms.edit": ["settings:manage"],
   "cms.publish": ["settings:manage"],

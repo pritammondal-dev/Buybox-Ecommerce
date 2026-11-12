@@ -22,6 +22,12 @@ jest.mock("../src/models/ProductVariant");
 jest.mock("../src/models/Warehouse");
 jest.mock("../src/utils/withTransaction");
 jest.mock("../src/integrations/payments/razorpay.provider");
+jest.mock("../src/utils/distributed-lock", () => ({
+  withDistributedLock: jest.fn(async (resource, callback) => {
+    const result = await callback();
+    return { skipped: false, result };
+  }),
+}));
 
 const orderRepository = require("../src/repositories/order.repository");
 const paymentRepository = require("../src/repositories/payment.repository");

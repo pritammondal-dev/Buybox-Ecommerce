@@ -210,14 +210,16 @@ const validateVariant = async (productVariantId) => {
   }
 
   if (product.vendorId) {
-    const vendor = await Vendor.findOne({
-      _id: product.vendorId,
-      isActive: true,
-      deletedAt: null,
-      onboardingStatus: "approved",
-    }).select("_id");
+    const vendor = await Vendor.findById(product.vendorId).select(
+      "isActive deletedAt onboardingStatus"
+    );
 
-    if (!vendor) {
+    if (
+      vendor &&
+      (!vendor.isActive ||
+        vendor.deletedAt ||
+        (vendor.onboardingStatus && vendor.onboardingStatus !== "approved"))
+    ) {
       throw new AppError(
         "Product vendor is no longer active",
         400,
@@ -243,7 +245,7 @@ const getAuthoritativeAvailableStock = async (variant) => {
   }).select("_id").lean();
 
   if (!activeWarehouses || activeWarehouses.length === 0) {
-    return 0;
+    return typeof variant.stockQuantity === "number" ? variant.stockQuantity : 0;
   }
 
   const activeWarehouseIds = activeWarehouses.map((w) => w._id);
@@ -254,7 +256,7 @@ const getAuthoritativeAvailableStock = async (variant) => {
   }).lean();
 
   if (!inventoryRecords || inventoryRecords.length === 0) {
-    return 0;
+    return typeof variant.stockQuantity === "number" ? variant.stockQuantity : 0;
   }
 
   let totalAvailable = 0;
@@ -307,14 +309,16 @@ const resolveAndValidateVariant = async ({ productVariantId, productId }) => {
     }
 
     if (product.vendorId) {
-      const vendor = await Vendor.findOne({
-        _id: product.vendorId,
-        isActive: true,
-        deletedAt: null,
-        onboardingStatus: "approved",
-      }).select("_id");
+      const vendor = await Vendor.findById(product.vendorId).select(
+        "isActive deletedAt onboardingStatus"
+      );
 
-      if (!vendor) {
+      if (
+        vendor &&
+        (!vendor.isActive ||
+          vendor.deletedAt ||
+          (vendor.onboardingStatus && vendor.onboardingStatus !== "approved"))
+      ) {
         throw new AppError(
           "Product vendor is no longer active",
           400,
@@ -360,14 +364,16 @@ const resolveAndValidateVariant = async ({ productVariantId, productId }) => {
     }
 
     if (product.vendorId) {
-      const vendor = await Vendor.findOne({
-        _id: product.vendorId,
-        isActive: true,
-        deletedAt: null,
-        onboardingStatus: "approved",
-      }).select("_id");
+      const vendor = await Vendor.findById(product.vendorId).select(
+        "isActive deletedAt onboardingStatus"
+      );
 
-      if (!vendor) {
+      if (
+        vendor &&
+        (!vendor.isActive ||
+          vendor.deletedAt ||
+          (vendor.onboardingStatus && vendor.onboardingStatus !== "approved"))
+      ) {
         throw new AppError(
           "Product vendor is no longer active",
           400,

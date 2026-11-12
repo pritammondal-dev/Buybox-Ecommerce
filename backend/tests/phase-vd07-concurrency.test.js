@@ -1,3 +1,19 @@
+jest.mock("../src/integrations/payments/razorpay.provider", () => {
+  const actual = jest.requireActual("../src/integrations/payments/razorpay.provider");
+  return {
+    ...actual,
+    refundPayment: jest.fn().mockImplementation(async ({ paymentId, amount, idempotencyKey }) => ({
+      id: `rfnd_mock_${Date.now()}`,
+      entity: "refund",
+      amount,
+      currency: "INR",
+      payment_id: paymentId,
+      status: "processed",
+      idempotency_key: idempotencyKey,
+    })),
+  };
+});
+
 const mongoose = require("mongoose");
 const request = require("supertest");
 const app = require("../src/app");
@@ -16,6 +32,7 @@ const Payment = require("../src/models/Payment");
 const courierService = require("../src/services/courier.service");
 const shipmentService = require("../src/services/shipment.service");
 const orderService = require("../src/services/order.service");
+const razorpayProvider = require("../src/integrations/payments/razorpay.provider");
 const { SHIPMENT_STATUSES } = require("../src/constants/shipping.constants");
 const { ORDER_STATUSES, FULFILLMENT_STATUSES } = require("../src/constants/order.constants");
 const { generateAccessToken, TOKEN_CONTEXTS } = require("../src/services/token.service");
@@ -203,12 +220,23 @@ describe("Phase VD-07: Order & Shipment State Integrity, Concurrency & Override 
     inventoryDoc = await Inventory.create({
       warehouseId: warehouse._id,
       productVariantId: variant._id,
+      onHand: 100,
+      reserved: 20,
       quantityOnHand: 100,
-      quantityReserved: 10,
+      quantityReserved: 20,
       quantityAllocated: 0,
       safetyStock: 0,
       isLowStock: false,
     });
+  });
+
+  beforeEach(async () => {
+    if (inventoryDoc) {
+      await Inventory.updateOne(
+        { _id: inventoryDoc._id },
+        { onHand: 100, reserved: 20, quantityOnHand: 100, quantityReserved: 20 }
+      );
+    }
   });
 
   afterAll(async () => {

@@ -11,30 +11,30 @@ const processOrderExpirationBatch = async (options = {}) => {
     return { skipped: true, reason: "ALREADY_PROCESSING" };
   }
 
-  const lockTtlMs = options.lockTtlMs || 60000;
-  const lockResult = await withDistributedLock(
-    "order-expiration",
-    async () => {
-      isProcessing = true;
-      try {
+  isProcessing = true;
+  try {
+    const lockTtlMs = options.lockTtlMs || 60000;
+    const lockResult = await withDistributedLock(
+      "order-expiration",
+      async () => {
         const result =
           await orderExpirationService.reconcileAndExpirePendingOrders(options);
         return result;
-      } finally {
-        isProcessing = false;
+      },
+      {
+        ttlMs: lockTtlMs,
+        client: options.redisClient,
       }
-    },
-    {
-      ttlMs: lockTtlMs,
-      client: options.redisClient,
+    );
+
+    if (lockResult.skipped) {
+      return { skipped: true, reason: lockResult.reason || "LOCKED_BY_ANOTHER_INSTANCE" };
     }
-  );
 
-  if (lockResult.skipped) {
-    return { skipped: true, reason: lockResult.reason || "LOCKED_BY_ANOTHER_INSTANCE" };
+    return lockResult.result;
+  } finally {
+    isProcessing = false;
   }
-
-  return lockResult.result;
 };
 
 const runOrderExpirationScheduler = () => {

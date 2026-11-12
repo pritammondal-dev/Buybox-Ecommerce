@@ -1173,6 +1173,21 @@ const synchronizeOrderForShipmentStatus =
           );
         }
 
+        const paymentService = require("./payment.service");
+        try {
+          const payment = await paymentService.getLatestPaymentForOrder(currentOrder._id);
+          if (payment && ["captured", "paid"].includes(payment.status)) {
+            await paymentService.refundPaymentForOrder(
+              currentOrder._id,
+              currentOrder.customerId,
+              null,
+              `shipment_cancel_all_${currentOrder._id.toString()}`
+            );
+          }
+        } catch (refundErr) {
+          console.error("Failed to refund payment on full shipment cancellation:", refundErr.message);
+        }
+
         return updatedOrder;
       }
 
@@ -1303,6 +1318,21 @@ const synchronizeOrderForShipmentStatus =
             500,
             "ORDER_FULFILLMENT_UPDATE_FAILED"
           );
+        }
+
+        const paymentService = require("./payment.service");
+        try {
+          const payment = await paymentService.getLatestPaymentForOrder(currentOrder._id);
+          if (payment && ["captured", "paid"].includes(payment.status)) {
+            await paymentService.refundPaymentForOrder(
+              currentOrder._id,
+              currentOrder.customerId,
+              null,
+              `shipment_cancel_all_${currentOrder._id.toString()}`
+            );
+          }
+        } catch (refundErr) {
+          console.error("Failed to refund payment on full shipment cancellation:", refundErr.message);
         }
 
         return updatedOrder;
@@ -1557,15 +1587,17 @@ const transitionShipmentStatus =
       }
     }
 
-    const session = await mongoose.startSession();
+    const maxRetries = 5;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const session = await mongoose.startSession();
 
-    try {
-      session.startTransaction();
+      try {
+        session.startTransaction();
 
-      const shipment = await shipmentRepository.findById(
-        resolvedShipmentId,
-        { session }
-      );
+        const shipment = await shipmentRepository.findById(
+          resolvedShipmentId,
+          { session }
+        );
 
       if (!shipment) {
         throw new AppError(
@@ -1786,10 +1818,26 @@ const transitionShipmentStatus =
               });
             }
           } else if (shipment.inventoryStatus === "deducted" || ["picked_up", "in_transit", "out_for_delivery"].includes(shipment.status)) {
-            // In-flight shipment cancellation: physical goods are in courier custody and have NOT yet reached the warehouse.
-            // Do NOT prematurely increment sellable onHand inventory. Mark inventoryStatus as "rto_pending".
-            // Physical stock is restocked only upon physical return and warehouse RTO inspection.
-            shipment.inventoryStatus = "rto_pending";
+            if (isOverride && actorUser && isSuperAdmin(actorUser.role)) {
+              shipment.inventoryStatus = "released";
+              for (const item of shipment.items) {
+                const inv = await findShipmentInventory({ item, shipment, session });
+                if (inv) {
+                  await inventoryRepository.adjustStock(inv._id, item.quantity, { session });
+                  const Inventory = require("../models/Inventory");
+                  await Inventory.updateOne(
+                    { _id: inv._id },
+                    { $inc: { quantityOnHand: item.quantity } },
+                    { session }
+                  );
+                }
+              }
+            } else {
+              // In-flight shipment cancellation: physical goods are in courier custody and have NOT yet reached the warehouse.
+              // Do NOT prematurely increment sellable onHand inventory. Mark inventoryStatus as "rto_pending".
+              // Physical stock is restocked only upon physical return and warehouse RTO inspection.
+              shipment.inventoryStatus = "rto_pending";
+            }
           }
         }
       }
@@ -1846,7 +1894,14 @@ const transitionShipmentStatus =
           ["picked_up", "in_transit", "out_for_delivery"].includes(shipment.status);
 
         if (isPostPickup) {
-          update.inventoryStatus = "rto_pending";
+          if (isOverride && actorUser && isSuperAdmin(actorUser.role)) {
+            update.inventoryStatus = "released";
+            if (!shipment.inventoryReleasedAt) {
+              update.inventoryReleasedAt = new Date();
+            }
+          } else {
+            update.inventoryStatus = "rto_pending";
+          }
         } else {
           update.inventoryStatus = "released";
           if (!shipment.inventoryReleasedAt) {
@@ -1921,10 +1976,10 @@ const transitionShipmentStatus =
       }
 
       // Audit Log Recording
-      if (actorUser) {
+      if (actorUser && (actorUser._id || actorUser.id || actorUser.userId)) {
         try {
           await recordAuditLog({
-            actorId: actorUser._id || actorUser.id,
+            actorId: actorUser._id || actorUser.id || actorUser.userId,
             targetId: shipment._id,
             action: isOverride ? "SHIPMENT_STATUS_OVERRIDE" : "SHIPMENT_STATUS_UPDATED",
             entityType: "Shipment",
@@ -2022,12 +2077,32 @@ const transitionShipmentStatus =
         // Preserve original error.
       }
 
+      const isTransient =
+        error?.code === 112 ||
+        error?.hasErrorLabel?.("TransientTransactionError") ||
+        error?.message?.includes("Write conflict");
+
+      if (isTransient && attempt < maxRetries) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.floor(Math.random() * 50) + 20)
+        );
+        continue;
+      }
+
+      if (isTransient) {
+        throw new AppError(
+          "Shipment state conflict: shipment was modified concurrently. Please refresh the record.",
+          409,
+          "CONCURRENCY_CONFLICT"
+        );
+      }
+
       const isIdempotencyConflict =
         (error?.code === 11000 || error?.message?.includes("E11000")) &&
         (error?.keyPattern?.idempotencyKey || error?.message?.includes("idempotencyKey"));
 
       if (isIdempotencyConflict) {
-        const freshShipment = await shipmentRepository.findById(shipmentId);
+        const freshShipment = await shipmentRepository.findById(resolvedShipmentId);
         if (freshShipment) {
           return freshShipment;
         }
@@ -2037,7 +2112,8 @@ const transitionShipmentStatus =
     } finally {
       await session.endSession();
     }
-  };
+  }
+};
 
 /*
  * ============================================================

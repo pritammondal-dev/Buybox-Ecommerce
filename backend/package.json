@@ -10,11 +10,14 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "mongo": "mongod --dbpath ../.mongodb_data --replSet rs0 --port 27017",
-    "test": "node --max-old-space-size=4096 ./node_modules/jest/bin/jest.js --runInBand --forceExit"
+    "test": "node --expose-gc --max-old-space-size=4096 ./node_modules/jest/bin/jest.js --runInBand --forceExit"
   },
   "jest": {
     "setupFiles": [
       "<rootDir>/tests/setup.js"
+    ],
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setup-after-env.js"
     ]
   },
   "keywords": [],
