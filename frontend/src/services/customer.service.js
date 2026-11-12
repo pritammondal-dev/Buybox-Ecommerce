@@ -36,6 +36,18 @@ export const customerService = {
   async updateProfile(data) {
     return apiClient.patch("/customers/me", data);
   },
+
+  /**
+   * Permanently delete customer account and eligible personal data
+   * @param {Object} payload
+   * @param {string} [payload.password]
+   * @param {string} [payload.confirmation]
+   * @param {string} [payload.reason]
+   * @returns {Promise<Object>} { data: { permanentlyDeleted, deletedAt } }
+   */
+  async deleteAccount(payload = {}) {
+    return apiClient.delete("/customers/account", { data: payload });
+  },
 };
 
 export default customerService;

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   Lock,
   KeyRound,
@@ -9,6 +10,7 @@ import {
   Mail,
   LogOut,
   AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   Loader2,
   Eye,
@@ -17,16 +19,21 @@ import {
   ArrowRight,
   ChevronDown,
   ChevronUp,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../../../hooks/useAuth.js";
 import { authService } from "../../../../services/auth.service.js";
+import { customerService } from "../../../../services/customer.service.js";
+import { tokenManager } from "../../../../lib/auth/token-manager.js";
+import { useCheckoutStore } from "../../../../stores/checkout.store.js";
 import { AccountNav } from "../../../../components/storefront/account/AccountNav.jsx";
 
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 60;
 
 export function SecurityPageView() {
+  const router = useRouter();
   const { user, setUser, logout } = useAuth();
 
   // --- Change Password State ---
@@ -64,6 +71,15 @@ export function SecurityPageView() {
 
   // --- Active Sessions State ---
   const [isLoggingOutAll, setIsLoggingOutAll] = useState(false);
+
+  // --- Account Deletion State ---
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleteReason, setDeleteReason] = useState("");
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [showDeletePassword, setShowDeletePassword] = useState(false);
 
   // Email Cooldown Timer
   useEffect(() => {
@@ -361,6 +377,63 @@ export function SecurityPageView() {
       toast.error(err?.message || "Could not revoke other device sessions.");
     } finally {
       setIsLoggingOutAll(false);
+    }
+  };
+
+  // =========================================================================
+  // 5. Permanent Account Deletion Handlers
+  // =========================================================================
+  const isGoogleOnly = Boolean(user?.authProviders?.google?.id && user?.hasPassword === false);
+
+  const handleDeleteAccount = async (e) => {
+    e.preventDefault();
+    setDeleteError("");
+    setIsDeletingAccount(true);
+
+    try {
+      await customerService.deleteAccount({
+        password: deletePassword || undefined,
+        confirmation: deleteConfirmation || undefined,
+        reason: deleteReason || "Customer self-service deletion",
+      });
+
+      toast.success("Account Permanently Deleted", {
+        description: "Your personal data has been erased from Buybox.",
+      });
+
+      // Clear client session & tokens immediately
+      try {
+        await authService.logout().catch(() => {});
+      } catch {}
+
+      tokenManager.clearAccessToken();
+
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.removeItem("buybox_auth_user");
+          localStorage.removeItem("buybox_customer_user");
+        } catch {}
+      }
+
+      try {
+        useCheckoutStore.getState().resetCheckout();
+      } catch {}
+
+      if (typeof logout === "function") {
+        logout();
+      }
+
+      setShowDeleteModal(false);
+      router.push("/?deleted=true");
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to delete account. Please resolve active orders or verify credentials.";
+      setDeleteError(msg);
+      toast.error("Account Deletion Failed", { description: msg });
+    } finally {
+      setIsDeletingAccount(false);
     }
   };
 
@@ -862,6 +935,165 @@ export function SecurityPageView() {
                 <li>Ensure both your email and mobile phone are verified to keep your account safe.</li>
               </ul>
             </div>
+
+            {/* =================================================================
+                6. Danger Zone: Permanent Account Deletion
+                ================================================================= */}
+            <div className="rounded-2xl border border-red-200 bg-red-50/20 p-6 shadow-xs space-y-4">
+              <div className="space-y-1 border-b border-red-100 pb-4">
+                <h2 className="text-sm font-bold text-red-900 flex items-center gap-2">
+                  <Trash2 className="h-4 w-4 text-red-600" /> Danger Zone: Permanent Account Deletion
+                </h2>
+                <p className="text-xs text-red-700/80">
+                  Permanently delete your Buybox customer account and purge personal profile information.
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
+                <div className="text-xs text-slate-600 space-y-1 max-w-xl">
+                  <p className="font-semibold text-slate-900">
+                    Irreversible Action — Option A Privacy & Financial Compliance
+                  </p>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Once deleted, your login credentials, saved addresses, wishlists, and loyalty rewards will be permanently destroyed. Historical orders, payments, and invoices are preserved in an anonymized format for statutory tax and accounting regulations. Deletion requires that you have no active orders or returns in progress.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteError("");
+                    setDeletePassword("");
+                    setDeleteConfirmation("");
+                    setDeleteReason("");
+                    setShowDeleteModal(true);
+                  }}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-red-700 transition-colors shadow-xs shrink-0 cursor-pointer"
+                >
+                  <Trash2 className="h-4 w-4" /> Delete Account Permanently
+                </button>
+              </div>
+            </div>
+
+            {/* Permanent Account Deletion Modal */}
+            {showDeleteModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+                <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="flex items-start gap-3 border-b border-slate-100 pb-4">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600">
+                      <AlertTriangle className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900">Permanently Delete Account?</h3>
+                      <p className="text-xs text-slate-500">This action cannot be undone or recovered.</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3.5 text-xs text-amber-900 space-y-1.5">
+                    <p className="font-bold flex items-center gap-1.5 text-amber-950">
+                      <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" /> Important Deletion Rules
+                    </p>
+                    <ul className="text-[11px] text-amber-900/90 list-disc list-inside space-y-1">
+                      <li>Your saved addresses, wishlist, and session will be permanently erased.</li>
+                      <li>In-flight orders or active returns will block account deletion.</li>
+                      <li>Google Sign-In automatic re-registration will be blocked.</li>
+                      <li>Historical orders and invoices will be retained in an anonymized state.</li>
+                    </ul>
+                  </div>
+
+                  {deleteError && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700 flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+                      <span>{deleteError}</span>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleDeleteAccount} className="space-y-4">
+                    {!isGoogleOnly && (
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-700">
+                          Confirm Password <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showDeletePassword ? "text" : "password"}
+                            value={deletePassword}
+                            onChange={(e) => setDeletePassword(e.target.value)}
+                            required
+                            placeholder="Enter current password"
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-900 focus:border-red-500 focus:outline-hidden"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowDeletePassword(!showDeletePassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          >
+                            {showDeletePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-700">
+                        Type <span className="font-mono text-red-600">DELETE MY ACCOUNT</span> to confirm{" "}
+                        <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={deleteConfirmation}
+                        onChange={(e) => setDeleteConfirmation(e.target.value)}
+                        required
+                        placeholder="DELETE MY ACCOUNT"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-mono text-slate-900 focus:border-red-500 focus:outline-hidden uppercase"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-700">Reason for leaving (Optional)</label>
+                      <select
+                        value={deleteReason}
+                        onChange={(e) => setDeleteReason(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-700 focus:border-red-500 focus:outline-hidden"
+                      >
+                        <option value="">Select a reason...</option>
+                        <option value="Privacy concerns regarding personal data">Privacy concerns</option>
+                        <option value="No longer shopping on Buybox">No longer shopping on Buybox</option>
+                        <option value="Switching to a different account">Creating/switching account</option>
+                        <option value="Poor customer or order experience">Order or customer experience</option>
+                        <option value="Other personal reasons">Other</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2.5 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowDeleteModal(false)}
+                        disabled={isDeletingAccount}
+                        className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isDeletingAccount || deleteConfirmation.trim() !== "DELETE MY ACCOUNT"}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700 transition-colors disabled:opacity-50 shadow-xs cursor-pointer"
+                      >
+                        {isDeletingAccount ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Deleting...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 className="h-3.5 w-3.5" /> Confirm Permanent Deletion
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

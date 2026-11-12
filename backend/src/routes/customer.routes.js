@@ -7,6 +7,9 @@ const validate = require("../middlewares/validate.middleware");
 const {
   updateCustomerSchema,
 } = require("../validators/customer/update-customer.validator");
+const {
+  deleteCustomerAccountSchema,
+} = require("../validators/customer/delete-account.validator");
 
 const router = express.Router();
 
@@ -27,6 +30,18 @@ router.patch(
   "/me",
   validate(updateCustomerSchema),
   customerController.updateMyProfile
+);
+
+router.delete(
+  "/account",
+  validate(deleteCustomerAccountSchema),
+  customerController.deleteMyAccount
+);
+
+router.delete(
+  "/me",
+  validate(deleteCustomerAccountSchema),
+  customerController.deleteMyAccount
 );
 
 module.exports = router;
