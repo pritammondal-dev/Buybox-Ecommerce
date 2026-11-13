@@ -422,18 +422,18 @@ const getFinancialOverview = async ({
   if (reconError) {
     reconStatus = "failed";
     reconStatusLabel = "Reconciliation Check Failed";
-  } else if (auditedWalletsCount === 0 && operationalEntriesCount === 0) {
-    reconStatus = "empty";
-    reconStatusLabel = "No Records Available to Evaluate";
-  } else if (auditedWalletsCount === 0) {
-    reconStatus = "empty";
-    reconStatusLabel = "No Wallets to Evaluate";
   } else if (discrepanciesFound > 0) {
     reconStatus = "discrepancies_found";
     reconStatusLabel = `${discrepanciesFound} Discrepanc${discrepanciesFound === 1 ? "y" : "ies"} Detected`;
   } else if (!operationalBalanced) {
     reconStatus = "discrepancies_found";
     reconStatusLabel = `Operational GL Variance (${normCurrency} ${operationalVariance.toFixed(2)})`;
+  } else if (auditedWalletsCount === 0 && operationalEntriesCount === 0) {
+    reconStatus = "empty";
+    reconStatusLabel = "No Records Available to Evaluate";
+  } else if (auditedWalletsCount === 0) {
+    reconStatus = "empty";
+    reconStatusLabel = "No Records Available to Evaluate";
   } else if (legacyExceptions.count > 0) {
     reconStatus = "passed_with_legacy_exceptions";
     reconStatusLabel = `Operational Balanced (${legacyExceptions.count} Legacy Exception${legacyExceptions.count === 1 ? "" : "s"} Disclosed)`;

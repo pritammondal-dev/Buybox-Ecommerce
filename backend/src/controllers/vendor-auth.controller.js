@@ -78,7 +78,14 @@ const login = asyncHandler(async (req, res) => {
     );
   }
 
-  if (!vendor.isActive || vendor.onboardingStatus === "suspended") {
+  const isOnboardingStage = [
+    "pending",
+    "under_review",
+    "changes_requested",
+    "rejected",
+  ].includes(vendor.onboardingStatus);
+
+  if (vendor.onboardingStatus === "suspended" || (!vendor.isActive && !isOnboardingStage)) {
     throw new AppError(
       "Vendor account is suspended. Access to the merchant center is disabled.",
       403,

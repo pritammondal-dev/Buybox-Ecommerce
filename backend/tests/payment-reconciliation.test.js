@@ -523,8 +523,12 @@ describe("Task 8B.5.6 — Background Payment Reconciliation Worker", () => {
   });
 
   describe("8. Worker shutdown/overlap behavior", () => {
-    it("starts and stops scheduler cleanly without overlapping timers", () => {
+    it("starts and stops scheduler cleanly without overlapping timers", async () => {
       jest.useFakeTimers();
+
+      const redis = require("../src/config/redis");
+      const setSpy = jest.spyOn(redis, "set").mockResolvedValue("OK");
+      const evalSpy = jest.spyOn(redis, "eval").mockResolvedValue(1);
 
       const batchSpy = jest
         .spyOn(paymentReconciliationService, "reconcileActivePaymentsBatch")
@@ -534,16 +538,18 @@ describe("Task 8B.5.6 — Background Payment Reconciliation Worker", () => {
       // Second call should be a no-op
       runPaymentReconciliationScheduler();
 
-      jest.advanceTimersByTime(60000);
+      await jest.advanceTimersByTimeAsync(60000);
       expect(batchSpy).toHaveBeenCalledTimes(1);
 
       stopPaymentReconciliationScheduler();
 
-      jest.advanceTimersByTime(120000);
+      await jest.advanceTimersByTimeAsync(120000);
       // No more executions after stop
       expect(batchSpy).toHaveBeenCalledTimes(1);
 
       batchSpy.mockRestore();
+      setSpy.mockRestore();
+      evalSpy.mockRestore();
       jest.useRealTimers();
     });
   });

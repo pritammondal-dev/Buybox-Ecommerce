@@ -316,6 +316,31 @@ const validateCartItems = async (cart, options = {}) => {
     products.map((p) => [p._id.toString(), p])
   );
 
+  const vendorIds = [
+    ...new Set(
+      products
+        .filter((p) => p.vendorId)
+        .map((p) => p.vendorId.toString())
+    ),
+  ];
+
+  let vendorMap = new Map();
+  if (
+    vendorIds.length > 0 &&
+    (mongoose.connection.readyState === 1 || Vendor.find?._isMockFunction)
+  ) {
+    let vendorQuery = Vendor.find({ _id: { $in: vendorIds } }).select(
+      "isActive deletedAt onboardingStatus"
+    );
+    if (options.session && typeof vendorQuery.session === "function") {
+      vendorQuery = vendorQuery.session(options.session);
+    }
+    const vendors = typeof vendorQuery.lean === "function"
+      ? await vendorQuery.lean()
+      : await vendorQuery;
+    vendorMap = new Map((vendors || []).map((v) => [v._id.toString(), v]));
+  }
+
   const orderItems = [];
 
   for (const cartItem of cart.items) {
@@ -341,6 +366,22 @@ const validateCartItems = async (cart, options = {}) => {
         400,
         "PRODUCT_UNAVAILABLE"
       );
+    }
+
+    if (product.vendorId) {
+      const vendor = vendorMap.get(product.vendorId.toString());
+      if (
+        vendor &&
+        (!vendor.isActive ||
+          vendor.deletedAt ||
+          (vendor.onboardingStatus && vendor.onboardingStatus !== "approved"))
+      ) {
+        throw new AppError(
+          "Product vendor is no longer active",
+          400,
+          "VENDOR_INACTIVE"
+        );
+      }
     }
 
     const variantCurrency =
@@ -1461,64 +1502,363 @@ const getOrderById = async (
         return itemObj;
       });
     }
-    if (s.metadata && s.metadata.estimatedDeliveryDate) {
+    const courierDateVal = s.metadata?.courierEstimatedDelivery || s.metadata?.estimatedDeliveryDate;
+    if (courierDateVal) {
       s.estimatedDelivery = {
         source: "courier",
-        estimatedDateRange: formatDate(s.metadata.estimatedDeliveryDate),
+        estimatedDateRange: formatDate(courierDateVal),
       };
     }
     return s;
   });
   rawOrder.shipments = formattedShipments;
 
-  // Calculate estimatedDelivery
-  if (rawOrder.status === "delivered" && rawOrder.deliveredAt) {
-    rawOrder.estimatedDelivery = {
-      isDelivered: true,
-      source: "actual_delivery",
-      estimatedDateRange: `Delivered on ${formatDate(rawOrder.deliveredAt)}`,
-    };
-  } else {
-    const courierShipments = formattedShipments.filter(
-      (s) => s.metadata && s.metadata.estimatedDeliveryDate
+  // Derive customer display status, vendor packages & fulfillment flags
+  const orderItemsList = rawOrder.items || [];
+  const orderVfsList = rawOrder.vendorFulfillments || [];
+  const hasFulfillmentTracking =
+    orderVfsList.length > 0 ||
+    orderItemsList.some(
+      (it) =>
+        Boolean(it.vendorAcceptance?.status) ||
+        Boolean(it.isFulfillmentConfirmed) ||
+        Boolean(it.expectedDeliveryDate)
     );
-    if (courierShipments.length === 1) {
-      rawOrder.estimatedDelivery = {
-        source: "courier",
-        estimatedDateRange: formatDate(courierShipments[0].metadata.estimatedDeliveryDate),
-      };
-    } else if (courierShipments.length > 1) {
-      const dates = courierShipments
-        .map((s) => new Date(s.metadata.estimatedDeliveryDate))
-        .sort((a, b) => a.getTime() - b.getTime());
-      rawOrder.estimatedDelivery = {
-        source: "multi_shipment",
-        estimatedDateRange: `${formatDate(dates[0])} - ${formatDate(dates[dates.length - 1])}`,
-      };
-    } else if (rawOrder.deliveryOption && (rawOrder.placedAt || rawOrder.createdAt)) {
-      const daysStr = rawOrder.deliveryOption.estimatedDays || "3–5 business days";
-      const match = /(\d+)[^\d]+(\d+)/.exec(daysStr);
-      const minDays = match ? parseInt(match[1], 10) : 3;
-      const maxDays = match ? parseInt(match[2], 10) : 5;
-      const baseDate = new Date(rawOrder.placedAt || rawOrder.createdAt);
-      const minDate = new Date(baseDate);
-      minDate.setDate(minDate.getDate() + minDays);
-      const maxDate = new Date(baseDate);
-      maxDate.setDate(maxDate.getDate() + maxDays);
-      rawOrder.estimatedDelivery = {
-        source: "shipping_service",
-        estimatedDateRange: `${formatDate(minDate)} - ${formatDate(maxDate)}`,
-      };
-    } else {
-      rawOrder.estimatedDelivery = {
-        source: "fallback",
-        estimatedDateRange: null,
-        message: "Delivery estimate will be available after shipment confirmation.",
-      };
+
+  let hasPendingVendor = false;
+  let hasAcceptedVendor = false;
+  let hasRejectedVendor = false;
+  let allConfirmed = orderItemsList.length > 0 || orderVfsList.length > 0;
+
+  for (const it of orderItemsList) {
+    const accStatus = it.vendorAcceptance?.status;
+    if (accStatus === "pending") hasPendingVendor = true;
+    else if (accStatus === "accepted") hasAcceptedVendor = true;
+    else if (accStatus === "rejected") hasRejectedVendor = true;
+    if (!it.isFulfillmentConfirmed) allConfirmed = false;
+  }
+  for (const vf of orderVfsList) {
+    const accStatus = vf.acceptanceStatus;
+    if (accStatus === "pending") hasPendingVendor = true;
+    else if (accStatus === "accepted") hasAcceptedVendor = true;
+    else if (accStatus === "rejected") hasRejectedVendor = true;
+    if (!vf.isFulfillmentConfirmed) allConfirmed = false;
+  }
+
+  let customerDisplayStatus = rawOrder.status;
+  let isAwaitingVendorConfirmation = false;
+  let isFulfillmentConfirmed = false;
+
+  if (rawOrder.status === "cancelled" || rawOrder.status === "delivered") {
+    customerDisplayStatus = rawOrder.status;
+    isFulfillmentConfirmed = rawOrder.status === "delivered";
+  } else if (hasPendingVendor) {
+    customerDisplayStatus = "awaiting_merchant_confirmation";
+    isAwaitingVendorConfirmation = true;
+  } else if (hasRejectedVendor) {
+    customerDisplayStatus = "under_triage";
+  } else if (hasFulfillmentTracking && allConfirmed) {
+    customerDisplayStatus = ["shipped", "processing"].includes(rawOrder.status)
+      ? rawOrder.status
+      : "confirmed";
+    isFulfillmentConfirmed = true;
+  } else if (hasAcceptedVendor) {
+    customerDisplayStatus = "merchant_accepted";
+  }
+
+  const vendorPkgMap = new Map();
+  for (const vf of orderVfsList) {
+    const vIdStr = vf.vendorId ? (vf.vendorId.toString ? vf.vendorId.toString() : String(vf.vendorId)) : null;
+    if (vIdStr) {
+      vendorPkgMap.set(vIdStr, {
+        vendorId: vIdStr,
+        merchantName: vf.merchantName || vf.storeName || "Merchant",
+        acceptanceStatus: vf.acceptanceStatus || "pending",
+        isFulfillmentConfirmed: Boolean(vf.isFulfillmentConfirmed),
+        expectedDeliveryDate: vf.expectedDeliveryDate || null,
+        fulfillmentStatus: vf.fulfillmentStatus || "unfulfilled",
+      });
+    }
+  }
+  for (const it of orderItemsList) {
+    const vIdStr = it.vendorId ? (it.vendorId.toString ? it.vendorId.toString() : String(it.vendorId)) : null;
+    if (vIdStr && !vendorPkgMap.has(vIdStr)) {
+      vendorPkgMap.set(vIdStr, {
+        vendorId: vIdStr,
+        merchantName: it.vendorName || "Merchant",
+        acceptanceStatus: it.vendorAcceptance?.status || "pending",
+        isFulfillmentConfirmed: Boolean(it.isFulfillmentConfirmed),
+        expectedDeliveryDate: it.expectedDeliveryDate || null,
+        fulfillmentStatus: it.fulfillmentStatus || "unfulfilled",
+      });
     }
   }
 
+  rawOrder.customerDisplayStatus = customerDisplayStatus;
+  rawOrder.isAwaitingVendorConfirmation = isAwaitingVendorConfirmation;
+  rawOrder.isFulfillmentConfirmed = isFulfillmentConfirmed;
+  rawOrder.vendorPackages = Array.from(vendorPkgMap.values());
+  rawOrder.estimatedDelivery = calculateDeliveryEstimate({
+    order: rawOrder,
+    shipments: formattedShipments,
+  });
+
   return rawOrder;
+};
+
+/**
+ * Authoritative delivery estimate calculation following strict source precedence:
+ * actual_delivery > cancelled > multi_shipment/courier > vendor_rejected_triage >
+ * vendor_confirmed > awaiting_fulfillment_details > awaiting_vendor_confirmation >
+ * shipping_service/fallback (for legacy orders without vendor fulfillment tracking).
+ */
+const calculateDeliveryEstimate = ({ order = {}, shipment = null, shipments = null } = {}) => {
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const formatDate = (date) => {
+    const d = new Date(date);
+    return `${d.getUTCDate()} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  };
+
+  const deliveryOptionName = order.deliveryOption?.name || null;
+  const estimatedDays = order.deliveryOption?.estimatedDays || null;
+  const shipmentList = Array.isArray(shipments)
+    ? shipments
+    : shipment
+      ? [shipment]
+      : [];
+
+  if (order.status === "cancelled") {
+    return {
+      deliveryOptionName,
+      estimatedDays,
+      estimatedDateRange: null,
+      estimatedFrom: null,
+      estimatedTo: null,
+      isDelivered: false,
+      isCancelled: true,
+      actualDeliveredAt: null,
+      source: "cancelled",
+      message: null,
+    };
+  }
+
+  if (order.status === "delivered" || shipmentList.some((s) => s?.status === "delivered")) {
+    const deliveredDate = order.deliveredAt || shipmentList.find((s) => s?.deliveredAt)?.deliveredAt || new Date();
+    const deliveredIso = new Date(deliveredDate).toISOString();
+    return {
+      deliveryOptionName,
+      estimatedDays,
+      isDelivered: true,
+      isCancelled: false,
+      deliveredAt: deliveredIso,
+      actualDeliveredAt: deliveredIso,
+      source: "actual_delivery",
+      estimatedDateRange: `Delivered on ${formatDate(deliveredDate)}`,
+      estimatedFrom: deliveredIso,
+      estimatedTo: deliveredIso,
+      message: null,
+    };
+  }
+
+  const courierDates = shipmentList
+    .map((s) => s?.metadata?.courierEstimatedDelivery || s?.metadata?.estimatedDeliveryDate)
+    .filter(Boolean)
+    .map((d) => new Date(d))
+    .filter((d) => !Number.isNaN(d.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime());
+
+  if (courierDates.length === 1) {
+    return {
+      deliveryOptionName,
+      estimatedDays,
+      isDelivered: false,
+      isCancelled: false,
+      actualDeliveredAt: null,
+      source: "courier",
+      estimatedDateRange: formatDate(courierDates[0]),
+      estimatedFrom: courierDates[0].toISOString(),
+      estimatedTo: courierDates[0].toISOString(),
+      message: null,
+    };
+  }
+
+  if (courierDates.length > 1) {
+    return {
+      deliveryOptionName,
+      estimatedDays,
+      isDelivered: false,
+      isCancelled: false,
+      actualDeliveredAt: null,
+      source: "multi_shipment",
+      estimatedDateRange: `${formatDate(courierDates[0])} - ${formatDate(courierDates[courierDates.length - 1])}`,
+      estimatedFrom: courierDates[0].toISOString(),
+      estimatedTo: courierDates[courierDates.length - 1].toISOString(),
+      message: null,
+    };
+  }
+
+  const items = order.items || [];
+  const vfs = order.vendorFulfillments || [];
+
+  const hasRejection =
+    items.some((it) => it.vendorAcceptance?.status === "rejected") ||
+    vfs.some((vf) => vf.acceptanceStatus === "rejected");
+
+  if (hasRejection) {
+    return {
+      deliveryOptionName,
+      estimatedDays,
+      isDelivered: false,
+      isCancelled: false,
+      actualDeliveredAt: null,
+      source: "vendor_rejected_triage",
+      estimatedDateRange: null,
+      estimatedFrom: null,
+      estimatedTo: null,
+      message: "An item in your order is under operations triage",
+    };
+  }
+
+  const confirmedDates = [
+    ...items.filter((it) => it.isFulfillmentConfirmed && it.expectedDeliveryDate).map((it) => new Date(it.expectedDeliveryDate)),
+    ...vfs.filter((vf) => vf.isFulfillmentConfirmed && vf.expectedDeliveryDate).map((vf) => new Date(vf.expectedDeliveryDate)),
+  ]
+    .filter((d) => !Number.isNaN(d.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime());
+
+  if (confirmedDates.length > 0) {
+    const minDate = confirmedDates[0];
+    const maxDate = confirmedDates[confirmedDates.length - 1];
+    const range =
+      formatDate(minDate) === formatDate(maxDate)
+        ? formatDate(minDate)
+        : `${formatDate(minDate)} - ${formatDate(maxDate)}`;
+    return {
+      deliveryOptionName,
+      estimatedDays,
+      isDelivered: false,
+      isCancelled: false,
+      actualDeliveredAt: null,
+      source: "vendor_confirmed",
+      estimatedDateRange: range,
+      estimatedFrom: minDate.toISOString(),
+      estimatedTo: maxDate.toISOString(),
+      message: null,
+    };
+  }
+
+  const hasVendorTracking =
+    vfs.length > 0 ||
+    items.some((it) => Boolean(it.vendorAcceptance?.status));
+
+  if (hasVendorTracking) {
+    const hasPending =
+      vfs.some((vf) => (vf.acceptanceStatus || "pending") === "pending") ||
+      items.some((it) => it.vendorAcceptance?.status === "pending");
+
+    const hasAccepted =
+      vfs.some((vf) => vf.acceptanceStatus === "accepted") ||
+      items.some((it) => it.vendorAcceptance?.status === "accepted");
+
+    if (!hasPending && hasAccepted) {
+      return {
+        deliveryOptionName,
+        estimatedDays,
+        isDelivered: false,
+        isCancelled: false,
+        actualDeliveredAt: null,
+        source: "awaiting_fulfillment_details",
+        estimatedDateRange: null,
+        estimatedFrom: null,
+        estimatedTo: null,
+        message: "Merchant accepted; delivery date will be confirmed soon",
+      };
+    }
+
+    let provisionalEstimate = null;
+    if (order.deliveryOption && (order.deliveryOption.estimatedDays || order.deliveryOption.name)) {
+      const baseDate = new Date(order.createdAt || order.placedAt || Date.now());
+      let minDays = 2;
+      let maxDays = 4;
+      if (typeof estimatedDays === "object" && estimatedDays !== null) {
+        minDays = Number(estimatedDays.min) || 2;
+        maxDays = Number(estimatedDays.max) || 4;
+      } else if (typeof estimatedDays === "string") {
+        const match = /(\d+)[^\d]+(\d+)/.exec(estimatedDays);
+        if (match) {
+          minDays = parseInt(match[1], 10);
+          maxDays = parseInt(match[2], 10);
+        }
+      }
+      const pMin = new Date(baseDate);
+      pMin.setDate(pMin.getDate() + minDays);
+      const pMax = new Date(baseDate);
+      pMax.setDate(pMax.getDate() + maxDays);
+      provisionalEstimate = {
+        label: "Provisional Checkout Estimate",
+        window: `${formatDate(pMin)} - ${formatDate(pMax)}`,
+      };
+    }
+
+    return {
+      deliveryOptionName,
+      estimatedDays,
+      isDelivered: false,
+      isCancelled: false,
+      actualDeliveredAt: null,
+      source: "awaiting_vendor_confirmation",
+      estimatedDateRange: null,
+      estimatedFrom: null,
+      estimatedTo: null,
+      message: "Awaiting merchant confirmation. Expected delivery date will be confirmed once the seller accepts your order.",
+      provisionalEstimate,
+    };
+  }
+
+  if (order.deliveryOption && (order.placedAt || order.createdAt)) {
+    let minDays = 3;
+    let maxDays = 5;
+    if (typeof estimatedDays === "object" && estimatedDays !== null) {
+      minDays = Number(estimatedDays.min) || 3;
+      maxDays = Number(estimatedDays.max) || 7;
+    } else if (typeof estimatedDays === "string") {
+      const match = /(\d+)[^\d]+(\d+)/.exec(estimatedDays);
+      if (match) {
+        minDays = parseInt(match[1], 10);
+        maxDays = parseInt(match[2], 10);
+      }
+    }
+    const baseDate = new Date(order.placedAt || order.createdAt);
+    const minDate = new Date(baseDate);
+    minDate.setDate(minDate.getDate() + minDays);
+    const maxDate = new Date(baseDate);
+    maxDate.setDate(maxDate.getDate() + maxDays);
+    return {
+      deliveryOptionName,
+      estimatedDays,
+      isDelivered: false,
+      isCancelled: false,
+      actualDeliveredAt: null,
+      source: "shipping_service",
+      estimatedDateRange: `${formatDate(minDate)} - ${formatDate(maxDate)}`,
+      estimatedFrom: minDate.toISOString(),
+      estimatedTo: maxDate.toISOString(),
+      message: null,
+    };
+  }
+
+  return {
+    deliveryOptionName,
+    estimatedDays,
+    isDelivered: false,
+    isCancelled: false,
+    actualDeliveredAt: null,
+    source: "fallback",
+    estimatedDateRange: null,
+    estimatedFrom: null,
+    estimatedTo: null,
+    message: "Delivery estimate will be available after shipment confirmation.",
+  };
 };
 
 /**
@@ -2732,13 +3072,24 @@ const transitionOrderStatus = async (
  * Synchronize captured payment state with the order.
  */
 const markOrderPaymentCaptured = async (
-  orderId,
+  orderIdOrPayload,
   options = {}
 ) => {
+  const isObjectInvocation =
+    typeof orderIdOrPayload === "object" &&
+    orderIdOrPayload !== null &&
+    !mongoose.Types.ObjectId.isValid(orderIdOrPayload);
+  const orderId = isObjectInvocation
+    ? orderIdOrPayload.orderId || orderIdOrPayload.id
+    : orderIdOrPayload;
+  const resolvedOptions = isObjectInvocation
+    ? { ...orderIdOrPayload, ...options }
+    : options;
+
   const order =
     await orderRepository.findById(
       orderId,
-      options
+      resolvedOptions
     );
 
   if (!order) {
@@ -2809,13 +3160,21 @@ const markOrderPaymentCaptured = async (
       timestamp: new Date(),
       actor: { actorType: "system", actorId: null },
     },
-    {
-      event: "order_confirmed",
-      title: "Order Confirmed",
-      description: `Order #${order.orderNumber} confirmed and moving to fulfillment.`,
-      timestamp: new Date(),
-      actor: { actorType: "system", actorId: null },
-    }
+    isObjectInvocation || resolvedOptions.gatewayPaymentId
+      ? {
+          event: "order_payment_verified",
+          title: "Payment Verified",
+          description: `Payment verified for order #${order.orderNumber}; awaiting vendor fulfillment confirmation.`,
+          timestamp: new Date(),
+          actor: { actorType: "system", actorId: null },
+        }
+      : {
+          event: "order_confirmed",
+          title: "Order Confirmed",
+          description: `Order #${order.orderNumber} confirmed and moving to fulfillment.`,
+          timestamp: new Date(),
+          actor: { actorType: "system", actorId: null },
+        }
   );
   update.timeline = currentTimeline;
 
@@ -2971,7 +3330,7 @@ const getVendorIdForOrderService = async (userId) => {
  * subtotal and item count, minimizes customer fulfillment information, and strips
  * customer payment secrets, gateway internals, idempotency keys, and platform tax snapshots.
  */
-const projectVendorOrder = (orderDoc, vendorId, vendorShipments = []) => {
+const projectVendorOrder = (orderDoc, vendorId, vendorShipments = [], orderPayments = []) => {
   const order = orderDoc?.toObject ? orderDoc.toObject() : { ...orderDoc };
   const targetVendorIdStr = vendorId.toString();
 
@@ -3008,6 +3367,9 @@ const projectVendorOrder = (orderDoc, vendorId, vendorShipments = []) => {
 
   let subtotalMinor = 0;
   let vendorItemCount = 0;
+  let vendorDiscountTotalMinor = 0;
+  let vendorTaxTotalMinor = 0;
+  let vendorCommissionMinor = 0;
 
   for (const item of vendorItems) {
     vendorItemCount += item.quantity || 0;
@@ -3016,9 +3378,94 @@ const projectVendorOrder = (orderDoc, vendorId, vendorShipments = []) => {
     } catch {
       // fallback if lineTotal conversion fails
     }
+    try {
+      vendorDiscountTotalMinor += decimalToMinorUnits(item.discountTotal || "0.00");
+    } catch {}
+    try {
+      vendorTaxTotalMinor += decimalToMinorUnits(item.taxTotal || "0.00");
+    } catch {}
+  }
+
+  for (const it of (order.items || []).filter((item) => item.vendorId && item.vendorId.toString() === targetVendorIdStr)) {
+    if (it.commissionAmount !== undefined && it.commissionAmount !== null) {
+      try {
+        vendorCommissionMinor += decimalToMinorUnits(it.commissionAmount);
+      } catch {}
+    } else if (it.commissionSnapshot?.commissionAmount !== undefined && it.commissionSnapshot?.commissionAmount !== null) {
+      try {
+        vendorCommissionMinor += decimalToMinorUnits(it.commissionSnapshot.commissionAmount);
+      } catch {}
+    } else if (it.commissionRate) {
+      try {
+        const lineMinor = decimalToMinorUnits(it.lineTotal || "0.00");
+        vendorCommissionMinor += Math.round(lineMinor * Number(it.commissionRate));
+      } catch {}
+    }
   }
 
   const vendorSubtotal = minorUnitsToDecimalString(subtotalMinor);
+  const discountTotalStr = minorUnitsToDecimalString(vendorDiscountTotalMinor);
+  const taxTotalStr = minorUnitsToDecimalString(vendorTaxTotalMinor);
+  const commissionTotalStr = minorUnitsToDecimalString(vendorCommissionMinor);
+  const receivableMinor = Math.max(0, subtotalMinor - vendorCommissionMinor);
+  const estimatedReceivableStr = minorUnitsToDecimalString(receivableMinor);
+
+  const financialBreakdown = {
+    subtotal: vendorSubtotal,
+    discountTotal: discountTotalStr,
+    taxTotal: taxTotalStr,
+    commissionTotal: commissionTotalStr,
+    estimatedReceivable: estimatedReceivableStr,
+    isAuthoritative: true,
+  };
+
+  const paymentDoc = Array.isArray(orderPayments) && orderPayments.length > 0 ? orderPayments[0] : null;
+  const isCod =
+    order.paymentMethod === "cod" ||
+    order.isCod === true ||
+    paymentDoc?.method === "cod" ||
+    (!paymentDoc && order.paymentStatus === "pending" && (order.paymentMethod === "cod" || String(order.orderNumber || "").includes("COD")));
+
+  let payment = null;
+  if (isCod) {
+    payment = {
+      method: "cod",
+      gateway: "manual",
+      status: paymentDoc?.status || order.paymentStatus || "pending",
+      isCod: true,
+      codAmount: toStandardDecimalString(order.grandTotal || vendorSubtotal),
+      paidAt: paymentDoc?.capturedAt ? new Date(paymentDoc.capturedAt).toISOString() : null,
+      amountPaid: paymentDoc?.amount ? toStandardDecimalString(paymentDoc.amount) : "0.00",
+      transactionReference: "COD-COLLECT-ON-DELIVERY",
+    };
+  } else if (paymentDoc) {
+    const rawRef = paymentDoc.gatewayPaymentId || paymentDoc.transactionId || paymentDoc._id?.toString() || "";
+    let maskedRef = rawRef;
+    if (rawRef.length >= 8) {
+      maskedRef = `${rawRef.slice(0, 4)}***${rawRef.slice(-4)}`;
+    }
+    payment = {
+      method: paymentDoc.method || "online",
+      gateway: paymentDoc.gateway || "razorpay",
+      status: paymentDoc.status || "captured",
+      isCod: false,
+      codAmount: "0.00",
+      paidAt: paymentDoc.capturedAt ? new Date(paymentDoc.capturedAt).toISOString() : null,
+      amountPaid: toStandardDecimalString(paymentDoc.amount || "0.00"),
+      transactionReference: maskedRef,
+    };
+  } else if (order.paymentStatus === "paid") {
+    payment = {
+      method: "online",
+      gateway: "razorpay",
+      status: "paid",
+      isCod: false,
+      codAmount: "0.00",
+      paidAt: order.placedAt ? new Date(order.placedAt).toISOString() : null,
+      amountPaid: vendorSubtotal,
+      transactionReference: "pay_***captured",
+    };
+  }
 
   const rawAddress = order.shippingAddress || {};
   const shippingAddress = {
@@ -3081,6 +3528,9 @@ const projectVendorOrder = (orderDoc, vendorId, vendorShipments = []) => {
     shipments: formattedShipments,
     vendorFulfillment,
     fulfillmentVersion,
+    payment,
+    paymentDetails: payment,
+    financialBreakdown,
     placedAt: order.placedAt || null,
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
@@ -3160,7 +3610,13 @@ const getVendorOrderById = async ({ orderId, userId, strict = false }) => {
     vendorId,
   }).lean();
 
-  return projectVendorOrder(order, vendorId, vendorShipments);
+  const Payment = require("../models/Payment");
+  const orderPayments =
+    mongoose.connection.readyState === 1 || Payment.find?._isMockFunction
+      ? await Payment.find({ orderId: order._id }).sort({ createdAt: -1 }).lean()
+      : [];
+
+  return projectVendorOrder(order, vendorId, vendorShipments, orderPayments);
 };
 
 /**
@@ -3431,64 +3887,18 @@ const getAdminOrderById = async (orderId) => {
   }
 
   // 2. Estimated Delivery
-  let estimatedDelivery = null;
-  const isCancelled = order.status === "cancelled";
-  const isDelivered = order.status === "delivered";
-
-  if (isCancelled) {
-    estimatedDelivery = {
-      deliveryOptionName: order.deliveryOption?.name || null,
-      estimatedDays: order.deliveryOption?.estimatedDays || null,
-      estimatedDateRange: null,
-      isDelivered: false,
-      isCancelled: true,
-      actualDeliveredAt: null,
-    };
-  } else if (isDelivered) {
-    estimatedDelivery = {
-      deliveryOptionName: order.deliveryOption?.name || null,
-      estimatedDays: order.deliveryOption?.estimatedDays || null,
-      estimatedDateRange: null,
-      isDelivered: true,
-      isCancelled: false,
-      actualDeliveredAt: order.deliveredAt ? (order.deliveredAt.toISOString ? order.deliveredAt.toISOString() : new Date(order.deliveredAt).toISOString()) : null,
-    };
-  } else if (order.deliveryOption && order.deliveryOption.estimatedDays) {
-    const days = order.deliveryOption.estimatedDays;
-    const minDays = typeof days === "object" ? days.min : Number(days);
-    const maxDays = typeof days === "object" ? days.max : Number(days);
-    const baseDate = new Date(order.placedAt || order.createdAt || Date.now());
-
-    const minDate = new Date(baseDate);
-    minDate.setDate(minDate.getDate() + (Number.isFinite(minDays) ? minDays : 3));
-    const maxDate = new Date(baseDate);
-    maxDate.setDate(maxDate.getDate() + (Number.isFinite(maxDays) ? maxDays : 7));
-
-    const formatDate = (d) => {
-      const day = String(d.getDate()).padStart(2, "0");
-      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      const month = months[d.getMonth()];
-      const year = d.getFullYear();
-      return `${day} ${month} ${year}`;
-    };
-
-    estimatedDelivery = {
-      deliveryOptionName: order.deliveryOption.name || "Standard Ground Delivery",
-      estimatedDays: order.deliveryOption.estimatedDays,
-      estimatedDateRange: `${formatDate(minDate)} - ${formatDate(maxDate)}`,
-      isDelivered: false,
-      isCancelled: false,
-      actualDeliveredAt: null,
-    };
-  } else {
-    estimatedDelivery = {
-      deliveryOptionName: null,
-      estimatedDays: null,
-      estimatedDateRange: "Estimated delivery unavailable",
-      isDelivered: false,
-      isCancelled: false,
-      actualDeliveredAt: null,
-    };
+  const estimatedDelivery = calculateDeliveryEstimate({
+    order,
+    shipments,
+  });
+  if (order.deliveryOption?.name) {
+    estimatedDelivery.deliveryOptionName = order.deliveryOption.name;
+  }
+  if (order.deliveryOption?.estimatedDays) {
+    estimatedDelivery.estimatedDays = order.deliveryOption.estimatedDays;
+  }
+  if (estimatedDelivery.source === "fallback" && !estimatedDelivery.estimatedDateRange) {
+    estimatedDelivery.estimatedDateRange = "Estimated delivery unavailable";
   }
 
   // 3. Financial Breakdown
@@ -4022,10 +4432,7 @@ const updateAdminOrderStatus = async ({
         it.fulfillmentStatus = "shipped";
       }
     });
-  }
-
-  if (typeof order.save === "function") {
-    await order.save();
+    updatePayload.items = order.items;
   }
 
   const updatedOrder = await orderRepository.transitionStatusIfCurrent(
@@ -4160,6 +4567,7 @@ module.exports = {
   calculateCheckoutQuote,
   linkGuestOrderToCustomer,
   getOrderActivity,
+  calculateDeliveryEstimate,
   resolveDeliveryOption,
   DELIVERY_OPTIONS,
 };

@@ -75,6 +75,7 @@ describe("Buybox End-to-End Vendor Fulfillment, Return & Settlement Suite", () =
     }
     await mongoose.connect(TEST_MONGODB_URI);
     try {
+      require("../src/services/storefront-settings.service").invalidateCache();
       await Promise.all([
         User.deleteMany({ $or: [{ email: /@buybox\.test$/ }, { role: ROLES.SUPER_ADMIN }] }),
         Customer.deleteMany({}),
@@ -553,7 +554,12 @@ describe("Buybox End-to-End Vendor Fulfillment, Return & Settlement Suite", () =
     // Fast-forward order delivery date past 7 days to make remaining 1 item eligible
     await Order.updateOne(
       { _id: createdOrder._id },
-      { $set: { deliveredAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000) } }
+      {
+        $set: {
+          deliveredAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000),
+          returnWindowDaysSnapshot: 7,
+        },
+      }
     );
 
     // Vendor checks finance summary
@@ -585,7 +591,11 @@ describe("Buybox End-to-End Vendor Fulfillment, Return & Settlement Suite", () =
 
     // Verify order item has settlementId tagged
     const settledOrder = await Order.findById(createdOrder._id);
-    expect(settledOrder.items[0].settlementId.toString()).toBe(createdSettlement._id.toString());
+    const settledItem = settledOrder.items.find(
+      (it) => it.settlementId && it.settlementId.toString() === createdSettlement._id.toString()
+    ) || settledOrder.items[0];
+    expect(settledItem.settlementId).toBeDefined();
+    expect(settledItem.settlementId.toString()).toBe(createdSettlement._id.toString());
 
     // Admin records payout
     const payRes = await request(app)

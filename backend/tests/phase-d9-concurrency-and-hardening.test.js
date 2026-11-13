@@ -4,6 +4,8 @@ jest.mock("../src/config/redis", () => {
   const EventEmitter = require("events");
   const emitter = new EventEmitter();
   emitter.status = "ready";
+  emitter.set = jest.fn().mockResolvedValue("OK");
+  emitter.eval = jest.fn().mockResolvedValue(1);
   return emitter;
 });
 
@@ -308,6 +310,10 @@ describe("PHASE D9 — End-to-End Multi-Tenant Performance & Production Hardenin
         sort: jest.fn().mockReturnValue({
           limit: jest.fn().mockResolvedValue([mockNotification]),
         }),
+      });
+      NotificationOutbox.findOneAndUpdate.mockResolvedValueOnce({
+        ...mockNotification,
+        status: "queued",
       });
 
       jest.spyOn(notificationQueue, "add").mockResolvedValue({ id: `notification-${mockNotification._id}` });

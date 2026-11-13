@@ -114,7 +114,20 @@ describe("Buybox Phase 2A — ProductVariant Vendor Ownership Integrity & Isolat
   // Helper to create privileged user (admin, super_admin, manager)
   async function createPrivilegedUser(role = "admin") {
     if (role === "super_admin") {
-      await User.deleteMany({ role: "super_admin" });
+      const existingSuperAdmin = await User.findOne({
+        role: "super_admin",
+        isActive: true,
+        deletedAt: null,
+      });
+      if (existingSuperAdmin) {
+        const token = generateAccessToken({
+          sub: existingSuperAdmin._id.toString(),
+          role: existingSuperAdmin.role,
+          authVersion: existingSuperAdmin.authVersion || 1,
+          permissionVersion: existingSuperAdmin.permissionVersion || 1,
+        });
+        return { user: existingSuperAdmin, token };
+      }
     }
     const user = await User.create({
       firstName: "Privileged",

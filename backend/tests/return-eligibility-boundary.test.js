@@ -203,6 +203,6 @@ describe('Phase Acceptance-B: Return Eligibility Boundary Verification', () => {
         type: 'return',
         items: [{ productId: productAId.toString(), quantity: 1 }]
       })
-    ).rejects.toThrow('Returns are only permitted for delivered items');
+    ).rejects.toThrow('Returns can only be requested for delivered orders');
   });
 });

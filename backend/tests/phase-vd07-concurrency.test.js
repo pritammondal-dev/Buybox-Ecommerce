@@ -118,16 +118,23 @@ describe("Phase VD-07: Order & Shipment State Integrity, Concurrency & Override 
       emailVerified: true,
     });
 
-    superAdminUser = await User.create({
-      firstName: "VD07",
-      lastName: "Superadmin",
-      email: `superadmin-vd07-${uniqueSuffix}@test.buybox.com`,
-      password: hashedPassword,
-      role: "super_admin",
-      roles: ["super_admin"],
+    superAdminUser = await User.findOne({
+      role: ROLES.SUPER_ADMIN,
       isActive: true,
-      emailVerified: true,
+      deletedAt: null,
     });
+    if (!superAdminUser) {
+      superAdminUser = await User.create({
+        firstName: "VD07",
+        lastName: "Superadmin",
+        email: `superadmin-vd07-${uniqueSuffix}@test.buybox.com`,
+        password: hashedPassword,
+        role: "super_admin",
+        roles: ["super_admin"],
+        isActive: true,
+        emailVerified: true,
+      });
+    }
 
     // 2. Auth Tokens
     customerToken = generateAccessToken(
@@ -246,7 +253,9 @@ describe("Phase VD-07: Order & Shipment State Integrity, Concurrency & Override 
       if (vendorUser) await User.deleteOne({ _id: vendorUser._id });
       if (vendor) await Vendor.deleteOne({ _id: vendor._id });
       if (adminUser) await User.deleteOne({ _id: adminUser._id });
-      if (superAdminUser) await User.deleteOne({ _id: superAdminUser._id });
+      if (superAdminUser && superAdminUser.email?.startsWith("superadmin-vd07-")) {
+        await User.deleteOne({ _id: superAdminUser._id });
+      }
       if (warehouse) await Warehouse.deleteOne({ _id: warehouse._id });
       if (product) await Product.deleteOne({ _id: product._id });
       if (variant) await ProductVariant.deleteOne({ _id: variant._id });

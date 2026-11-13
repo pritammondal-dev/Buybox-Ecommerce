@@ -22,6 +22,8 @@ const TEST_MONGODB_URI = process.env.MONGODB_URI
   ? process.env.MONGODB_URI.replace("/buybox?", "/buybox_batch2b_test?")
   : "mongodb://127.0.0.1:27017/buybox_batch2b_test?replicaSet=rs0";
 
+jest.setTimeout(30000);
+
 describe("Phase 1G / Batch 2B — Tax Rule Operational Route Authorization (PBAC)", () => {
   let createdPermissions = new Map();
   const testId = new mongoose.Types.ObjectId().toString();

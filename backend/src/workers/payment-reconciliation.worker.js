@@ -13,11 +13,6 @@ const processPaymentReconciliationBatch = async (options = {}) => {
   isProcessing = true;
 
   try {
-    if (process.env.NODE_ENV === "test" && !options.useDistributedLock) {
-      const taskPromise = paymentReconciliationService.reconcileActivePaymentsBatch(options);
-      return await taskPromise;
-    }
-
     const lockTtlMs = options.lockTtlMs || 60000;
     const lockResult = await withDistributedLock(
       "payment-reconciliation",

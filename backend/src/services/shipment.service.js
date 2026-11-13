@@ -40,6 +40,16 @@ const isSuperAdmin = (role) => {
   return normalized === "superadmin";
 };
 
+const isTransientTransactionError = (err) =>
+  Boolean(
+    err?.errorLabels?.includes?.("TransientTransactionError") ||
+      err?.hasErrorLabel?.("TransientTransactionError") ||
+      err?.code === 112 ||
+      err?.code === 24 ||
+      err?.name === "WriteConflict" ||
+      /lock.*timeout|catalog.*change|write conflict/i.test(err?.message || "")
+  );
+
 /*
  * ============================================================
  * HELPERS
@@ -525,17 +535,22 @@ const createShipment = async ({
     return existingByKey;
   }
 
-  const session =
-    await mongoose.startSession();
+  const MAX_TX_ATTEMPTS = 5;
+  let txResult = null;
 
-  try {
-    session.startTransaction();
+  for (let attempt = 1; attempt <= MAX_TX_ATTEMPTS; attempt += 1) {
+    const session =
+      await mongoose.startSession();
+    let txCommitted = false;
 
-    const order =
-      await orderRepository.findById(
-        resolvedOrderId,
-        { session }
-      );
+    try {
+      session.startTransaction();
+
+      const order =
+        await orderRepository.findById(
+          resolvedOrderId,
+          { session }
+        );
 
     if (!order) {
       throw new AppError(
@@ -728,167 +743,180 @@ const createShipment = async ({
       { session }
     );
 
-    await session.commitTransaction();
-
-    /*
-     * Phase VD-06F: Carrier Booking Integration
-     * Attempt external carrier booking on the committed local shipment.
-     */
-    try {
-      const providerKey = (shipment.provider || matchingVf?.assignedShipmentPartner?.partnerId || carrier || "").toLowerCase().trim();
-      const isIntegrated = ["delhivery", "shiprocket"].includes(providerKey);
-
-      if (isIntegrated) {
-        const courierService = require("./courier.service");
-        const bookingRes = await courierService.createCourierShipment({
-          provider: providerKey,
-          shipment,
-          destination: shipment.shippingAddress,
-        });
-
-        if (bookingRes?.success && bookingRes?.waybill) {
-          const waybill = String(bookingRes.waybill).trim();
-          shipment.status = "booked";
-          shipment.awbNumber = waybill;
-          shipment.trackingNumber = waybill;
-          shipment.providerShipmentId = bookingRes.providerShipmentId || waybill;
-          try {
-            const adapter = courierService.getAdapter(providerKey);
-            shipment.trackingUrl = adapter.generateTrackingUrl(waybill);
-          } catch {}
-          shipment.bookingDetails = {
-            status: "booked",
-            provider: providerKey,
-            attemptedAt: new Date(),
-            attempts: 1,
-            errorCode: null,
-            errorMessage: null,
-          };
-          shipment.trackingEvents.push({
-            status: "booked",
-            milestone: "booked",
-            location: "Logistics Booking Gateway",
-            timestamp: new Date(),
-            description: `Shipment booked with ${shipment.carrier || providerKey}. AWB: ${waybill}`,
-            source: "system",
-            rawPayload: bookingRes.raw || null,
-          });
-
-          await shipment.save();
-
-          try {
-            await Order.updateOne(
-              { _id: order._id, "vendorFulfillments.vendorId": vendorId },
-              {
-                $set: {
-                  "vendorFulfillments.$.awbNumber": waybill,
-                  "vendorFulfillments.$.trackingUrl": shipment.trackingUrl,
-                  "vendorFulfillments.$.carrier": shipment.carrier || providerKey,
-                },
-              }
-            );
-          } catch {}
-        } else if (bookingRes?.status === "not_configured") {
-          shipment.bookingDetails = {
-            status: "not_configured",
-            provider: providerKey,
-            attemptedAt: new Date(),
-            attempts: 1,
-            errorCode: "CARRIER_NOT_CONFIGURED",
-            errorMessage: bookingRes.error || "Carrier API credentials not configured",
-          };
-          await shipment.save();
-        } else {
-          // Booking rejected or API failed
-          shipment.status = "booking_failed";
-          shipment.failureReason = bookingRes?.error || "Carrier booking failed";
-          shipment.bookingDetails = {
-            status: "failed",
-            provider: providerKey,
-            attemptedAt: new Date(),
-            attempts: 1,
-            errorCode: "CARRIER_BOOKING_REJECTED",
-            errorMessage: bookingRes?.error || "Carrier booking rejected",
-          };
-          shipment.trackingEvents.push({
-            status: "booking_failed",
-            milestone: "booking_failed",
-            location: "Logistics Booking Gateway",
-            timestamp: new Date(),
-            description: `Carrier booking failed: ${bookingRes?.error || "Booking rejected"}`,
-            source: "system",
-            rawPayload: bookingRes?.raw || null,
-          });
-          await shipment.save();
+      await session.commitTransaction();
+      txCommitted = true;
+      txResult = { shipment, order, matchingVf, vendorId };
+      break;
+    } catch (error) {
+      if (!txCommitted) {
+        try {
+          await session.abortTransaction();
+        } catch (abortError) {
+          // Preserve original error.
         }
       }
-    } catch (bookingErr) {
-      try {
-        shipment.status = "booking_failed";
-        shipment.failureReason = bookingErr.message || "Carrier booking exception";
+
+      /*
+       * Handle concurrent idempotent requests.
+       */
+      if (
+        error?.code === 11000
+      ) {
+        const existing =
+          await shipmentRepository
+            .findByIdempotencyKey(
+              normalizedIdempotencyKey
+            );
+
+        if (existing) {
+          if (
+            existing.orderId.toString() !==
+            resolvedOrderId.toString()
+          ) {
+            throw new AppError(
+              "Idempotency key is already associated with another order",
+              409,
+              "IDEMPOTENCY_KEY_CONFLICT"
+            );
+          }
+
+          if (
+            authenticatedVendorId &&
+            existing.vendorId.toString() !==
+              authenticatedVendorId.toString()
+          ) {
+            throw new AppError(
+              "Shipment not found",
+              404,
+              "SHIPMENT_NOT_FOUND"
+            );
+          }
+
+          return existing;
+        }
+      }
+
+      if (!txCommitted && isTransientTransactionError(error) && attempt < MAX_TX_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, 25 * attempt));
+        continue;
+      }
+
+      throw error;
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  const { shipment, order, matchingVf, vendorId } = txResult;
+
+  /*
+   * Phase VD-06F: Carrier Booking Integration
+   * Attempt external carrier booking on the committed local shipment.
+   */
+  try {
+    const providerKey = (shipment.provider || matchingVf?.assignedShipmentPartner?.partnerId || carrier || "").toLowerCase().trim();
+    const isIntegrated = ["delhivery", "shiprocket"].includes(providerKey);
+
+    if (isIntegrated) {
+      const courierService = require("./courier.service");
+      const bookingRes = await courierService.createCourierShipment({
+        provider: providerKey,
+        shipment,
+        destination: shipment.shippingAddress,
+      });
+
+      if (bookingRes?.success && bookingRes?.waybill) {
+        const waybill = String(bookingRes.waybill).trim();
+        shipment.status = "booked";
+        shipment.awbNumber = waybill;
+        shipment.trackingNumber = waybill;
+        shipment.providerShipmentId = bookingRes.providerShipmentId || waybill;
+        try {
+          const adapter = courierService.getAdapter(providerKey);
+          shipment.trackingUrl = adapter.generateTrackingUrl(waybill);
+        } catch {}
         shipment.bookingDetails = {
-          status: "failed",
+          status: "booked",
+          provider: providerKey,
           attemptedAt: new Date(),
           attempts: 1,
-          errorCode: "BOOKING_EXCEPTION",
-          errorMessage: bookingErr.message,
+          errorCode: null,
+          errorMessage: null,
+        };
+        shipment.trackingEvents.push({
+          status: "booked",
+          milestone: "booked",
+          location: "Logistics Booking Gateway",
+          timestamp: new Date(),
+          description: `Shipment booked with ${shipment.carrier || providerKey}. AWB: ${waybill}`,
+          source: "system",
+          rawPayload: bookingRes.raw || null,
+        });
+
+        await shipment.save();
+
+        try {
+          await Order.updateOne(
+            { _id: order._id, "vendorFulfillments.vendorId": vendorId },
+            {
+              $set: {
+                "vendorFulfillments.$.awbNumber": waybill,
+                "vendorFulfillments.$.trackingUrl": shipment.trackingUrl,
+                "vendorFulfillments.$.carrier": shipment.carrier || providerKey,
+              },
+            }
+          );
+        } catch {}
+      } else if (bookingRes?.status === "not_configured") {
+        shipment.bookingDetails = {
+          status: "not_configured",
+          provider: providerKey,
+          attemptedAt: new Date(),
+          attempts: 1,
+          errorCode: "CARRIER_NOT_CONFIGURED",
+          errorMessage: bookingRes.error || "Carrier API credentials not configured",
         };
         await shipment.save();
-      } catch {}
-    }
-
-    return shipment;
-  } catch (error) {
-    try {
-      await session.abortTransaction();
-    } catch (abortError) {
-      // Preserve original error.
-    }
-
-    /*
-     * Handle concurrent idempotent requests.
-     */
-    if (
-      error?.code === 11000
-    ) {
-      const existing =
-        await shipmentRepository
-          .findByIdempotencyKey(
-            normalizedIdempotencyKey
-          );
-
-      if (existing) {
-        if (
-          existing.orderId.toString() !==
-          resolvedOrderId.toString()
-        ) {
-          throw new AppError(
-            "Idempotency key is already associated with another order",
-            409,
-            "IDEMPOTENCY_KEY_CONFLICT"
-          );
-        }
-
-        if (
-          authenticatedVendorId &&
-          existing.vendorId.toString() !==
-            authenticatedVendorId.toString()
-        ) {
-          throw new AppError(
-            "Shipment not found",
-            404,
-            "SHIPMENT_NOT_FOUND"
-          );
-        }
-
-        return existing;
+      } else {
+        // Booking rejected or API failed
+        shipment.status = "booking_failed";
+        shipment.failureReason = bookingRes?.error || "Carrier booking failed";
+        shipment.bookingDetails = {
+          status: "failed",
+          provider: providerKey,
+          attemptedAt: new Date(),
+          attempts: 1,
+          errorCode: "CARRIER_BOOKING_REJECTED",
+          errorMessage: bookingRes?.error || "Carrier booking rejected",
+        };
+        shipment.trackingEvents.push({
+          status: "booking_failed",
+          milestone: "booking_failed",
+          location: "Logistics Booking Gateway",
+          timestamp: new Date(),
+          description: `Carrier booking failed: ${bookingRes?.error || "Booking rejected"}`,
+          source: "system",
+          rawPayload: bookingRes?.raw || null,
+        });
+        await shipment.save();
       }
     }
-
-    throw error;
-  } finally {
-    await session.endSession();
+  } catch (bookingErr) {
+    try {
+      shipment.status = "booking_failed";
+      shipment.failureReason = bookingErr.message || "Carrier booking exception";
+      shipment.bookingDetails = {
+        status: "failed",
+        attemptedAt: new Date(),
+        attempts: 1,
+        errorCode: "BOOKING_EXCEPTION",
+        errorMessage: bookingErr.message,
+      };
+      await shipment.save();
+    } catch {}
   }
+
+  return shipment;
 };
 
 /*

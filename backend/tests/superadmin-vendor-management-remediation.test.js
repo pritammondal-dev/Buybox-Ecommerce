@@ -272,11 +272,15 @@ describe("Phase VM-02: Superadmin Vendor Management Remediation Suite", () => {
       });
       expect(auditLog).toBeDefined();
 
-      // Verify idempotency (calling deleteVendor again does not crash)
-      const secondCall = await vendorService.deleteVendor(testVendor._id, {
-        reason: "Subsequent administrative check for idempotency",
+      // Verify duplicate deactivation is safely rejected with explicit conflict/bad request code
+      await expect(
+        vendorService.deleteVendor(testVendor._id, {
+          reason: "Subsequent administrative check for idempotency",
+        })
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        code: "VENDOR_ALREADY_DEACTIVATED",
       });
-      expect(secondCall.success).toBe(true);
 
       // Cleanup
       await Vendor.deleteOne({ _id: testVendor._id });

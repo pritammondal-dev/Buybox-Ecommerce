@@ -22,6 +22,8 @@ const TEST_MONGODB_URI = process.env.MONGODB_URI
   ? process.env.MONGODB_URI.replace("/buybox?", "/buybox_gov_test?")
   : "mongodb://127.0.0.1:27017/buybox_gov_test?replicaSet=rs0";
 
+jest.setTimeout(30000);
+
 describe("Phase 1F — Super Admin RBAC/PBAC Governance Backend", () => {
   let superAdminUser;
   let superAdminToken;

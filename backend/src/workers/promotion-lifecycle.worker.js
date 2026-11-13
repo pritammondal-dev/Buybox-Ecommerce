@@ -20,11 +20,6 @@ const processPromotionLifecycleBatch = async (options = {}) => {
   isProcessing = true;
 
   try {
-    if (process.env.NODE_ENV === "test" && !options.useDistributedLock) {
-      const taskPromise = promotionLifecycleService.reconcilePromotions(options);
-      return await taskPromise;
-    }
-
     const lockTtlMs = options.lockTtlMs || 60000;
     const lockResult = await withDistributedLock(
       "promotion-lifecycle",
