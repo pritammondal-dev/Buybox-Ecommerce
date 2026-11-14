@@ -14,22 +14,27 @@ const routes = require("../src/routes");
 
 describe("Phase 1G — Authorization Migration Readiness Audit & Route Matrix", () => {
   describe("1. Permission Registry & Role Fallback Invariants", () => {
-    test("Canonical permission registry defines exactly 49 permissions (40 operational + 9 governance)", () => {
+    test("Canonical permission registry defines the 49 core permissions plus 3 discount/promotion permissions", () => {
       const allPermissions = Object.values(PERMISSIONS);
-      expect(allPermissions).toHaveLength(49);
+      expect(allPermissions).toHaveLength(52);
 
-      // Operational permissions count
+      // Core operational permissions count (Phase 1G / D7 baseline)
       expect(OPERATIONAL_PERMISSIONS).toHaveLength(40);
 
       // Governance permissions count
       expect(GOVERNANCE_PERMISSIONS).toHaveLength(9);
 
-      // Mutually exclusive and exhaustive union
+      // Mutually exclusive and exhaustive 49-permission canonical union
       const combined = new Set([
         ...OPERATIONAL_PERMISSIONS,
         ...GOVERNANCE_PERMISSIONS,
       ]);
       expect(combined.size).toBe(49);
+
+      // Extended discount and promotion floor permissions in PERMISSIONS
+      expect(allPermissions).toContain(PERMISSIONS.DISCOUNTS_READ);
+      expect(allPermissions).toContain(PERMISSIONS.DISCOUNTS_MANAGE);
+      expect(allPermissions).toContain(PERMISSIONS.PROMOTIONS_OVERRIDE_FLOOR);
     });
 
     test("Admin role retains exactly the 40 operational permissions", () => {
@@ -42,18 +47,22 @@ describe("Phase 1G — Authorization Migration Readiness Audit & Route Matrix", 
       }
     });
 
-    test("Super Admin role retains all 49 permissions (40 operational + 9 governance)", () => {
+    test("Super Admin role retains all 49 canonical permissions (40 operational + 9 governance)", () => {
       const superAdminPerms = ROLE_PERMISSIONS[ROLES.SUPER_ADMIN];
       expect(superAdminPerms).toHaveLength(49);
 
-      for (const p of Object.values(PERMISSIONS)) {
+      for (const p of OPERATIONAL_PERMISSIONS) {
+        expect(superAdminPerms).toContain(p);
+      }
+      for (const p of GOVERNANCE_PERMISSIONS) {
         expect(superAdminPerms).toContain(p);
       }
     });
 
     test("Customer, Vendor, Support, and Manager roles retain established compatibility counts", () => {
       expect(ROLE_PERMISSIONS[ROLES.CUSTOMER]).toHaveLength(3);
-      expect(ROLE_PERMISSIONS[ROLES.VENDOR]).toHaveLength(12);
+      expect(ROLE_PERMISSIONS[ROLES.VENDOR]).toHaveLength(13);
+      expect(ROLE_PERMISSIONS[ROLES.VENDOR]).toContain(PERMISSIONS.PRODUCTS_DELETE);
       expect(ROLE_PERMISSIONS[ROLES.SUPPORT]).toHaveLength(7);
       expect(ROLE_PERMISSIONS[ROLES.MANAGER]).toHaveLength(30);
     });

@@ -625,121 +625,105 @@ const processRefundWebhook = async ({
       });
 
     if (nextStatus === "processed") {
-      try {
-        const ReturnRequest = require("../models/ReturnRequest");
-        await ReturnRequest.updateMany(
-          {
-            $or: [
-              { refundId: refund._id },
-              { orderId: order._id, status: "refund_pending" },
-            ],
+      const ReturnRequest = require("../models/ReturnRequest");
+      await ReturnRequest.updateMany(
+        {
+          $or: [
+            { refundId: refund._id },
+            { orderId: order._id, status: "refund_pending" },
+          ],
+        },
+        {
+          $set: {
+            status: "refunded",
+            resolutionNotes: "Refund confirmed via payment gateway webhook",
           },
-          {
-            $set: {
+          $push: {
+            timeline: {
               status: "refunded",
-              resolutionNotes: "Refund confirmed via payment gateway webhook",
-            },
-            $push: {
-              timeline: {
-                status: "refunded",
-                notes: `Refund confirmed by ${REFUND_GATEWAY} webhook.`,
-                timestamp: new Date(),
-              },
+              notes: `Refund confirmed by ${REFUND_GATEWAY} webhook.`,
+              timestamp: new Date(),
             },
           },
-          { session }
-        );
-
-        try {
-          const matchedReturns = await ReturnRequest.find({
-            $or: [
-              { refundId: refund._id },
-              { orderId: order._id, status: "refunded" },
-            ],
-          }).session(session || null);
-
-          if (matchedReturns && matchedReturns.length > 0) {
-            const { generateCreditNoteForReturn } = require("./return-request.service");
-            for (const retDoc of matchedReturns) {
-              await generateCreditNoteForReturn({
-                returnDoc: retDoc,
-                orderDoc: order,
-                refundDoc: updatedRefund,
-                session,
-              }).catch(() => {});
-            }
-          }
-        } catch {
-          // Non-blocking credit note generation
-        }
-      } catch (err) {
-        // Non-blocking for webhook synchronization
-      }
+        },
+        { session }
+      );
 
       try {
-        if (order.items && order.items.length > 0) {
-          const allItemsReturned = order.items.every((it) => it.returnStatus === "returned");
-          if (allItemsReturned && order.fulfillmentStatus !== "returned") {
-            order.fulfillmentStatus = "returned";
-            await orderRepository.updateById(
-              order._id,
-              { fulfillmentStatus: "returned" },
-              { session }
-            );
+        const matchedReturns = await ReturnRequest.find({
+          $or: [
+            { refundId: refund._id },
+            { orderId: order._id, status: "refunded" },
+          ],
+        }).session(session || null);
+
+        if (matchedReturns && matchedReturns.length > 0) {
+          const { generateCreditNoteForReturn } = require("./return-request.service");
+          for (const retDoc of matchedReturns) {
+            await generateCreditNoteForReturn({
+              returnDoc: retDoc,
+              orderDoc: order,
+              refundDoc: updatedRefund,
+              session,
+            }).catch(() => {});
           }
         }
       } catch {
-        // Non-blocking order fulfillment sync
+        // Non-blocking credit note generation
       }
 
-      try {
-        // Post refund reversal double-entry journal upon webhook confirmation
-        const financialLedgerService = require("./financial-ledger.service");
-        const isSettled = Boolean(order.items?.some((it) => it.settlementId));
-        const primaryVendorId = order.items?.[0]?.vendorId;
-        await financialLedgerService.postRefundReversalJournal(updatedRefund, {
-          orderDoc: order,
-          vendorId: primaryVendorId,
-          isSettled,
-          session,
-        });
-      } catch (err) {
-        // Non-blocking ledger reversal on webhook
+      if (order.items && order.items.length > 0) {
+        const allItemsReturned = order.items.every((it) => it.returnStatus === "returned");
+        if (allItemsReturned && order.fulfillmentStatus !== "returned") {
+          order.fulfillmentStatus = "returned";
+          await orderRepository.updateById(
+            order._id,
+            { fulfillmentStatus: "returned" },
+            { session }
+          );
+        }
       }
+
+      // Mandatory double-entry ledger reversal: Must post as part of this transaction
+      const financialLedgerService = require("./financial-ledger.service");
+      const isSettled = Boolean(order.items?.some((it) => it.settlementId));
+      const primaryVendorId = order.items?.[0]?.vendorId;
+      await financialLedgerService.postRefundReversalJournal(updatedRefund, {
+        orderDoc: order,
+        vendorId: primaryVendorId,
+        isSettled,
+        session,
+      });
     }
 
     if (nextStatus === "failed") {
-      try {
-        const ReturnRequest = require("../models/ReturnRequest");
-        const failureReason =
-          razorpayRefund.error_description ||
-          razorpayRefund.error_reason ||
-          "Gateway refund failed";
+      const ReturnRequest = require("../models/ReturnRequest");
+      const failureReason =
+        razorpayRefund.error_description ||
+        razorpayRefund.error_reason ||
+        "Gateway refund failed";
 
-        await ReturnRequest.updateMany(
-          {
-            $or: [
-              { refundId: refund._id },
-              { orderId: order._id, status: "refund_pending" },
-            ],
+      await ReturnRequest.updateMany(
+        {
+          $or: [
+            { refundId: refund._id },
+            { orderId: order._id, status: "refund_pending" },
+          ],
+        },
+        {
+          $set: {
+            resolutionNotes: `Refund failed via payment gateway: ${failureReason}`,
           },
-          {
-            $set: {
-              resolutionNotes: `Refund failed via payment gateway: ${failureReason}`,
-            },
-            $push: {
-              timeline: {
-                status: "refund_pending",
-                notes: `Payment gateway refund failed: ${failureReason}. Action required by administrator.`,
-                timestamp: new Date(),
-              },
+          $push: {
+            timeline: {
+              status: "refund_pending",
+              notes: `Payment gateway refund failed: ${failureReason}. Action required by administrator.`,
+              timestamp: new Date(),
             },
           },
-          { session }
-        );
-      } catch (err) {
-        // Non-blocking for webhook failure synchronization
-      }
+        },
+        { session }
+      );
     }
 
     /**

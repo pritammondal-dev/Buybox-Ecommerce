@@ -307,6 +307,7 @@ describe("Vendor Registration, Boundary & Warehouse Authorization Suite", () => 
         .send({
           ...regPayload,
           email: customerUser.email,
+          password: "Password123!",
           businessSlug: `shared-vendor-${Date.now()}`,
         });
 
@@ -337,6 +338,7 @@ describe("Vendor Registration, Boundary & Warehouse Authorization Suite", () => 
         .send({
           ...regPayload,
           email: customerUser.email,
+          password: "Password123!",
           businessSlug: `shared-vendor-${Date.now()}-dup`,
         });
 

@@ -66,6 +66,24 @@ const handleRazorpayWebhook = async ({
     );
 
   if (existingEvent) {
+    if (existingEvent.status === "processed") {
+      return {
+        duplicate: true,
+        eventId,
+        eventType: existingEvent.eventType,
+        status: existingEvent.status,
+      };
+    }
+
+    if (existingEvent.status === "failed") {
+      const result = await processPaymentWebhookEvent(eventId);
+      return {
+        duplicate: false,
+        retried: true,
+        ...result,
+      };
+    }
+
     return {
       duplicate: true,
       eventId,
@@ -171,6 +189,24 @@ const handlePayPalWebhook = async ({ rawBody, headers = {} }) => {
     await paymentWebhookEventRepository.findByEventId(eventId);
 
   if (existingEvent) {
+    if (existingEvent.status === "processed") {
+      return {
+        duplicate: true,
+        eventId,
+        eventType: existingEvent.eventType,
+        status: existingEvent.status,
+      };
+    }
+
+    if (existingEvent.status === "failed") {
+      const result = await processPaymentWebhookEvent(eventId);
+      return {
+        duplicate: false,
+        retried: true,
+        ...result,
+      };
+    }
+
     return {
       duplicate: true,
       eventId,

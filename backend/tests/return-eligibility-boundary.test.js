@@ -1,27 +1,27 @@
-const { createReturnRequest, checkOrderReturnEligibility } = require('d:/MERN Stack/Buybox-Ecommerce/backend/src/services/return-request.service');
-const mongoose = require('d:/MERN Stack/Buybox-Ecommerce/backend/node_modules/mongoose');
+const { createReturnRequest, checkOrderReturnEligibility } = require('../src/services/return-request.service');
+const mongoose = require('mongoose');
 
 // Mock models and dependencies
-jest.mock('d:/MERN Stack/Buybox-Ecommerce/backend/src/models/Order');
-jest.mock('d:/MERN Stack/Buybox-Ecommerce/backend/src/models/Customer');
-jest.mock('d:/MERN Stack/Buybox-Ecommerce/backend/src/models/Product');
-jest.mock('d:/MERN Stack/Buybox-Ecommerce/backend/src/models/ProductVariant');
-jest.mock('d:/MERN Stack/Buybox-Ecommerce/backend/src/models/Shipment');
-jest.mock('d:/MERN Stack/Buybox-Ecommerce/backend/src/models/ReturnRequest');
-jest.mock('d:/MERN Stack/Buybox-Ecommerce/backend/src/models/Refund');
-jest.mock('d:/MERN Stack/Buybox-Ecommerce/backend/src/services/storefront-settings.service', () => ({
+jest.mock('../src/models/Order');
+jest.mock('../src/models/Customer');
+jest.mock('../src/models/Product');
+jest.mock('../src/models/ProductVariant');
+jest.mock('../src/models/Shipment');
+jest.mock('../src/models/ReturnRequest');
+jest.mock('../src/models/Refund');
+jest.mock('../src/services/storefront-settings.service', () => ({
   isFeatureEnabled: jest.fn().mockResolvedValue(true)
 }));
-jest.mock('d:/MERN Stack/Buybox-Ecommerce/backend/src/services/customer-notification.service', () => ({
+jest.mock('../src/services/customer-notification.service', () => ({
   createCustomerNotification: jest.fn().mockResolvedValue({})
 }));
 
-const Order = require('d:/MERN Stack/Buybox-Ecommerce/backend/src/models/Order');
-const Customer = require('d:/MERN Stack/Buybox-Ecommerce/backend/src/models/Customer');
-const Product = require('d:/MERN Stack/Buybox-Ecommerce/backend/src/models/Product');
-const Shipment = require('d:/MERN Stack/Buybox-Ecommerce/backend/src/models/Shipment');
-const ReturnRequest = require('d:/MERN Stack/Buybox-Ecommerce/backend/src/models/ReturnRequest');
-const Refund = require('d:/MERN Stack/Buybox-Ecommerce/backend/src/models/Refund');
+const Order = require('../src/models/Order');
+const Customer = require('../src/models/Customer');
+const Product = require('../src/models/Product');
+const Shipment = require('../src/models/Shipment');
+const ReturnRequest = require('../src/models/ReturnRequest');
+const Refund = require('../src/models/Refund');
 
 describe('Phase Acceptance-B: Return Eligibility Boundary Verification', () => {
   const customerId = new mongoose.Types.ObjectId();
@@ -203,6 +203,6 @@ describe('Phase Acceptance-B: Return Eligibility Boundary Verification', () => {
         type: 'return',
         items: [{ productId: productAId.toString(), quantity: 1 }]
       })
-    ).rejects.toThrow('Returns are only permitted for delivered items');
+    ).rejects.toThrow('Returns can only be requested for delivered orders');
   });
 });

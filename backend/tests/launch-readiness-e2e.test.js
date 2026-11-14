@@ -18,6 +18,7 @@ const ProductVariant = require("../src/models/ProductVariant");
 const Category = require("../src/models/Category");
 const Brand = require("../src/models/Brand");
 const Warehouse = require("../src/models/Warehouse");
+const Inventory = require("../src/models/Inventory");
 const Shipment = require("../src/models/Shipment");
 const SupportTicket = require("../src/models/SupportTicket");
 const CustomerNotification = require("../src/models/CustomerNotification");
@@ -159,6 +160,8 @@ describe("Buybox Final Launch Readiness End-to-End Audit Suite", () => {
       userId: testVendorUser._id,
       businessName: "Launch Acoustics",
       businessSlug: `launch-acoustics-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+      status: "approved",
+      onboardingStatus: "approved",
       isActive: true,
     });
 
@@ -208,6 +211,17 @@ describe("Buybox Final Launch Readiness End-to-End Audit Suite", () => {
       price: "2499.00",
       currency: "INR",
       stockQuantity: 250,
+    });
+
+    await Inventory.create({
+      warehouseId: testWarehouse._id,
+      productVariantId: testVariant._id,
+      sku: testVariant.sku,
+      onHand: 250,
+      reserved: 0,
+      safetyStock: 0,
+      isAvailable: true,
+      lastCountedAt: new Date(),
     });
 
     // Customer 1 Address

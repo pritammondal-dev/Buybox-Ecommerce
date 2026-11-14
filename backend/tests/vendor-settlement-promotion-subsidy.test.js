@@ -37,9 +37,8 @@ describe("Phase D6 — Vendor Settlement & Platform Promotion Subsidy Accounting
   let variantA;
 
   beforeAll(async () => {
-    if (mongoose.connection.readyState !== 1) {
-      await mongoose.connect(TEST_MONGODB_URI);
-    }
+    await mongoose.connect(TEST_MONGODB_URI);
+    require("../src/services/storefront-settings.service").invalidateCache();
 
     const rand = Math.random().toString(36).substring(7);
 
@@ -128,9 +127,21 @@ describe("Phase D6 — Vendor Settlement & Platform Promotion Subsidy Accounting
   });
 
   afterAll(async () => {
-    if (mongoose.connection.readyState === 1) {
-      await Order.deleteMany({ customerId: customerDoc._id });
-      await VendorSettlement.deleteMany({ vendorId: testVendor._id });
+    try {
+      await Promise.all([
+        Order.deleteMany({ customerId: customerDoc._id }),
+        VendorSettlement.deleteMany({ vendorId: testVendor._id }),
+        User.deleteMany({ _id: { $in: [vendorUser?._id, customerUser?._id].filter(Boolean) } }),
+        Customer.deleteMany({ _id: customerDoc?._id }),
+        Vendor.deleteMany({ _id: testVendor?._id }),
+        Category.deleteMany({ _id: testCategory?._id }),
+        Brand.deleteMany({ _id: testBrand?._id }),
+        Warehouse.deleteMany({ _id: testWarehouse?._id }),
+        Product.deleteMany({ _id: productA?._id }),
+        ProductVariant.deleteMany({ _id: variantA?._id }),
+      ]);
+    } catch {}
+    if (mongoose.connection.readyState !== 0) {
       await mongoose.disconnect();
     }
   });
@@ -141,6 +152,7 @@ describe("Phase D6 — Vendor Settlement & Platform Promotion Subsidy Accounting
     paymentStatus = "paid",
     status = "delivered",
     deliveredAt = new Date(Date.now() - 9 * 24 * 60 * 60 * 1000),
+    returnWindowDaysSnapshot = 7,
   }) {
     const defaultAddress = {
       fullName: "D6 Buyer",
@@ -182,6 +194,7 @@ describe("Phase D6 — Vendor Settlement & Platform Promotion Subsidy Accounting
       paymentStatus,
       status,
       deliveredAt,
+      returnWindowDaysSnapshot,
       currency: "INR",
     });
   }

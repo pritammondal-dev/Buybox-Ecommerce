@@ -12,6 +12,15 @@ jest.mock("../src/services/order.service");
 jest.mock("../src/models/Customer");
 jest.mock("../src/models/User");
 jest.mock("../src/services/notification");
+jest.mock("../src/models/ReturnRequest", () => ({
+  updateMany: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
+  find: jest.fn().mockReturnValue({
+    session: jest.fn().mockResolvedValue([]),
+  }),
+}));
+jest.mock("../src/services/financial-ledger.service", () => ({
+  postRefundReversalJournal: jest.fn().mockResolvedValue([]),
+}));
 
 const app = require("../src/app");
 const refundService = require("../src/services/refund.service");

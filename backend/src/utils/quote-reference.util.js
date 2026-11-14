@@ -61,7 +61,18 @@ const getSigningKey = (customEnv = null) => {
  */
 const toStandardDecimalString = (val) => {
   if (val === null || val === undefined) return "0.00";
-  const num = Number(val);
+  let raw = val;
+  if (typeof val === "object") {
+    if (val.$numberDecimal !== undefined) {
+      raw = val.$numberDecimal;
+    } else if (typeof val.toString === "function") {
+      const str = val.toString();
+      if (str !== "[object Object]") {
+        raw = str;
+      }
+    }
+  }
+  const num = Number(raw);
   if (!Number.isFinite(num)) return "0.00";
   return num.toFixed(2);
 };
@@ -342,6 +353,7 @@ const verifyQuoteReference = (token, { customerId, cartId }, options = {}) => {
 module.exports = {
   DEFAULT_QUOTE_TTL_MS,
   getSigningKey,
+  toStandardDecimalString,
   computePricingFingerprint,
   normalizePricingItems,
   generateQuoteReference,

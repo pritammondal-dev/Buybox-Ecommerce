@@ -543,7 +543,7 @@ const deleteProductVariant = async ({ id, actor, req = null }) => {
       });
 
       throw new AppError(
-        `Cannot archive variant '${variant.sku}': ${activeReservations.length} active inventory reservation(s) across pending orders. Resolve active order commitments first.`,
+        `Cannot delete variant with active inventory reservations '${variant.sku}': ${activeReservations.length} active inventory reservation(s) across pending orders. Resolve active order commitments first.`,
         409,
         "CANNOT_DELETE_VARIANT_WITH_RESERVATIONS",
         reservationDetails

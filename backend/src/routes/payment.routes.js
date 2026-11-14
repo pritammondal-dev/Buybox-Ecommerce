@@ -6,6 +6,7 @@ const paymentWebhookController = require("../controllers/payment-webhook.control
 const {
   authenticate,
   authenticateGuestOrCustomer,
+  authenticateExistingGuestOrCustomer,
 } = require("../middlewares/authentication.middleware");
 const {
   requirePermissions,
@@ -70,7 +71,7 @@ router.get(
 router.post(
   "/orders/:orderId",
   paymentLimiter,
-  authenticateGuestOrCustomer,
+  authenticateExistingGuestOrCustomer,
   validate(createPaymentSchema, "params"),
   paymentController.createPayment
 );
@@ -78,7 +79,7 @@ router.post(
 router.post(
   "/orders/:orderId/cancel",
   paymentLimiter,
-  authenticateGuestOrCustomer,
+  authenticateExistingGuestOrCustomer,
   validate(createPaymentSchema, "params"),
   paymentController.cancelPayment
 );
@@ -86,7 +87,7 @@ router.post(
 router.post(
   "/verify",
   paymentLimiter,
-  authenticateGuestOrCustomer,
+  authenticateExistingGuestOrCustomer,
   validate(verifyPaymentSchema),
   paymentController.verifyPayment
 );
@@ -94,7 +95,7 @@ router.post(
 router.post(
   "/orders/:orderId/capture",
   paymentLimiter,
-  authenticateGuestOrCustomer,
+  authenticateExistingGuestOrCustomer,
   validate(createPaymentSchema, "params"),
   paymentController.capturePayment
 );
@@ -103,7 +104,7 @@ router.post(
 router.post(
   "/paypal/orders/:orderId",
   paymentLimiter,
-  authenticateGuestOrCustomer,
+  authenticateExistingGuestOrCustomer,
   validate(createPaymentSchema, "params"),
   paymentController.createPayPalPayment
 );
@@ -111,7 +112,7 @@ router.post(
 router.post(
   "/paypal/capture",
   paymentLimiter,
-  authenticateGuestOrCustomer,
+  authenticateExistingGuestOrCustomer,
   validate(capturePayPalSchema),
   paymentController.capturePayPalPayment
 );
@@ -147,4 +148,4 @@ router.post(
   refundController.createRefund
 );
 
-module.exports = router;
+module.exports = router;

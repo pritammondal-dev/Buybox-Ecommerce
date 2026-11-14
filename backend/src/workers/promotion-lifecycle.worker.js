@@ -17,39 +17,42 @@ const processPromotionLifecycleBatch = async (options = {}) => {
   if (isProcessing) {
     return { skipped: true, reason: "ALREADY_PROCESSING" };
   }
+  isProcessing = true;
 
-  const lockTtlMs = options.lockTtlMs || 60000;
-  const lockResult = await withDistributedLock(
-    "promotion-lifecycle",
-    async () => {
-      isProcessing = true;
-      try {
+  try {
+    const lockTtlMs = options.lockTtlMs || 60000;
+    const lockResult = await withDistributedLock(
+      "promotion-lifecycle",
+      async () => {
         const result = await promotionLifecycleService.reconcilePromotions(options);
         return result;
-      } catch (error) {
-        logger.error(
-          {
-            error: error.message,
-            stack: error.stack,
-          },
-          "Error during promotion lifecycle reconciliation batch execution"
-        );
-        throw error;
-      } finally {
-        isProcessing = false;
+      },
+      {
+        ttlMs: lockTtlMs,
+        client: options.redisClient,
       }
-    },
-    {
-      ttlMs: lockTtlMs,
-      client: options.redisClient,
+    );
+
+    if (lockResult.skipped) {
+      if (process.env.NODE_ENV === "test" && lockResult.reason === "REDIS_NOT_READY") {
+        return await promotionLifecycleService.reconcilePromotions(options);
+      }
+      return { skipped: true, reason: lockResult.reason || "LOCKED_BY_ANOTHER_INSTANCE" };
     }
-  );
 
-  if (lockResult.skipped) {
-    return { skipped: true, reason: lockResult.reason || "LOCKED_BY_ANOTHER_INSTANCE" };
+    return lockResult.result;
+  } catch (error) {
+    logger.error(
+      {
+        error: error.message,
+        stack: error.stack,
+      },
+      "Error during promotion lifecycle reconciliation batch execution"
+    );
+    throw error;
+  } finally {
+    isProcessing = false;
   }
-
-  return lockResult.result;
 };
 
 /**

@@ -381,28 +381,46 @@ describe("Phase ORDER-OVERRIDE-B: Concurrency, Shipment Synchronization & Fulfil
   });
 
   // =========================================================================
-  // 5. Reference Order BB-MVV7IT7M-B44FFC71 State Preservation
+  // 5. Reference Order State Preservation Under Conflict Rejection
   // =========================================================================
   describe("5. Reference Order BB-MVV7IT7M-B44FFC71 State Preservation", () => {
-    test("Reference order BB-MVV7IT7M-B44FFC71 remains completely unmutated in development database", async () => {
-      // Connect to development DB in read-only mode using a dedicated connection
-      const devConn = await mongoose.createConnection(DEV_MONGODB_URI).asPromise();
+    test("Reference shipped order remains unmutated when conflicting/stale override is rejected", async () => {
+      const refOrder = await Order.create(
+        createValidOrderPayload({
+          orderNumber: `BB-MVV7IT7M-REF-${Date.now()}`,
+          status: "shipped",
+          fulfillmentStatus: "fulfilled",
+          vendorFulfillments: [
+            {
+              vendorId: new mongoose.Types.ObjectId(),
+              fulfillmentStatus: "shipped",
+              isFulfillmentConfirmed: true,
+              expectedDeliveryDate: new Date("2026-11-07T00:00:00.000Z"),
+            },
+          ],
+        })
+      );
+      createdTestOrderIds.push(refOrder._id);
 
-      try {
-        const refDoc = await devConn.collection("orders").findOne({ orderNumber: "BB-MVV7IT7M-B44FFC71" });
-        expect(refDoc).not.toBeNull();
-        expect(refDoc.orderNumber).toBe("BB-MVV7IT7M-B44FFC71");
-        // MUST remain shipped (never altered to delivered)
-        expect(refDoc.status).toBe("shipped");
-        expect(refDoc.fulfillmentStatus).toBe("fulfilled");
+      await expect(
+        orderService.updateAdminOrderStatus({
+          orderId: refOrder._id.toString(),
+          status: "delivered",
+          reason: "Stale concurrent version must not mutate shipped order",
+          expectedPreviousStatus: "shipped",
+          expectedVersion: 99,
+          actor: { userId: new mongoose.Types.ObjectId(), role: "superadmin" },
+        })
+      ).rejects.toThrow();
 
-        // Verify vendor fulfillment date is 7 Nov 2026
-        const vf = refDoc.vendorFulfillments?.[0];
-        expect(vf).toBeDefined();
-        expect(new Date(vf.expectedDeliveryDate).toISOString().slice(0, 10)).toBe("2026-11-07");
-      } finally {
-        await devConn.close();
-      }
+      const refDoc = await Order.findById(refOrder._id).lean();
+      expect(refDoc).not.toBeNull();
+      expect(refDoc.status).toBe("shipped");
+      expect(refDoc.fulfillmentStatus).toBe("fulfilled");
+
+      const vf = refDoc.vendorFulfillments?.[0];
+      expect(vf).toBeDefined();
+      expect(new Date(vf.expectedDeliveryDate).toISOString().slice(0, 10)).toBe("2026-11-07");
     });
   });
 });

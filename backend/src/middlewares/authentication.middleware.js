@@ -449,12 +449,41 @@ const authenticateGuestOrCustomer = async (req, res, next) => {
   return next();
 };
 
+/**
+ * Payment-route guard supporting authenticated customers AND existing guest/order sessions.
+ * Unlike cart/order creation, payment endpoints must reject zero-credential requests with 401
+ * rather than silently minting a fresh anonymous guest session or returning 403.
+ */
+const authenticateExistingGuestOrCustomer = async (req, res, next) => {
+  const hasCustomerAuth = Boolean(
+    req.get("Authorization") ||
+      req.cookies?.[COOKIE_NAMES.CUSTOMER] ||
+      req.cookies?.bb_customer_session
+  );
+  const hasGuestAuth = Boolean(
+    req.get("X-Guest-Session") ||
+      req.cookies?.[COOKIE_NAMES.GUEST] ||
+      req.cookies?.bb_guest_session ||
+      req.get("X-Order-Token") ||
+      req.query?.token
+  );
+
+  if (!hasCustomerAuth && !hasGuestAuth) {
+    return next(
+      new AppError("Authentication required", 401, "AUTHENTICATION_REQUIRED")
+    );
+  }
+
+  return authenticateGuestOrCustomer(req, res, next);
+};
+
 authenticate.authenticate = authenticate;
 authenticate.authenticateOptional = authenticateOptional;
 authenticate.authenticateAdministrator = authenticateAdministrator;
 authenticate.authenticateCustomer = authenticateCustomer;
 authenticate.authenticateVendor = authenticateVendor;
 authenticate.authenticateGuestOrCustomer = authenticateGuestOrCustomer;
+authenticate.authenticateExistingGuestOrCustomer = authenticateExistingGuestOrCustomer;
 authenticate.createAuthMiddleware = createAuthMiddleware;
 
 module.exports = authenticate;

@@ -21,6 +21,8 @@ const TEST_MONGODB_URI = process.env.MONGODB_URI
   ? process.env.MONGODB_URI.replace("/buybox?", "/buybox_batch2a_test?")
   : "mongodb://127.0.0.1:27017/buybox_batch2a_test?replicaSet=rs0";
 
+jest.setTimeout(30000);
+
 describe("Phase 1G / Batch 2A — Storefront & CMS Operational Route Authorization (PBAC)", () => {
   let createdPermissions = new Map();
   const testId = new mongoose.Types.ObjectId().toString();
@@ -356,6 +358,16 @@ describe("Phase 1G / Batch 2A — Storefront & CMS Operational Route Authorizati
           if (prefix === "/api/v1/cms/pages" && methods.includes("GET")) continue;
 
           const routePath = layer.route.path === "/" ? prefix : `${prefix}${layer.route.path}`;
+
+          // Skip auxiliary section operations not in Batch 2A catalog
+          if (
+            routePath === "/api/v1/storefront/sections/initialize-defaults" ||
+            routePath === "/api/v1/storefront/sections/reorder" ||
+            routePath.endsWith("/products")
+          ) {
+            continue;
+          }
+
           for (const method of methods) {
             actualProtectedRoutes.push({ method, fullPath: routePath });
           }

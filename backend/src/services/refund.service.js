@@ -985,65 +985,88 @@ const createRefund = async ({
       );
     }
 
-    const session =
-      await mongoose.startSession();
+    let maxTxAttempts = 5;
+    let syncResult;
+    let updatedRefund;
+    for (let attempt = 1; attempt <= maxTxAttempts; attempt++) {
+      const session = await mongoose.startSession();
+      try {
+        session.startTransaction();
 
-    try {
-      session.startTransaction();
+        updatedRefund =
+          await refundRepository.updateById(
+            refund._id,
+            {
+              gatewayRefundId:
+                razorpayRefund.id,
+              status:
+                gatewayStatus,
+              processedAt:
+                gatewayStatus ===
+                "processed"
+                  ? new Date()
+                  : null,
+              failureReason: null,
+            },
+            { session }
+          );
 
-      const updatedRefund =
-        await refundRepository.updateById(
-          refund._id,
-          {
-            gatewayRefundId:
-              razorpayRefund.id,
-            status:
-              gatewayStatus,
-            processedAt:
-              gatewayStatus ===
-              "processed"
-                ? new Date()
-                : null,
-            failureReason: null,
-          },
-          { session }
-        );
+        if (!updatedRefund) {
+          throw new AppError(
+            "Unable to update refund",
+            500,
+            "REFUND_UPDATE_FAILED"
+          );
+        }
 
-      if (!updatedRefund) {
-        throw new AppError(
-          "Unable to update refund",
-          500,
-          "REFUND_UPDATE_FAILED"
-        );
-      }
-
-      /*
-       * Processed refunds release the reservation.
-       * Pending refunds retain it until webhook
-       * confirmation.
-       */
-      if (
-        gatewayStatus ===
-        "processed"
-      ) {
-        await releaseRefundReservation({
-          paymentId: payment._id,
-          amount:
-            requestedAmountDecimal,
-          session,
-        });
-      }
-
-      const syncResult =
-        await synchronizePaymentRefundState({
-          payment,
-          order,
-          options: {
+        /*
+         * Processed refunds release the reservation.
+         * Pending refunds retain it until webhook
+         * confirmation.
+         */
+        if (
+          gatewayStatus ===
+          "processed"
+        ) {
+          await releaseRefundReservation({
+            paymentId: payment._id,
+            amount:
+              requestedAmountDecimal,
             session,
-          },
-        });
+          });
+        }
 
-      await session.commitTransaction();
+        syncResult =
+          await synchronizePaymentRefundState({
+            payment,
+            order,
+            options: {
+              session,
+            },
+          });
+
+        await session.commitTransaction();
+        break;
+      } catch (txErr) {
+        await session.abortTransaction().catch(() => {});
+        const isTransient =
+          txErr?.errorLabels?.includes?.("TransientTransactionError") ||
+          txErr?.hasErrorLabel?.("TransientTransactionError") ||
+          txErr?.code === 112 ||
+          txErr?.code === 24 ||
+          txErr?.name === "WriteConflict" ||
+          /lock.*timeout|catalog.*change|write conflict/i.test(txErr?.message || "");
+
+        if (isTransient && attempt < maxTxAttempts) {
+          const jitter = Math.floor(Math.random() * 50);
+          await new Promise((r) => setTimeout(r, attempt * 50 + jitter));
+          continue;
+        }
+        throw txErr;
+      } finally {
+        await session.endSession();
+      }
+    }
 
       /*
        * Email only after successful transaction.
@@ -1096,17 +1119,6 @@ const createRefund = async ({
         refundedAmount:
           syncResult.refundedAmount,
       };
-    } catch (error) {
-      try {
-        await session.abortTransaction();
-      } catch (abortError) {
-        // Preserve original error.
-      }
-
-      throw error;
-    } finally {
-      await session.endSession();
-    }
   } catch (error) {
     /*
      * If Razorpay did NOT accept the refund request,

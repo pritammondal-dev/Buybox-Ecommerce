@@ -518,6 +518,7 @@ const calculateVendorEligibleSettlement = async ({ vendorId }) => {
                 orderItem.promotionDiscountAmount != null
               ) {
                 const promoDiscountPerUnit = Number(orderItem.promotionDiscountAmount?.toString() || 0);
+                const retQty = item.quantity || 1;
                 const subsidyReversal = promoDiscountPerUnit * retQty;
                 platformSubsidyNum = Math.max(0, platformSubsidyNum - subsidyReversal);
               }
@@ -605,160 +606,195 @@ const generateEligibleSettlements = async ({
         continue;
       }
 
-      const session = await mongoose.startSession();
-      try {
-        session.startTransaction();
+      const maxTxAttempts = 5;
+      for (let attempt = 1; attempt <= maxTxAttempts; attempt++) {
+        const session = await mongoose.startSession();
+        try {
+          session.startTransaction();
 
-        const start = periodStart ? new Date(periodStart) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-        const end = periodEnd ? new Date(periodEnd) : new Date();
-        const settlementNumber = generateSettlementNumber();
-        const eligibleOrderIds = calc.eligibleOrders.map((o) => o._id);
+          const start = periodStart ? new Date(periodStart) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+          const end = periodEnd ? new Date(periodEnd) : new Date();
+          const settlementNumber = generateSettlementNumber();
+          const eligibleOrderIds = calc.eligibleOrders.map((o) => o._id);
 
-        const vendorIdempotencyKey = idempotencyKey
-          ? `${idempotencyKey}_${vendor._id}`
-          : `stl_${vendor._id}_${Date.now()}`;
+          const vendorIdempotencyKey = idempotencyKey
+            ? `${idempotencyKey}_${vendor._id}`
+            : `stl_${vendor._id}_${Date.now()}`;
 
-        const [settlement] = await VendorSettlement.create(
-          [
-            {
-              vendorId: vendor._id,
-              settlementNumber,
-              orderIds: eligibleOrderIds,
-              periodStart: start,
-              periodEnd: end,
-              currency: "INR",
-              grossSales: toDecimal128(calc.grossSales),
-              platformSubsidy: toDecimal128(calc.platformSubsidy || 0),
-              discounts: toDecimal128(calc.discounts),
-              refunds: toDecimal128(calc.refunds),
-              platformCommission: toDecimal128(calc.platformCommission),
-              netPayable: toDecimal128(calc.netPayable),
-              status: "pending",
-              idempotencyKey: vendorIdempotencyKey,
-            },
-          ],
-          { session }
-        );
-
-        // Record FinancialLedger entries for platform-funded promotional subsidies
-        const FinancialLedgerEntry = require("../models/FinancialLedgerEntry");
-        const {
-          FINANCIAL_ENTRY_TYPES,
-          FINANCIAL_ENTRY_DIRECTIONS,
-          FINANCIAL_ACCOUNT_TYPES,
-          FINANCIAL_ENTRY_SOURCES,
-        } = require("../constants/finance.constants");
-
-        const ledgerEntries = [];
-        for (const item of (calc.eligibleItems || [])) {
-          const itemSubsidy = Number(item.platformSubsidy || 0);
-          if (itemSubsidy > 0 && item.fundingSource === "platform") {
-            // Vendor Credit entry
-            ledgerEntries.push({
-              journalId: settlement.settlementNumber,
-              entryType: FINANCIAL_ENTRY_TYPES.PROMOTION_SUBSIDY,
-              direction: FINANCIAL_ENTRY_DIRECTIONS.CREDIT,
-              accountType: FINANCIAL_ACCOUNT_TYPES.VENDOR,
-              accountReference: vendor._id.toString(),
-              amount: toDecimal128(itemSubsidy),
-              currency: "INR",
-              orderId: item.orderId,
-              settlementId: settlement._id,
-              vendorId: vendor._id,
-              idempotencyKey: `sub_credit_${settlement._id}_${item.orderId}_${item.productId}`,
-              description: `Platform promotion subsidy credit for ${item.productName || "item"} (${item.promotionName || "Promotion"})`,
-              source: FINANCIAL_ENTRY_SOURCES.SYSTEM,
-              metadata: {
-                orderNumber: item.orderNumber || "",
-                productId: item.productId?.toString() || "",
-                promotionId: item.promotionId?.toString() || "",
-                promotionName: item.promotionName || "",
-                fundingSource: "platform",
-                quantity: String(item.quantity || 1),
+          const [settlement] = await VendorSettlement.create(
+            [
+              {
+                vendorId: vendor._id,
+                settlementNumber,
+                orderIds: eligibleOrderIds,
+                periodStart: start,
+                periodEnd: end,
+                currency: "INR",
+                grossSales: toDecimal128(calc.grossSales),
+                platformSubsidy: toDecimal128(calc.platformSubsidy || 0),
+                discounts: toDecimal128(calc.discounts),
+                refunds: toDecimal128(calc.refunds),
+                platformCommission: toDecimal128(calc.platformCommission),
+                netPayable: toDecimal128(calc.netPayable),
+                status: "pending",
+                idempotencyKey: vendorIdempotencyKey,
               },
-            });
+            ],
+            { session }
+          );
 
-            // Platform Debit entry
-            ledgerEntries.push({
-              journalId: settlement.settlementNumber,
-              entryType: FINANCIAL_ENTRY_TYPES.PROMOTION_SUBSIDY,
-              direction: FINANCIAL_ENTRY_DIRECTIONS.DEBIT,
-              accountType: FINANCIAL_ACCOUNT_TYPES.PLATFORM,
-              accountReference: "BUYBOX_MARKETING_PROMOTIONS",
-              amount: toDecimal128(itemSubsidy),
-              currency: "INR",
-              orderId: item.orderId,
-              settlementId: settlement._id,
-              vendorId: vendor._id,
-              idempotencyKey: `sub_debit_${settlement._id}_${item.orderId}_${item.productId}`,
-              description: `Platform promotion subsidy expense for Order #${item.orderNumber || item.orderId}`,
-              source: FINANCIAL_ENTRY_SOURCES.SYSTEM,
-              metadata: {
-                orderNumber: item.orderNumber || "",
-                productId: item.productId?.toString() || "",
-                promotionId: item.promotionId?.toString() || "",
-                promotionName: item.promotionName || "",
-                fundingSource: "platform",
-                quantity: String(item.quantity || 1),
-              },
-            });
-          }
-        }
+          // Record FinancialLedger entries for platform-funded promotional subsidies
+          const FinancialLedgerEntry = require("../models/FinancialLedgerEntry");
+          const {
+            FINANCIAL_ENTRY_TYPES,
+            FINANCIAL_ENTRY_DIRECTIONS,
+            FINANCIAL_ACCOUNT_TYPES,
+            FINANCIAL_ENTRY_SOURCES,
+          } = require("../constants/finance.constants");
 
-        if (ledgerEntries.length > 0) {
-          await FinancialLedgerEntry.insertMany(ledgerEntries, { session });
-        }
+          const ledgerEntries = [];
+          for (const item of (calc.eligibleItems || [])) {
+            const itemSubsidy = Number(item.platformSubsidy || 0);
+            if (itemSubsidy > 0 && item.fundingSource === "platform") {
+              // Vendor Credit entry
+              ledgerEntries.push({
+                journalId: settlement.settlementNumber,
+                entryType: FINANCIAL_ENTRY_TYPES.PROMOTION_SUBSIDY,
+                direction: FINANCIAL_ENTRY_DIRECTIONS.CREDIT,
+                accountType: FINANCIAL_ACCOUNT_TYPES.VENDOR,
+                accountReference: vendor._id.toString(),
+                amount: toDecimal128(itemSubsidy),
+                currency: "INR",
+                orderId: item.orderId,
+                settlementId: settlement._id,
+                vendorId: vendor._id,
+                idempotencyKey: `sub_credit_${settlement._id}_${item.orderId}_${item.productId}`,
+                description: `Platform promotion subsidy credit for ${item.productName || "item"} (${item.promotionName || "Promotion"})`,
+                source: FINANCIAL_ENTRY_SOURCES.SYSTEM,
+                metadata: {
+                  orderNumber: item.orderNumber || "",
+                  productId: item.productId?.toString() || "",
+                  promotionId: item.promotionId?.toString() || "",
+                  promotionName: item.promotionName || "",
+                  fundingSource: "platform",
+                  quantity: String(item.quantity || 1),
+                },
+              });
 
-        // Phase VW-03: Post settlement maturation double-entry journal (reclassifying pending to available)
-        const financialLedgerService = require("./financial-ledger.service");
-        await financialLedgerService.postSettlementMaturationJournal(settlement, { session });
-
-        for (const order of calc.eligibleOrders) {
-          let modified = false;
-          for (const item of (order.items || [])) {
-            if (item.vendorId && item.vendorId.toString() === vendor._id.toString() && !item.settlementId) {
-              item.settlementId = settlement._id;
-              modified = true;
+              // Platform Debit entry
+              ledgerEntries.push({
+                journalId: settlement.settlementNumber,
+                entryType: FINANCIAL_ENTRY_TYPES.PROMOTION_SUBSIDY,
+                direction: FINANCIAL_ENTRY_DIRECTIONS.DEBIT,
+                accountType: FINANCIAL_ACCOUNT_TYPES.PLATFORM,
+                accountReference: "BUYBOX_MARKETING_PROMOTIONS",
+                amount: toDecimal128(itemSubsidy),
+                currency: "INR",
+                orderId: item.orderId,
+                settlementId: settlement._id,
+                vendorId: vendor._id,
+                idempotencyKey: `sub_debit_${settlement._id}_${item.orderId}_${item.productId}`,
+                description: `Platform promotion subsidy expense for Order #${item.orderNumber || item.orderId}`,
+                source: FINANCIAL_ENTRY_SOURCES.SYSTEM,
+                metadata: {
+                  orderNumber: item.orderNumber || "",
+                  productId: item.productId?.toString() || "",
+                  promotionId: item.promotionId?.toString() || "",
+                  promotionName: item.promotionName || "",
+                  fundingSource: "platform",
+                  quantity: String(item.quantity || 1),
+                },
+              });
             }
           }
-          if (modified) {
-            await Order.updateOne(
-              { _id: order._id },
-              { $set: { items: order.items } },
-              { session }
-            );
+
+          if (ledgerEntries.length > 0) {
+            await FinancialLedgerEntry.insertMany(ledgerEntries, { session });
           }
-        }
 
-        await session.commitTransaction();
+          // Phase VW-03: Post settlement maturation double-entry journal (reclassifying pending to available)
+          const financialLedgerService = require("./financial-ledger.service");
+          await financialLedgerService.postSettlementMaturationJournal(settlement, { session });
 
-        const AuditLog = require("../models/AuditLog");
-        await AuditLog.create([
-          {
-            actorId: adminUserId || vendor.userId || vendor._id,
-            targetId: settlement._id,
-            action: "SETTLEMENT_GENERATED",
-            entityType: "vendor_settlement",
-            afterState: {
-              settlementNumber: settlement.settlementNumber,
-              netPayable: calc.netPayable,
-              orderCount: eligibleOrderIds.length,
+          for (const order of calc.eligibleOrders) {
+            let modified = false;
+            for (const item of (order.items || [])) {
+              if (item.vendorId && item.vendorId.toString() === vendor._id.toString()) {
+                item.settlementId = settlement._id;
+                modified = true;
+              }
+            }
+            if (modified) {
+              await Order.updateOne(
+                { _id: order._id },
+                { $set: { items: order.items } },
+                { session }
+              );
+              await Order.updateOne(
+                { _id: order._id },
+                {
+                  $set: {
+                    "items.$[elem].settlementId": settlement._id,
+                  },
+                },
+                {
+                  arrayFilters: [
+                    {
+                      "elem.vendorId": vendor._id,
+                    },
+                  ],
+                  session,
+                }
+              );
+            }
+          }
+
+          await session.commitTransaction();
+
+          const AuditLog = require("../models/AuditLog");
+          await AuditLog.create([
+            {
+              actorId: adminUserId || vendor.userId || vendor._id,
+              targetId: settlement._id,
+              action: "SETTLEMENT_GENERATED",
+              entityType: "vendor_settlement",
+              afterState: {
+                settlementNumber: settlement.settlementNumber,
+                netPayable: calc.netPayable,
+                orderCount: eligibleOrderIds.length,
+              },
             },
-          },
-        ]).catch(() => {});
+          ]).catch(() => {});
 
-        generated.push(settlement);
-      } catch (err) {
-        await session.abortTransaction().catch(() => {});
-        if (vendorId) {
-          throw err;
-        } else {
-          const logger = require("../config/logger");
-          logger.error({ err: err.message, vendorId: vendor._id }, "Failed generating settlement for vendor in batch");
-          failures.push({ vendorId: vendor._id, error: err.message });
+          generated.push(settlement);
+          break;
+        } catch (err) {
+          await session.abortTransaction().catch(() => {});
+          const isTransient =
+            err?.errorLabels?.includes?.("TransientTransactionError") ||
+            err?.hasErrorLabel?.("TransientTransactionError") ||
+            err?.code === 112 ||
+            err?.code === 24 ||
+            err?.name === "WriteConflict" ||
+            /lock.*timeout|catalog.*change|write conflict/i.test(err?.message || "");
+
+          if (isTransient && attempt < maxTxAttempts) {
+            const jitter = Math.floor(Math.random() * 50);
+            await new Promise((r) => setTimeout(r, attempt * 50 + jitter));
+            continue;
+          }
+
+          if (vendorId) {
+            throw err;
+          } else {
+            const logger = require("../config/logger");
+            logger.error({ err: err.message, vendorId: vendor._id }, "Failed generating settlement for vendor in batch");
+            failures.push({ vendorId: vendor._id, error: err.message });
+            break;
+          }
+        } finally {
+          await session.endSession().catch(() => {});
         }
-      } finally {
-        await session.endSession().catch(() => {});
       }
     } catch (vendorErr) {
       if (vendorId) {

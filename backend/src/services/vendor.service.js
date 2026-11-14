@@ -10,7 +10,7 @@ const ReturnRequest = require("../models/ReturnRequest");
 const { VendorSettlement } = require("../models/VendorSettlement");
 const AuditLog = require("../models/AuditLog");
 const RefreshToken = require("../models/RefreshToken");
-const { hashPassword } = require("../utils/password");
+const { hashPassword, comparePassword } = require("../utils/password");
 const { ROLES } = require("../constants/auth.constants");
 const AppError = require("../errors/AppError");
 const { encodeSecureId, decodeSecureId } = require("../utils/secure-id.util");
@@ -63,7 +63,7 @@ const registerVendor = async (
       .replace(/^-+|-+$/g, "") + `-${Date.now().toString(36)}`;
 
   // 1. Check for existing user account
-  const existingUser = await User.findOne({ email: normalizedEmail });
+  const existingUser = await User.findOne({ email: normalizedEmail }).select("+password");
   if (existingUser) {
     // Internal platform staff accounts cannot register as marketplace vendors
     if (["super_admin", "admin", "editor", "manager", "support"].includes(existingUser.role)) {
@@ -214,11 +214,19 @@ const registerVendor = async (
     }
 
     // 1B. Existing customer applying to become a Vendor for the first time (Shared Identity)
-    // Server-side identity validation: An unauthenticated caller cannot claim an existing customer's account.
     const authUserId = authenticatedUser?.id || authenticatedUser?._id;
-    const isOwner =
-      Boolean(authUserId) &&
-      authUserId.toString() === existingUser._id.toString();
+    if (authUserId && authUserId.toString() !== existingUser._id.toString()) {
+      throw new AppError(
+        "You cannot apply as a vendor using another user's email address.",
+        403,
+        "FORBIDDEN"
+      );
+    }
+
+    const isOwner = Boolean(
+      (authUserId && authUserId.toString() === existingUser._id.toString()) ||
+      (password && existingUser.password && (await comparePassword(password, existingUser.password)))
+    );
 
     if (!isOwner) {
       throw new AppError(
@@ -2253,11 +2261,7 @@ const deleteVendor = async (vendorId, { reason, actorId, req } = {}) => {
   }
 
   if (vendor.deletedAt) {
-    return {
-      success: true,
-      message: "Vendor account is already deactivated",
-      vendor: vendor.toObject(),
-    };
+    throw new AppError("Vendor account is already deactivated", 400, "VENDOR_ALREADY_DEACTIVATED");
   }
 
   if (actorId && String(actorId) === String(vendor.userId)) {

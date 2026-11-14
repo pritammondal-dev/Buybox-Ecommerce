@@ -900,7 +900,7 @@ const createReturnRequest = async ({
 
     if (!isDelivered) {
       throw new AppError(
-        `Item '${orderItem.productName}' has not been confirmed delivered. Returns are only permitted for delivered items.`,
+        `Item '${orderItem.productName}' has not been confirmed delivered. Returns can only be requested for delivered orders.`,
         400,
         "SHIPMENT_NOT_DELIVERED"
       );
@@ -1078,6 +1078,7 @@ const createReturnRequest = async ({
       images: itemEvidenceImages,
     });
   }
+
 
   const itemsSum = Array.isArray(order.items)
     ? order.items.reduce(

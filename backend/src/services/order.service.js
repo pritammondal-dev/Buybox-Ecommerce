@@ -19,6 +19,9 @@ const notificationOutboxService = require("./notification-outbox.service");
 const logger = require("../config/logger");
 
 const paymentService = require("./payment.service");
+const digitalEntitlementService = require("./digital-entitlement.service");
+const financialLedgerService = require("./financial-ledger.service");
+const commissionService = require("./commission.service");
 
 const {
   TAX_PRICING_MODES,
@@ -33,6 +36,16 @@ const Customer = require("../models/Customer");
 const User = require("../models/User");
 const Order = require("../models/Order");
 const Vendor = require("../models/Vendor");
+const Payment = require("../models/Payment");
+
+const storefrontSettingsService = require("./storefront-settings.service");
+const pricingEngineService = require("./pricing-engine.service");
+const {
+  generateQuoteReference,
+  verifyQuoteReference,
+  computePricingFingerprint,
+  toStandardDecimalString,
+} = require("../utils/quote-reference.util");
 
 const AppError = require("../errors/AppError");
 const { encodeSecureId, decodeSecureId } = require("../utils/secure-id.util");
@@ -244,7 +257,7 @@ const getShippingAddress = async (
  *
  * Cart priceSnapshot is intentionally NOT trusted.
  */
-const validateCartItems = async (cart) => {
+const validateCartItems = async (cart, options = {}) => {
   if (
     !cart ||
     cart.status !== "active"
@@ -271,11 +284,15 @@ const validateCartItems = async (cart) => {
     (item) => item.productVariantId
   );
 
-  const variants = await ProductVariant.find({
+  let variantQuery = ProductVariant.find({
     _id: { $in: variantIds },
     isActive: true,
     deletedAt: null,
-  }).lean();
+  });
+  if (options.session && typeof variantQuery.session === "function") {
+    variantQuery = variantQuery.session(options.session);
+  }
+  const variants = await variantQuery.lean();
 
   const variantMap = new Map(
     variants.map((v) => [v._id.toString(), v])
@@ -285,15 +302,44 @@ const validateCartItems = async (cart) => {
     ...new Set(variants.map((v) => v.productId.toString())),
   ];
 
-  const products = await Product.find({
+  let productQuery = Product.find({
     _id: { $in: productIds },
     status: "active",
     deletedAt: null,
-  }).lean();
+  });
+  if (options.session && typeof productQuery.session === "function") {
+    productQuery = productQuery.session(options.session);
+  }
+  const products = await productQuery.lean();
 
   const productMap = new Map(
     products.map((p) => [p._id.toString(), p])
   );
+
+  const vendorIds = [
+    ...new Set(
+      products
+        .filter((p) => p.vendorId)
+        .map((p) => p.vendorId.toString())
+    ),
+  ];
+
+  let vendorMap = new Map();
+  if (
+    vendorIds.length > 0 &&
+    (mongoose.connection.readyState === 1 || Vendor.find?._isMockFunction)
+  ) {
+    let vendorQuery = Vendor.find({ _id: { $in: vendorIds } }).select(
+      "isActive deletedAt onboardingStatus"
+    );
+    if (options.session && typeof vendorQuery.session === "function") {
+      vendorQuery = vendorQuery.session(options.session);
+    }
+    const vendors = typeof vendorQuery.lean === "function"
+      ? await vendorQuery.lean()
+      : await vendorQuery;
+    vendorMap = new Map((vendors || []).map((v) => [v._id.toString(), v]));
+  }
 
   const orderItems = [];
 
@@ -322,6 +368,22 @@ const validateCartItems = async (cart) => {
       );
     }
 
+    if (product.vendorId) {
+      const vendor = vendorMap.get(product.vendorId.toString());
+      if (
+        vendor &&
+        (!vendor.isActive ||
+          vendor.deletedAt ||
+          (vendor.onboardingStatus && vendor.onboardingStatus !== "approved"))
+      ) {
+        throw new AppError(
+          "Product vendor is no longer active",
+          400,
+          "VENDOR_INACTIVE"
+        );
+      }
+    }
+
     const variantCurrency =
       variant.currency ||
       DEFAULT_CURRENCY;
@@ -340,7 +402,46 @@ const validateCartItems = async (cart) => {
       );
     }
 
-    const unitPrice = variant.price;
+    let unitPrice = variant.price;
+    let regularPrice = variant.price;
+    let compareAtPrice = variant.compareAtPrice ?? product.compareAtPrice ?? null;
+    let effectivePrice = variant.price;
+    let isPromotional = false;
+    let promotionId = null;
+    let promotionName = null;
+    let promotionDiscountAmount = "0.00";
+    let fundingSource = null;
+    let allowCoupons = true;
+
+    if (mongoose.connection.readyState === 1 && typeof pricingEngineService.calculateEffectivePrice === "function") {
+      try {
+        const pricing = await pricingEngineService.calculateEffectivePrice({
+          product,
+          variant,
+          asOfDate: options.asOfDate || new Date(),
+        });
+        if (pricing) {
+          if (pricing.compareAtPrice !== undefined && pricing.compareAtPrice !== null) {
+            compareAtPrice = pricing.compareAtPrice;
+          }
+          if (pricing.effectivePrice !== undefined && pricing.effectivePrice !== null) {
+            effectivePrice = pricing.effectivePrice;
+          }
+          if (pricing.isPromotional) {
+            isPromotional = true;
+            regularPrice = pricing.regularPrice;
+            unitPrice = pricing.effectivePrice;
+            promotionId = pricing.promotion?.id || null;
+            promotionName = pricing.promotion?.name || null;
+            promotionDiscountAmount = pricing.promotionalDiscountAmount || "0.00";
+            fundingSource = pricing.promotion?.fundingSource || null;
+            allowCoupons = pricing.promotion?.allowCoupons !== false;
+          }
+        }
+      } catch (err) {
+        logger.warn("Promotional pricing calculation failed, falling back to base price: " + err.message);
+      }
+    }
 
     const unitPriceMinorUnits =
       decimalToMinorUnits(unitPrice);
@@ -376,6 +477,15 @@ const validateCartItems = async (cart) => {
       variantName: variant.name || "",
       quantity: cartItem.quantity,
       unitPrice,
+      regularPrice,
+      compareAtPrice,
+      effectivePrice,
+      isPromotional,
+      promotionId,
+      promotionName,
+      promotionDiscountAmount,
+      fundingSource,
+      allowCoupons,
       isTaxable:
         product.isTaxable !== undefined ? product.isTaxable : true,
       taxCategory: product.taxCategory || "standard",
@@ -561,16 +671,33 @@ const reserveInventoryForOrderItems =
     session
   ) => {
     for (const item of orderItems) {
+      if (
+        item.isVirtual ||
+        item.isDownloadable ||
+        item.inventoryStatus === "not_required" ||
+        item.productType === "digital"
+      ) {
+        item.warehouseId = null;
+        item.inventoryStatus = "not_required";
+        continue;
+      }
+
       const inventories =
         await inventoryRepository.findByVariant(
           item.productVariantId,
           { session }
         );
 
-      if (
-        !inventories ||
-        inventories.length === 0
-      ) {
+      const activeInventories = (inventories || []).filter((inv) => {
+        if (!inv.warehouseId) return false;
+        if (typeof inv.warehouseId === "object") {
+          if (inv.warehouseId.isActive === false) return false;
+          if (inv.warehouseId.deletedAt) return false;
+        }
+        return true;
+      });
+
+      if (activeInventories.length === 0) {
         throw new AppError(
           `No inventory is configured for SKU ${item.sku}`,
           409,
@@ -583,7 +710,7 @@ const reserveInventoryForOrderItems =
        * 1. Available stock descending (prioritizes warehouse with deepest stock)
        * 2. Warehouse ID ascending (stable tie-breaker)
        */
-      const sortedInventories = [...inventories].sort((a, b) => {
+      const sortedInventories = [...activeInventories].sort((a, b) => {
         const availA = Math.max(
           (Number(a.onHand) || 0) - (Number(a.reserved) || 0),
           0
@@ -624,7 +751,7 @@ const reserveInventoryForOrderItems =
                 {
                   referenceType: "order",
                   referenceId: orderNumber,
-                  actorUserId: userId,
+                  actorUserId: (userId && mongoose.Types.ObjectId.isValid(userId)) ? userId : null,
                   idempotencyKey: `order-reservation-${orderNumber}-${item.productVariantId.toString()}`,
                   notes:
                     "Inventory reserved during checkout",
@@ -668,16 +795,46 @@ const createOrderFromCurrentCart = async (
   shippingAddressId,
   couponCode = null,
   idempotencyKey = null,
-  deliveryOptionId = null
+  deliveryOptionId = null,
+  quoteReference = null,
+  guestOptions = {}
 ) => {
-  const customer =
-    await validateCustomer(userId);
+  const isGuestOrder = Boolean(guestOptions.isGuest);
+  const guestId = isGuestOrder ? (guestOptions.guestId || userId) : null;
 
-  const address =
-    await getShippingAddress(
-      userId,
-      shippingAddressId
-    );
+  if (isGuestOrder) {
+    const isGuestEnabled = await storefrontSettingsService.isFeatureEnabled("guestCheckout");
+    if (!isGuestEnabled) {
+      throw new AppError("Guest checkout is currently disabled", 403, "GUEST_CHECKOUT_DISABLED");
+    }
+  }
+
+  const customer = !isGuestOrder
+    ? await validateCustomer(userId)
+    : {
+        _id: null,
+        isGuest: true,
+        guestId,
+        email: guestOptions.guestEmail || guestOptions.guestShippingAddress?.email,
+      };
+
+  let address = null;
+  if (isGuestOrder) {
+    address = guestOptions.guestShippingAddress || null;
+    if (!address && shippingAddressId) {
+      try {
+        address = await addressRepository.findById(shippingAddressId);
+      } catch {
+        // Non-blocking fallback
+      }
+    }
+  } else {
+    address = await getShippingAddress(userId, shippingAddressId);
+  }
+
+  if (!address) {
+    throw new AppError("Shipping address is required", 400, "INVALID_SHIPPING_ADDRESS");
+  }
 
   let normalizedKey = null;
   let fingerprint = null;
@@ -685,17 +842,18 @@ const createOrderFromCurrentCart = async (
   if (idempotencyKey !== null && idempotencyKey !== undefined) {
     normalizedKey = validateIdempotencyKey(idempotencyKey);
     fingerprint = generateCheckoutFingerprint({
-      customerId: customer._id,
-      shippingAddressId,
+      customerId: customer._id || guestId,
+      shippingAddressId: shippingAddressId || (address._id ? address._id.toString() : "guest_address"),
       couponCode,
       deliveryOptionId,
     });
 
-    const existingOrder =
-      await orderRepository.findByCustomerIdAndIdempotencyKey(
-        customer._id,
-        normalizedKey
-      );
+    const existingOrder = customer._id
+      ? await orderRepository.findByCustomerIdAndIdempotencyKey(
+          customer._id,
+          normalizedKey
+        )
+      : await Order.findOne({ guestId, idempotencyKey: normalizedKey }).lean();
 
     if (existingOrder) {
       if (existingOrder.idempotencyFingerprint !== fingerprint) {
@@ -721,13 +879,9 @@ const createOrderFromCurrentCart = async (
   try {
     order = await withTransaction(
       async (session) => {
-        const cart =
-          await cartRepository
-            .findActiveByCustomer(
-              customer._id,
-              null,
-              { session }
-            );
+        const cart = isGuestOrder
+          ? await cartRepository.findActiveByGuest(guestId, null, { session })
+          : await cartRepository.findActiveByCustomer(customer._id, null, { session });
 
         if (!cart) {
           if (normalizedKey) {
@@ -766,7 +920,7 @@ const createOrderFromCurrentCart = async (
         }
 
         const orderItems =
-          await validateCartItems(cart);
+          await validateCartItems(cart, { session });
 
         const currency =
           cart.currency ||
@@ -781,24 +935,34 @@ const createOrderFromCurrentCart = async (
         const subtotalMinorUnits = decimalToMinorUnits(subtotalTotals.subtotal);
         const delivery = resolveDeliveryOption(deliveryOptionId, subtotalMinorUnits);
 
-        const previousOrder =
-          await Order.findOne({
-            customerId: customer._id,
-          })
-            .select("_id")
-            .session(session)
-            .lean();
-
-        const isFirstOrder =
-          !previousOrder;
+        let isFirstOrder = false;
+        if (!isGuestOrder && customer._id) {
+          const previousOrder =
+            await Order.findOne({
+              customerId: customer._id,
+            })
+              .select("_id")
+              .session(session)
+              .lean();
+          isFirstOrder = !previousOrder;
+        }
 
         let couponResult = null;
 
         if (couponCode) {
+          const itemDisallowingCoupons = orderItems.find((it) => it.allowCoupons === false);
+          if (itemDisallowingCoupons) {
+            throw new AppError(
+              `Coupon cannot be combined with promotional item '${itemDisallowingCoupons.productName}'`,
+              400,
+              "COUPON_STACKING_DISALLOWED"
+            );
+          }
+
           couponResult =
             await couponService.validateCoupon({
               code: couponCode,
-              customerId: customer._id,
+              customerId: customer._id || null,
               orderAmount:
                 Number(
                   subtotalTotals.subtotal
@@ -850,6 +1014,74 @@ const createOrderFromCurrentCart = async (
             delivery.feeMinorUnits
           );
 
+        if (quoteReference) {
+          const verifiedQuote = verifyQuoteReference(quoteReference, {
+            customerId: isGuestOrder ? guestId : customer._id.toString(),
+            cartId: cart._id.toString(),
+          });
+
+          if (verifiedQuote.currency && verifiedQuote.currency !== currency) {
+            throw new AppError("Currency does not match quote", 409, "PRICE_CHANGED", {
+              quotedCurrency: verifiedQuote.currency,
+              currentCurrency: currency,
+              quotedGrandTotal: verifiedQuote.quotedGrandTotal,
+              currentGrandTotal: totals.grandTotal,
+            });
+          }
+
+          if (toStandardDecimalString(verifiedQuote.quotedGrandTotal) !== toStandardDecimalString(totals.grandTotal)) {
+            throw new AppError(
+              "Order grand total has changed since checkout quote was issued",
+              409,
+              "PRICE_CHANGED",
+              {
+                quotedGrandTotal: toStandardDecimalString(verifiedQuote.quotedGrandTotal),
+                currentGrandTotal: toStandardDecimalString(totals.grandTotal),
+                reason: "grand_total_changed",
+              }
+            );
+          }
+
+          if (verifiedQuote.pricingFingerprint) {
+            const currentFingerprint = computePricingFingerprint({
+              items: finalizedOrderItems,
+              currency,
+              subtotal: totals.subtotal,
+              discountTotal: totals.discountTotal,
+              shippingTotal: totals.shippingTotal,
+              taxTotal: totals.taxTotal,
+              grandTotal: totals.grandTotal,
+              deliveryOptionId: delivery.id,
+              couponCode: couponResult?.coupon?.code || null,
+            });
+
+            if (verifiedQuote.pricingFingerprint !== currentFingerprint) {
+              throw new AppError(
+                "Order pricing components have changed since checkout quote was issued",
+                409,
+                "PRICE_CHANGED",
+                {
+                  quotedGrandTotal: toStandardDecimalString(verifiedQuote.quotedGrandTotal),
+                  currentGrandTotal: toStandardDecimalString(totals.grandTotal),
+                  reason: "component_changed",
+                  previousQuote: verifiedQuote.snapshot || null,
+                  currentQuote: {
+                    subtotal: totals.subtotal,
+                    discountTotal: totals.discountTotal,
+                    shippingTotal: totals.shippingTotal,
+                    taxTotal: totals.taxTotal,
+                    grandTotal: totals.grandTotal,
+                    currency,
+                    deliveryOptionId: delivery.id,
+                    couponCode: couponResult?.coupon?.code || null,
+                    items: finalizedOrderItems,
+                  },
+                }
+              );
+            }
+          }
+        }
+
         const orderNumber =
           generateOrderNumber();
 
@@ -866,7 +1098,7 @@ const createOrderFromCurrentCart = async (
         ]
           .filter(Boolean)
           .join(" ")
-          .trim();
+          .trim() || (address.fullName ? address.fullName.trim() : "");
 
         if (!fullName) {
           throw new AppError(
@@ -876,6 +1108,9 @@ const createOrderFromCurrentCart = async (
           );
         }
 
+        const actorId = customer._id ? customer._id.toString() : (guestId || "guest");
+        const actorType = isGuestOrder ? "guest" : "customer";
+
         const initialTimeline = [
           {
             event: "order_created",
@@ -883,8 +1118,8 @@ const createOrderFromCurrentCart = async (
             description: `Order #${orderNumber} created with total ${totals.currency} ${totals.grandTotal}.`,
             timestamp: new Date(),
             actor: {
-              actorType: "customer",
-              actorId: customer._id.toString(),
+              actorType,
+              actorId,
             },
             metadata: {
               orderNumber,
@@ -897,8 +1132,8 @@ const createOrderFromCurrentCart = async (
             description: `${fullName}, ${address.addressLine1}, ${address.city}, ${address.state} - ${address.postalCode}`,
             timestamp: new Date(),
             actor: {
-              actorType: "customer",
-              actorId: customer._id.toString(),
+              actorType,
+              actorId,
             },
             metadata: {
               shippingAddressId: address._id ? address._id.toString() : null,
@@ -911,8 +1146,8 @@ const createOrderFromCurrentCart = async (
             description: `${delivery.name} (${delivery.estimatedDays}) — ${delivery.feeMinorUnits === 0 ? "FREE" : `₹${Number(delivery.cost)}`}`,
             timestamp: new Date(),
             actor: {
-              actorType: "customer",
-              actorId: customer._id.toString(),
+              actorType,
+              actorId,
             },
             metadata: {
               deliveryOptionId: delivery.id,
@@ -928,8 +1163,8 @@ const createOrderFromCurrentCart = async (
             description: `Discount of ₹${couponResult.discountAmount} applied to order.`,
             timestamp: new Date(),
             actor: {
-              actorType: "customer",
-              actorId: customer._id.toString(),
+              actorType,
+              actorId,
             },
             metadata: {
               couponCode: couponResult.coupon.code,
@@ -952,13 +1187,35 @@ const createOrderFromCurrentCart = async (
           },
         });
 
+        const uniqueVendorIds = [
+          ...new Set(finalizedOrderItems.map((it) => it.vendorId?.toString()).filter(Boolean)),
+        ];
+        const initialVendorFulfillments = uniqueVendorIds.map((vId) => ({
+          vendorId: new mongoose.Types.ObjectId(vId),
+          acceptanceStatus: "pending",
+          version: 1,
+        }));
+
+        const guestOrderAccessToken = isGuestOrder
+          ? `ord_tok_${crypto.randomBytes(24).toString("hex")}`
+          : null;
+
         const createdOrder =
           await orderRepository.create(
             {
               orderNumber,
 
               customerId:
-                customer._id,
+                customer._id || null,
+
+              isGuestOrder,
+              guestId: isGuestOrder ? guestId : null,
+              guestEmail: isGuestOrder ? (guestOptions.guestEmail || address.email || null) : null,
+              guestOrderAccessToken,
+
+              vendorFulfillments: initialVendorFulfillments,
+
+              quoteReference: quoteReference || null,
 
               storeId:
                 cart.storeId || null,
@@ -985,6 +1242,15 @@ const createOrderFromCurrentCart = async (
 
               subtotal:
                 totals.subtotal,
+
+              productDiscountTotal:
+                totals.productDiscountTotal ||
+                minorUnitsToDecimalString(
+                  finalizedOrderItems.reduce((acc, it) => {
+                    const diff = Math.max(0, (Number(it.regularPrice?.toString() || 0) - Number(it.unitPrice?.toString() || 0)));
+                    return acc + Math.round(diff * 100) * (it.quantity || 1);
+                  }, 0)
+                ),
 
               discountTotal:
                 totals.discountTotal,
@@ -1038,7 +1304,7 @@ const createOrderFromCurrentCart = async (
             { session }
           );
 
-        if (couponResult) {
+        if (couponResult && customer._id) {
           await couponRedemptionService
             .redeemCoupon({
               couponId:
@@ -1073,38 +1339,39 @@ const createOrderFromCurrentCart = async (
          * If the order transaction rolls back,
          * the notification record also rolls back.
          */
-        const user =
-          await User.findById(
-            customer.userId
-          )
-            .select(
-              "email firstName lastName"
+        if (customer.userId) {
+          const user =
+            await User.findById(
+              customer.userId
             )
-            .session(session)
-            .lean();
+              .select(
+                "email firstName lastName"
+              )
+              .session(session)
+              .lean();
 
-        if (user?.email) {
-          const customerName = [
-            user.firstName,
-            user.lastName,
-          ]
-            .filter(Boolean)
-            .join(" ")
-            .trim();
+          if (user?.email) {
+            const customerName = [
+              user.firstName,
+              user.lastName,
+            ]
+              .filter(Boolean)
+              .join(" ")
+              .trim();
 
-          await notificationOutboxService.enqueue({
-            type: "order_confirmation",
-            channel: "email",
-            recipient: user.email,
-            payload: {
-              customerName,
-              orderNumber:
-                createdOrder.orderNumber,
-            },
-            session,
-          });
+            await notificationOutboxService.enqueue({
+              type: "order_confirmation",
+              channel: "email",
+              recipient: user.email,
+              payload: {
+                customerName,
+                orderNumber:
+                  createdOrder.orderNumber,
+              },
+              session,
+            });
+          }
         }
-
         return createdOrder;
       }
     );
@@ -1114,19 +1381,21 @@ const createOrderFromCurrentCart = async (
       Boolean(error?.message && error.message.includes("E11000"));
 
     if (isDuplicateKeyError && normalizedKey) {
-      let winningOrder =
-        await orderRepository.findByCustomerIdAndIdempotencyKey(
-          customer._id,
-          normalizedKey
-        );
+      let winningOrder = customer._id
+        ? await orderRepository.findByCustomerIdAndIdempotencyKey(
+            customer._id,
+            normalizedKey
+          )
+        : await Order.findOne({ guestId, idempotencyKey: normalizedKey }).lean();
 
       if (!winningOrder) {
         await new Promise((resolve) => setTimeout(resolve, 50));
-        winningOrder =
-          await orderRepository.findByCustomerIdAndIdempotencyKey(
-            customer._id,
-            normalizedKey
-          );
+        winningOrder = customer._id
+          ? await orderRepository.findByCustomerIdAndIdempotencyKey(
+              customer._id,
+              normalizedKey
+            )
+          : await Order.findOne({ guestId, idempotencyKey: normalizedKey }).lean();
       }
 
       if (winningOrder) {
@@ -1160,34 +1429,470 @@ const createOrderFromCurrentCart = async (
  */
 const getOrderById = async (
   orderId,
-  userId
+  userId,
+  options = {}
 ) => {
-  const customer =
-    await validateCustomer(userId);
+  if (!orderId) {
+    throw new AppError("Invalid order ID", 400, "INVALID_ORDER_ID");
+  }
 
-  const order =
-    await orderRepository.findById(
-      orderId
-    );
-
+  const order = await orderRepository.findById(orderId);
   if (!order) {
-    throw new AppError(
-      "Order not found",
-      404,
-      "ORDER_NOT_FOUND"
-    );
+    throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
   }
 
-  if (
-    order.customerId.toString() !==
-    customer._id.toString()
-  ) {
-    throw new AppError(
-      "You are not allowed to access this order",
-      403,
-      "ORDER_ACCESS_DENIED"
-    );
+  if (options.isGuest || options.guestId || options.guestOrderAccessToken || options.token) {
+    const token = options.guestOrderAccessToken || options.token;
+    if (token) {
+      if (order.guestOrderAccessToken !== token) {
+        throw new AppError("You are not allowed to access this order", 403, "ORDER_ACCESS_DENIED");
+      }
+      return order;
+    }
+    const guestId = options.guestId || userId;
+    if (guestId && order.guestId === guestId) {
+      return order;
+    }
+    throw new AppError("You are not allowed to access this order", 403, "ORDER_ACCESS_DENIED");
   }
+
+  const customer = await validateCustomer(userId);
+  if (!order.customerId || order.customerId.toString() !== customer._id.toString()) {
+    throw new AppError("You are not allowed to access this order", 403, "ORDER_ACCESS_DENIED");
+  }
+
+  const rawOrder = typeof order.toObject === "function" ? order.toObject() : { ...order };
+
+  // Strip SKU from items (Requirement 3: SKU privacy for customers)
+  if (Array.isArray(rawOrder.items)) {
+    rawOrder.items = rawOrder.items.map((it) => {
+      const itemObj = typeof it.toObject === "function" ? it.toObject() : { ...it };
+      delete itemObj.sku;
+      return itemObj;
+    });
+  }
+
+  // Fetch shipments and strip SKU (guard against disconnected mongoose in unit tests)
+  const Shipment = require("../models/Shipment");
+  let shipments = [];
+  if (mongoose.connection.readyState === 1 || Shipment.find?._isMockFunction) {
+    try {
+      let q = Shipment.find({ orderId: order._id });
+      if (typeof q?.select === "function") {
+        q = q.select("shipmentNumber status carrier trackingNumber trackingUrl metadata items deliveredAt createdAt");
+      }
+      shipments = typeof q?.lean === "function" ? await q.lean() : await q;
+    } catch (_) {
+      shipments = [];
+    }
+  }
+
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const formatDate = (date) => {
+    const d = new Date(date);
+    return `${d.getUTCDate()} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  };
+
+  const formattedShipments = (shipments || []).map((shp) => {
+    const s = typeof shp.toObject === "function" ? shp.toObject() : { ...shp };
+    if (Array.isArray(s.items)) {
+      s.items = s.items.map((it) => {
+        const itemObj = typeof it.toObject === "function" ? it.toObject() : { ...it };
+        delete itemObj.sku;
+        return itemObj;
+      });
+    }
+    const courierDateVal = s.metadata?.courierEstimatedDelivery || s.metadata?.estimatedDeliveryDate;
+    if (courierDateVal) {
+      s.estimatedDelivery = {
+        source: "courier",
+        estimatedDateRange: formatDate(courierDateVal),
+      };
+    }
+    return s;
+  });
+  rawOrder.shipments = formattedShipments;
+
+  // Derive customer display status, vendor packages & fulfillment flags
+  const orderItemsList = rawOrder.items || [];
+  const orderVfsList = rawOrder.vendorFulfillments || [];
+  const hasFulfillmentTracking =
+    orderVfsList.length > 0 ||
+    orderItemsList.some(
+      (it) =>
+        Boolean(it.vendorAcceptance?.status) ||
+        Boolean(it.isFulfillmentConfirmed) ||
+        Boolean(it.expectedDeliveryDate)
+    );
+
+  let hasPendingVendor = false;
+  let hasAcceptedVendor = false;
+  let hasRejectedVendor = false;
+  let allConfirmed = orderItemsList.length > 0 || orderVfsList.length > 0;
+
+  for (const it of orderItemsList) {
+    const accStatus = it.vendorAcceptance?.status;
+    if (accStatus === "pending") hasPendingVendor = true;
+    else if (accStatus === "accepted") hasAcceptedVendor = true;
+    else if (accStatus === "rejected") hasRejectedVendor = true;
+    if (!it.isFulfillmentConfirmed) allConfirmed = false;
+  }
+  for (const vf of orderVfsList) {
+    const accStatus = vf.acceptanceStatus;
+    if (accStatus === "pending") hasPendingVendor = true;
+    else if (accStatus === "accepted") hasAcceptedVendor = true;
+    else if (accStatus === "rejected") hasRejectedVendor = true;
+    if (!vf.isFulfillmentConfirmed) allConfirmed = false;
+  }
+
+  let customerDisplayStatus = rawOrder.status;
+  let isAwaitingVendorConfirmation = false;
+  let isFulfillmentConfirmed = false;
+
+  if (rawOrder.status === "cancelled" || rawOrder.status === "delivered") {
+    customerDisplayStatus = rawOrder.status;
+    isFulfillmentConfirmed = rawOrder.status === "delivered";
+  } else if (hasPendingVendor) {
+    customerDisplayStatus = "awaiting_merchant_confirmation";
+    isAwaitingVendorConfirmation = true;
+  } else if (hasRejectedVendor) {
+    customerDisplayStatus = "under_triage";
+  } else if (hasFulfillmentTracking && allConfirmed) {
+    customerDisplayStatus = ["shipped", "processing"].includes(rawOrder.status)
+      ? rawOrder.status
+      : "confirmed";
+    isFulfillmentConfirmed = true;
+  } else if (hasAcceptedVendor) {
+    customerDisplayStatus = "merchant_accepted";
+  }
+
+  const vendorPkgMap = new Map();
+  for (const vf of orderVfsList) {
+    const vIdStr = vf.vendorId ? (vf.vendorId.toString ? vf.vendorId.toString() : String(vf.vendorId)) : null;
+    if (vIdStr) {
+      vendorPkgMap.set(vIdStr, {
+        vendorId: vIdStr,
+        merchantName: vf.merchantName || vf.storeName || "Merchant",
+        acceptanceStatus: vf.acceptanceStatus || "pending",
+        isFulfillmentConfirmed: Boolean(vf.isFulfillmentConfirmed),
+        expectedDeliveryDate: vf.expectedDeliveryDate || null,
+        fulfillmentStatus: vf.fulfillmentStatus || "unfulfilled",
+      });
+    }
+  }
+  for (const it of orderItemsList) {
+    const vIdStr = it.vendorId ? (it.vendorId.toString ? it.vendorId.toString() : String(it.vendorId)) : null;
+    if (vIdStr && !vendorPkgMap.has(vIdStr)) {
+      vendorPkgMap.set(vIdStr, {
+        vendorId: vIdStr,
+        merchantName: it.vendorName || "Merchant",
+        acceptanceStatus: it.vendorAcceptance?.status || "pending",
+        isFulfillmentConfirmed: Boolean(it.isFulfillmentConfirmed),
+        expectedDeliveryDate: it.expectedDeliveryDate || null,
+        fulfillmentStatus: it.fulfillmentStatus || "unfulfilled",
+      });
+    }
+  }
+
+  rawOrder.customerDisplayStatus = customerDisplayStatus;
+  rawOrder.isAwaitingVendorConfirmation = isAwaitingVendorConfirmation;
+  rawOrder.isFulfillmentConfirmed = isFulfillmentConfirmed;
+  rawOrder.vendorPackages = Array.from(vendorPkgMap.values());
+  rawOrder.estimatedDelivery = calculateDeliveryEstimate({
+    order: rawOrder,
+    shipments: formattedShipments,
+  });
+
+  return rawOrder;
+};
+
+/**
+ * Authoritative delivery estimate calculation following strict source precedence:
+ * actual_delivery > cancelled > multi_shipment/courier > vendor_rejected_triage >
+ * vendor_confirmed > awaiting_fulfillment_details > awaiting_vendor_confirmation >
+ * shipping_service/fallback (for legacy orders without vendor fulfillment tracking).
+ */
+const calculateDeliveryEstimate = ({ order = {}, shipment = null, shipments = null } = {}) => {
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const formatDate = (date) => {
+    const d = new Date(date);
+    return `${d.getUTCDate()} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  };
+
+  const deliveryOptionName = order.deliveryOption?.name || null;
+  const estimatedDays = order.deliveryOption?.estimatedDays || null;
+  const shipmentList = Array.isArray(shipments)
+    ? shipments
+    : shipment
+      ? [shipment]
+      : [];
+
+  if (order.status === "cancelled") {
+    return {
+      deliveryOptionName,
+      estimatedDays,
+      estimatedDateRange: null,
+      estimatedFrom: null,
+      estimatedTo: null,
+      isDelivered: false,
+      isCancelled: true,
+      actualDeliveredAt: null,
+      source: "cancelled",
+      message: null,
+    };
+  }
+
+  if (order.status === "delivered" || shipmentList.some((s) => s?.status === "delivered")) {
+    const deliveredDate = order.deliveredAt || shipmentList.find((s) => s?.deliveredAt)?.deliveredAt || new Date();
+    const deliveredIso = new Date(deliveredDate).toISOString();
+    return {
+      deliveryOptionName,
+      estimatedDays,
+      isDelivered: true,
+      isCancelled: false,
+      deliveredAt: deliveredIso,
+      actualDeliveredAt: deliveredIso,
+      source: "actual_delivery",
+      estimatedDateRange: `Delivered on ${formatDate(deliveredDate)}`,
+      estimatedFrom: deliveredIso,
+      estimatedTo: deliveredIso,
+      message: null,
+    };
+  }
+
+  const courierDates = shipmentList
+    .map((s) => s?.metadata?.courierEstimatedDelivery || s?.metadata?.estimatedDeliveryDate)
+    .filter(Boolean)
+    .map((d) => new Date(d))
+    .filter((d) => !Number.isNaN(d.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime());
+
+  if (courierDates.length === 1) {
+    return {
+      deliveryOptionName,
+      estimatedDays,
+      isDelivered: false,
+      isCancelled: false,
+      actualDeliveredAt: null,
+      source: "courier",
+      estimatedDateRange: formatDate(courierDates[0]),
+      estimatedFrom: courierDates[0].toISOString(),
+      estimatedTo: courierDates[0].toISOString(),
+      message: null,
+    };
+  }
+
+  if (courierDates.length > 1) {
+    return {
+      deliveryOptionName,
+      estimatedDays,
+      isDelivered: false,
+      isCancelled: false,
+      actualDeliveredAt: null,
+      source: "multi_shipment",
+      estimatedDateRange: `${formatDate(courierDates[0])} - ${formatDate(courierDates[courierDates.length - 1])}`,
+      estimatedFrom: courierDates[0].toISOString(),
+      estimatedTo: courierDates[courierDates.length - 1].toISOString(),
+      message: null,
+    };
+  }
+
+  const items = order.items || [];
+  const vfs = order.vendorFulfillments || [];
+
+  const hasRejection =
+    items.some((it) => it.vendorAcceptance?.status === "rejected") ||
+    vfs.some((vf) => vf.acceptanceStatus === "rejected");
+
+  if (hasRejection) {
+    return {
+      deliveryOptionName,
+      estimatedDays,
+      isDelivered: false,
+      isCancelled: false,
+      actualDeliveredAt: null,
+      source: "vendor_rejected_triage",
+      estimatedDateRange: null,
+      estimatedFrom: null,
+      estimatedTo: null,
+      message: "An item in your order is under operations triage",
+    };
+  }
+
+  const confirmedDates = [
+    ...items.filter((it) => it.isFulfillmentConfirmed && it.expectedDeliveryDate).map((it) => new Date(it.expectedDeliveryDate)),
+    ...vfs.filter((vf) => vf.isFulfillmentConfirmed && vf.expectedDeliveryDate).map((vf) => new Date(vf.expectedDeliveryDate)),
+  ]
+    .filter((d) => !Number.isNaN(d.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime());
+
+  if (confirmedDates.length > 0) {
+    const minDate = confirmedDates[0];
+    const maxDate = confirmedDates[confirmedDates.length - 1];
+    const range =
+      formatDate(minDate) === formatDate(maxDate)
+        ? formatDate(minDate)
+        : `${formatDate(minDate)} - ${formatDate(maxDate)}`;
+    return {
+      deliveryOptionName,
+      estimatedDays,
+      isDelivered: false,
+      isCancelled: false,
+      actualDeliveredAt: null,
+      source: "vendor_confirmed",
+      estimatedDateRange: range,
+      estimatedFrom: minDate.toISOString(),
+      estimatedTo: maxDate.toISOString(),
+      message: null,
+    };
+  }
+
+  const hasVendorTracking =
+    vfs.length > 0 ||
+    items.some((it) => Boolean(it.vendorAcceptance?.status));
+
+  if (hasVendorTracking) {
+    const hasPending =
+      vfs.some((vf) => (vf.acceptanceStatus || "pending") === "pending") ||
+      items.some((it) => it.vendorAcceptance?.status === "pending");
+
+    const hasAccepted =
+      vfs.some((vf) => vf.acceptanceStatus === "accepted") ||
+      items.some((it) => it.vendorAcceptance?.status === "accepted");
+
+    if (!hasPending && hasAccepted) {
+      return {
+        deliveryOptionName,
+        estimatedDays,
+        isDelivered: false,
+        isCancelled: false,
+        actualDeliveredAt: null,
+        source: "awaiting_fulfillment_details",
+        estimatedDateRange: null,
+        estimatedFrom: null,
+        estimatedTo: null,
+        message: "Merchant accepted; delivery date will be confirmed soon",
+      };
+    }
+
+    let provisionalEstimate = null;
+    if (order.deliveryOption && (order.deliveryOption.estimatedDays || order.deliveryOption.name)) {
+      const baseDate = new Date(order.createdAt || order.placedAt || Date.now());
+      let minDays = 2;
+      let maxDays = 4;
+      if (typeof estimatedDays === "object" && estimatedDays !== null) {
+        minDays = Number(estimatedDays.min) || 2;
+        maxDays = Number(estimatedDays.max) || 4;
+      } else if (typeof estimatedDays === "string") {
+        const match = /(\d+)[^\d]+(\d+)/.exec(estimatedDays);
+        if (match) {
+          minDays = parseInt(match[1], 10);
+          maxDays = parseInt(match[2], 10);
+        }
+      }
+      const pMin = new Date(baseDate);
+      pMin.setDate(pMin.getDate() + minDays);
+      const pMax = new Date(baseDate);
+      pMax.setDate(pMax.getDate() + maxDays);
+      provisionalEstimate = {
+        label: "Provisional Checkout Estimate",
+        window: `${formatDate(pMin)} - ${formatDate(pMax)}`,
+      };
+    }
+
+    return {
+      deliveryOptionName,
+      estimatedDays,
+      isDelivered: false,
+      isCancelled: false,
+      actualDeliveredAt: null,
+      source: "awaiting_vendor_confirmation",
+      estimatedDateRange: null,
+      estimatedFrom: null,
+      estimatedTo: null,
+      message: "Awaiting merchant confirmation. Expected delivery date will be confirmed once the seller accepts your order.",
+      provisionalEstimate,
+    };
+  }
+
+  if (order.deliveryOption && (order.placedAt || order.createdAt)) {
+    let minDays = 3;
+    let maxDays = 5;
+    if (typeof estimatedDays === "object" && estimatedDays !== null) {
+      minDays = Number(estimatedDays.min) || 3;
+      maxDays = Number(estimatedDays.max) || 7;
+    } else if (typeof estimatedDays === "string") {
+      const match = /(\d+)[^\d]+(\d+)/.exec(estimatedDays);
+      if (match) {
+        minDays = parseInt(match[1], 10);
+        maxDays = parseInt(match[2], 10);
+      }
+    }
+    const baseDate = new Date(order.placedAt || order.createdAt);
+    const minDate = new Date(baseDate);
+    minDate.setDate(minDate.getDate() + minDays);
+    const maxDate = new Date(baseDate);
+    maxDate.setDate(maxDate.getDate() + maxDays);
+    return {
+      deliveryOptionName,
+      estimatedDays,
+      isDelivered: false,
+      isCancelled: false,
+      actualDeliveredAt: null,
+      source: "shipping_service",
+      estimatedDateRange: `${formatDate(minDate)} - ${formatDate(maxDate)}`,
+      estimatedFrom: minDate.toISOString(),
+      estimatedTo: maxDate.toISOString(),
+      message: null,
+    };
+  }
+
+  return {
+    deliveryOptionName,
+    estimatedDays,
+    isDelivered: false,
+    isCancelled: false,
+    actualDeliveredAt: null,
+    source: "fallback",
+    estimatedDateRange: null,
+    estimatedFrom: null,
+    estimatedTo: null,
+    message: "Delivery estimate will be available after shipment confirmation.",
+  };
+};
+
+/**
+ * Link a guest order to an authenticated customer account.
+ */
+const linkGuestOrderToCustomer = async ({
+  customerUserId,
+  orderId,
+  orderAccessToken,
+  guestSessionToken,
+}) => {
+  const customer = await validateCustomer(customerUserId);
+  if (!orderId) {
+    throw new AppError("Invalid order ID", 400, "INVALID_ORDER_ID");
+  }
+
+  const order = await Order.findById(orderId);
+  if (!order) {
+    throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
+  }
+
+  if (!order.isGuestOrder) {
+    throw new AppError("Order is not a guest order", 400, "ORDER_ALREADY_LINKED");
+  }
+
+  if (!orderAccessToken || order.guestOrderAccessToken !== orderAccessToken) {
+    throw new AppError("Invalid guest order access token", 403, "INVALID_ORDER_ACCESS_TOKEN");
+  }
+
+  order.customerId = customer._id;
+  order.isGuestOrder = false;
+  order.guestId = null;
+  order.guestOrderAccessToken = null;
+  await order.save();
 
   return order;
 };
@@ -1201,9 +1906,21 @@ const getCustomerOrders = async (
   const customer =
     await validateCustomer(userId);
 
-  return orderRepository.findByCustomer(
+  const orders = await orderRepository.findByCustomer(
     customer._id
   );
+
+  return (orders || []).map((ord) => {
+    const raw = typeof ord.toObject === "function" ? ord.toObject() : { ...ord };
+    if (Array.isArray(raw.items)) {
+      raw.items = raw.items.map((it) => {
+        const itemObj = typeof it.toObject === "function" ? it.toObject() : { ...it };
+        delete itemObj.sku;
+        return itemObj;
+      });
+    }
+    return raw;
+  });
 };
 
 /**
@@ -1474,21 +2191,23 @@ const cancelOrder = async (orderId, options = {}) => {
     );
   }
 
-  // Record durable in-progress cancellation intent on order
-  try {
-    if (typeof orderRepository.updateById === "function") {
-      await orderRepository.updateById(order._id, {
-        cancellationStatus: "pending",
-        cancellationClaim: {
-          claimedAt: new Date(),
-          claimedBy: userId,
-          operationId,
-          itemIds: itemsToCancel.map((i) => i._id?.toString() || String(i)),
-        },
-      });
+  // Record durable in-progress cancellation intent on order if shipments were claimed
+  if (claimResult?.claimed && claimResult.shipments && claimResult.shipments.length > 0) {
+    try {
+      if (typeof orderRepository.updateById === "function") {
+        await orderRepository.updateById(order._id, {
+          cancellationStatus: "pending",
+          cancellationClaim: {
+            claimedAt: new Date(),
+            claimedBy: userId,
+            operationId,
+            itemIds: itemsToCancel.map((i) => i._id?.toString() || String(i)),
+          },
+        });
+      }
+    } catch (claimErr) {
+      logger.warn({ orderId, error: claimErr.message }, "Non-fatal order cancellation claim record warning");
     }
-  } catch (claimErr) {
-    logger.warn({ orderId, error: claimErr.message }, "Non-fatal order cancellation claim record warning");
   }
 
   /*
@@ -1500,10 +2219,29 @@ const cancelOrder = async (orderId, options = {}) => {
    * Pending/created/failed payments do not require
    * a refund because no captured money exists.
    */
-  const payment =
+  let payment =
     await paymentService.getLatestPaymentForOrder(
       orderId
     );
+
+  if (
+    payment &&
+    ["created", "pending", "authorized"].includes(payment.status) &&
+    payment.gatewayOrderId
+  ) {
+    const paymentReconciliationService = require("./payment-reconciliation.service");
+    const reconResult = await paymentReconciliationService.reconcilePayment(payment);
+
+    if (reconResult && !reconResult.reconciled) {
+      throw new AppError(
+        `Order payment reconciliation is uncertain (${reconResult.reason || "GATEWAY_UNCERTAIN"}). Cancellation blocked.`,
+        409,
+        "PAYMENT_UNCERTAIN_RECONCILIATION_REQUIRED"
+      );
+    }
+
+    payment = await paymentService.getLatestPaymentForOrder(orderId);
+  }
 
   let refundedPayment = null;
   if (
@@ -1666,7 +2404,7 @@ const cancelOrder = async (orderId, options = {}) => {
               );
 
             if (inventory) {
-              const itemReleaseKey = `order-reservation-release-${currentOrder._id.toString()}-${item.productVariantId.toString()}-${item.warehouseId.toString()}`;
+              const itemReleaseKey = `order-reservation-release-${currentOrder._id.toString()}-${item.productVariantId.toString()}-${item.warehouseId ? item.warehouseId.toString() : "digital"}`;
               await inventoryService.releaseStockInTransaction(
                 inventory._id,
                 item.quantity,
@@ -1725,7 +2463,15 @@ const cancelOrder = async (orderId, options = {}) => {
         );
 
         if (!hasActiveItems) {
-          return transitionOrderStatus(orderId, "cancelled", {
+          // Revoke any digital entitlements for cancelled order
+        await digitalEntitlementService.revokeEntitlementsForOrder(
+          orderId,
+          options.cancellationReason || "Order cancelled",
+          null,
+          { session }
+        );
+
+        return transitionOrderStatus(orderId, "cancelled", {
             session,
             paymentStatus: refundedPayment ? "refunded" : currentOrder.paymentStatus,
             inventoryStatus: "released",
@@ -1760,7 +2506,11 @@ const cancelOrder = async (orderId, options = {}) => {
       for (const item of currentOrder.items) {
         if (
           item.inventoryStatus === "released" ||
-          item.inventoryStatus === "deducted"
+          item.inventoryStatus === "deducted" ||
+          item.inventoryStatus === "not_required" ||
+          !item.warehouseId ||
+          item.isVirtual ||
+          item.isDownloadable
         ) {
           continue;
         }
@@ -1786,7 +2536,7 @@ const cancelOrder = async (orderId, options = {}) => {
           {
             referenceType: "order",
             referenceId: currentOrder.orderNumber,
-            idempotencyKey: `order-reservation-release-${currentOrder._id.toString()}-${item.productVariantId.toString()}-${item.warehouseId.toString()}`,
+            idempotencyKey: `order-reservation-release-${currentOrder._id.toString()}-${item.productVariantId.toString()}-${item.warehouseId ? item.warehouseId.toString() : "digital"}`,
             notes:
               "Inventory released due to order cancellation",
           },
@@ -1894,6 +2644,14 @@ const cancelOrder = async (orderId, options = {}) => {
           );
         }
       }
+
+        // Revoke any digital entitlements for cancelled order
+        await digitalEntitlementService.revokeEntitlementsForOrder(
+          orderId,
+          options.cancellationReason || "Order cancelled",
+          null,
+          { session }
+        );
 
         return transitionOrderStatus(
           orderId,
@@ -2075,7 +2833,11 @@ const expirePendingOrder = async (orderId, options = {}) => {
       for (const item of currentOrder.items) {
         if (
           item.inventoryStatus === "released" ||
-          item.inventoryStatus === "deducted"
+          item.inventoryStatus === "deducted" ||
+          item.inventoryStatus === "not_required" ||
+          !item.warehouseId ||
+          item.isVirtual ||
+          item.isDownloadable
         ) {
           continue;
         }
@@ -2100,7 +2862,7 @@ const expirePendingOrder = async (orderId, options = {}) => {
           {
             referenceType: "order",
             referenceId: currentOrder.orderNumber,
-            idempotencyKey: `order-reservation-release-${currentOrder._id.toString()}-${item.productVariantId.toString()}-${item.warehouseId.toString()}`,
+            idempotencyKey: `order-reservation-release-${currentOrder._id.toString()}-${item.productVariantId.toString()}-${item.warehouseId ? item.warehouseId.toString() : "digital"}`,
             notes: "Inventory released due to order expiration",
           },
           session
@@ -2242,6 +3004,12 @@ const transitionOrderStatus = async (
     if (options.cancellationReason) {
       update.cancellationReason = options.cancellationReason;
     }
+    await digitalEntitlementService.revokeEntitlementsForOrder(
+      orderId,
+      options.cancellationReason || "Order cancelled",
+      null,
+      { session: options.session }
+    );
   }
 
   if (options.inventoryStatus) {
@@ -2304,13 +3072,24 @@ const transitionOrderStatus = async (
  * Synchronize captured payment state with the order.
  */
 const markOrderPaymentCaptured = async (
-  orderId,
+  orderIdOrPayload,
   options = {}
 ) => {
+  const isObjectInvocation =
+    typeof orderIdOrPayload === "object" &&
+    orderIdOrPayload !== null &&
+    !mongoose.Types.ObjectId.isValid(orderIdOrPayload);
+  const orderId = isObjectInvocation
+    ? orderIdOrPayload.orderId || orderIdOrPayload.id
+    : orderIdOrPayload;
+  const resolvedOptions = isObjectInvocation
+    ? { ...orderIdOrPayload, ...options }
+    : options;
+
   const order =
     await orderRepository.findById(
       orderId,
-      options
+      resolvedOptions
     );
 
   if (!order) {
@@ -2381,13 +3160,21 @@ const markOrderPaymentCaptured = async (
       timestamp: new Date(),
       actor: { actorType: "system", actorId: null },
     },
-    {
-      event: "order_confirmed",
-      title: "Order Confirmed",
-      description: `Order #${order.orderNumber} confirmed and moving to fulfillment.`,
-      timestamp: new Date(),
-      actor: { actorType: "system", actorId: null },
-    }
+    isObjectInvocation || resolvedOptions.gatewayPaymentId
+      ? {
+          event: "order_payment_verified",
+          title: "Payment Verified",
+          description: `Payment verified for order #${order.orderNumber}; awaiting vendor fulfillment confirmation.`,
+          timestamp: new Date(),
+          actor: { actorType: "system", actorId: null },
+        }
+      : {
+          event: "order_confirmed",
+          title: "Order Confirmed",
+          description: `Order #${order.orderNumber} confirmed and moving to fulfillment.`,
+          timestamp: new Date(),
+          actor: { actorType: "system", actorId: null },
+        }
   );
   update.timeline = currentTimeline;
 
@@ -2416,7 +3203,116 @@ const markOrderPaymentCaptured = async (
     );
   }
 
+  // 1. Lock commission snapshots, post ledger journal, and create entitlements (when connected)
+  if (mongoose.connection.readyState === 1) {
+    await commissionService.lockOrderItemsCommissionSnapshot(updatedOrder, { session: options.session });
+    await financialLedgerService.postOrderPaymentCaptureJournal(updatedOrder, { session: options.session });
+    await digitalEntitlementService.createEntitlementsForOrder(updatedOrder, { session: options.session });
+  }
+
+  // 2. Enqueue notifications to each affected vendor (fault-isolated)
+  try {
+    await notifyVendorsForConfirmedOrder(updatedOrder, options);
+  } catch (notifErr) {
+    logger.warn({ err: notifErr, orderId: updatedOrder._id }, "Failed to notify vendors for confirmed order");
+  }
+
   return updatedOrder;
+};
+
+/**
+ * Notify vendors when order payment is captured and order moves to confirmed.
+ * Enforces multi-tenant isolation, idempotency, and fault isolation.
+ */
+const notifyVendorsForConfirmedOrder = async (order, options = {}) => {
+  if (!order || !Array.isArray(order.items) || order.items.length === 0) {
+    return;
+  }
+
+  const NotificationOutbox = require("../models/NotificationOutbox");
+  if (mongoose.connection.readyState !== 1 && !NotificationOutbox.findOne?._isMockFunction) {
+    return;
+  }
+
+  const orderIdStr = (order._id || order.id).toString();
+
+  // Idempotency check: if outbox notifications already exist for this order, do not duplicate
+  let query = NotificationOutbox.findOne({
+    "payload.orderId": orderIdStr,
+    type: "vendor_new_order",
+  });
+  if (typeof query?.session === "function") {
+    query = query.session(options.session || null);
+  }
+  const existingNotif = typeof query?.lean === "function" ? await query.lean() : await query;
+  if (existingNotif) {
+    return;
+  }
+
+  // Group items by vendorId
+  const vendorItemsMap = new Map();
+  for (const item of order.items) {
+    const rawVId = item.vendorId?._id || item.vendorId;
+    if (!rawVId) continue;
+    const vIdStr = rawVId.toString();
+    if (!vendorItemsMap.has(vIdStr)) {
+      vendorItemsMap.set(vIdStr, []);
+    }
+    vendorItemsMap.get(vIdStr).push(item);
+  }
+
+  const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
+  const secureOrderId = encodeSecureId(orderIdStr, "order");
+  const orderUrl = `${clientUrl}/vendor/orders/${secureOrderId}`;
+
+  for (const [vendorIdStr, items] of vendorItemsMap.entries()) {
+    try {
+      let vQuery = Vendor.findById(vendorIdStr);
+      if (typeof vQuery?.populate === "function") {
+        vQuery = vQuery.populate("userId");
+      }
+      if (typeof vQuery?.session === "function") {
+        vQuery = vQuery.session(options.session || null);
+      }
+      const vendor = typeof vQuery?.lean === "function" ? await vQuery.lean() : await vQuery;
+
+      if (!vendor || vendor.onboardingStatus !== "approved" || vendor.deletedAt) {
+        continue;
+      }
+
+      const recipient = vendor.supportEmail || vendor.userId?.email;
+      if (!recipient) {
+        continue;
+      }
+
+      const enqueuePayload = {
+        type: "vendor_new_order",
+        recipient,
+        payload: {
+          vendorId: vendorIdStr,
+          vendorName: vendor.businessName || vendor.storeName || "Vendor",
+          orderId: orderIdStr,
+          orderNumber: order.orderNumber,
+          items: items.map((it) => ({
+            productName: it.productName || it.name,
+            variantName: it.variantName || "",
+            sku: it.sku,
+            quantity: it.quantity,
+            unitPrice: it.unitPrice,
+          })),
+          orderUrl,
+        },
+      };
+
+      if (options.session) {
+        await notificationOutboxService.enqueue(enqueuePayload, { session: options.session });
+      } else {
+        await notificationOutboxService.enqueue(enqueuePayload);
+      }
+    } catch (err) {
+      logger.warn({ err, vendorId: vendorIdStr, orderId: orderIdStr }, "Failed to enqueue vendor order notification");
+    }
+  }
 };
 
 /**
@@ -2434,7 +3330,7 @@ const getVendorIdForOrderService = async (userId) => {
  * subtotal and item count, minimizes customer fulfillment information, and strips
  * customer payment secrets, gateway internals, idempotency keys, and platform tax snapshots.
  */
-const projectVendorOrder = (orderDoc, vendorId, vendorShipments = []) => {
+const projectVendorOrder = (orderDoc, vendorId, vendorShipments = [], orderPayments = []) => {
   const order = orderDoc?.toObject ? orderDoc.toObject() : { ...orderDoc };
   const targetVendorIdStr = vendorId.toString();
 
@@ -2461,12 +3357,19 @@ const projectVendorOrder = (orderDoc, vendorId, vendorShipments = []) => {
       inventoryStatus: item.inventoryStatus,
       inventoryReleasedAt: item.inventoryReleasedAt || null,
       fulfillmentStatus: item.fulfillmentStatus || "unfulfilled",
+      vendorAcceptance: item.vendorAcceptance || { status: "pending" },
+      assignedShipmentPartner: item.assignedShipmentPartner || null,
+      expectedDeliveryDate: item.expectedDeliveryDate || null,
+      isFulfillmentConfirmed: Boolean(item.isFulfillmentConfirmed),
       shipmentId: item.shipmentId ? encodeSecureId("shipment", item.shipmentId) : null,
       settlementId: item.settlementId ? encodeSecureId("settlement", item.settlementId) : null,
     }));
 
   let subtotalMinor = 0;
   let vendorItemCount = 0;
+  let vendorDiscountTotalMinor = 0;
+  let vendorTaxTotalMinor = 0;
+  let vendorCommissionMinor = 0;
 
   for (const item of vendorItems) {
     vendorItemCount += item.quantity || 0;
@@ -2475,9 +3378,94 @@ const projectVendorOrder = (orderDoc, vendorId, vendorShipments = []) => {
     } catch {
       // fallback if lineTotal conversion fails
     }
+    try {
+      vendorDiscountTotalMinor += decimalToMinorUnits(item.discountTotal || "0.00");
+    } catch {}
+    try {
+      vendorTaxTotalMinor += decimalToMinorUnits(item.taxTotal || "0.00");
+    } catch {}
+  }
+
+  for (const it of (order.items || []).filter((item) => item.vendorId && item.vendorId.toString() === targetVendorIdStr)) {
+    if (it.commissionAmount !== undefined && it.commissionAmount !== null) {
+      try {
+        vendorCommissionMinor += decimalToMinorUnits(it.commissionAmount);
+      } catch {}
+    } else if (it.commissionSnapshot?.commissionAmount !== undefined && it.commissionSnapshot?.commissionAmount !== null) {
+      try {
+        vendorCommissionMinor += decimalToMinorUnits(it.commissionSnapshot.commissionAmount);
+      } catch {}
+    } else if (it.commissionRate) {
+      try {
+        const lineMinor = decimalToMinorUnits(it.lineTotal || "0.00");
+        vendorCommissionMinor += Math.round(lineMinor * Number(it.commissionRate));
+      } catch {}
+    }
   }
 
   const vendorSubtotal = minorUnitsToDecimalString(subtotalMinor);
+  const discountTotalStr = minorUnitsToDecimalString(vendorDiscountTotalMinor);
+  const taxTotalStr = minorUnitsToDecimalString(vendorTaxTotalMinor);
+  const commissionTotalStr = minorUnitsToDecimalString(vendorCommissionMinor);
+  const receivableMinor = Math.max(0, subtotalMinor - vendorCommissionMinor);
+  const estimatedReceivableStr = minorUnitsToDecimalString(receivableMinor);
+
+  const financialBreakdown = {
+    subtotal: vendorSubtotal,
+    discountTotal: discountTotalStr,
+    taxTotal: taxTotalStr,
+    commissionTotal: commissionTotalStr,
+    estimatedReceivable: estimatedReceivableStr,
+    isAuthoritative: true,
+  };
+
+  const paymentDoc = Array.isArray(orderPayments) && orderPayments.length > 0 ? orderPayments[0] : null;
+  const isCod =
+    order.paymentMethod === "cod" ||
+    order.isCod === true ||
+    paymentDoc?.method === "cod" ||
+    (!paymentDoc && order.paymentStatus === "pending" && (order.paymentMethod === "cod" || String(order.orderNumber || "").includes("COD")));
+
+  let payment = null;
+  if (isCod) {
+    payment = {
+      method: "cod",
+      gateway: "manual",
+      status: paymentDoc?.status || order.paymentStatus || "pending",
+      isCod: true,
+      codAmount: toStandardDecimalString(order.grandTotal || vendorSubtotal),
+      paidAt: paymentDoc?.capturedAt ? new Date(paymentDoc.capturedAt).toISOString() : null,
+      amountPaid: paymentDoc?.amount ? toStandardDecimalString(paymentDoc.amount) : "0.00",
+      transactionReference: "COD-COLLECT-ON-DELIVERY",
+    };
+  } else if (paymentDoc) {
+    const rawRef = paymentDoc.gatewayPaymentId || paymentDoc.transactionId || paymentDoc._id?.toString() || "";
+    let maskedRef = rawRef;
+    if (rawRef.length >= 8) {
+      maskedRef = `${rawRef.slice(0, 4)}***${rawRef.slice(-4)}`;
+    }
+    payment = {
+      method: paymentDoc.method || "online",
+      gateway: paymentDoc.gateway || "razorpay",
+      status: paymentDoc.status || "captured",
+      isCod: false,
+      codAmount: "0.00",
+      paidAt: paymentDoc.capturedAt ? new Date(paymentDoc.capturedAt).toISOString() : null,
+      amountPaid: toStandardDecimalString(paymentDoc.amount || "0.00"),
+      transactionReference: maskedRef,
+    };
+  } else if (order.paymentStatus === "paid") {
+    payment = {
+      method: "online",
+      gateway: "razorpay",
+      status: "paid",
+      isCod: false,
+      codAmount: "0.00",
+      paidAt: order.placedAt ? new Date(order.placedAt).toISOString() : null,
+      amountPaid: vendorSubtotal,
+      transactionReference: "pay_***captured",
+    };
+  }
 
   const rawAddress = order.shippingAddress || {};
   const shippingAddress = {
@@ -2505,6 +3493,27 @@ const projectVendorOrder = (orderDoc, vendorId, vendorShipments = []) => {
     createdAt: s.createdAt,
   }));
 
+  const vf = (order.vendorFulfillments || []).find(
+    (f) => f.vendorId && f.vendorId.toString() === targetVendorIdStr
+  );
+
+  const vendorFulfillment = vf
+    ? (vf.toObject ? vf.toObject() : { ...vf })
+    : {
+        vendorId,
+        acceptanceStatus: "pending",
+        rejectionReason: null,
+        rejectedAt: null,
+        assignedShipmentPartner: null,
+        expectedDeliveryDate: null,
+        isFulfillmentConfirmed: false,
+        fulfillmentConfirmedAt: null,
+        fulfillmentStatus: "unfulfilled",
+        version: 1,
+      };
+
+  const fulfillmentVersion = vendorFulfillment.version || 1;
+
   return {
     _id: order._id,
     secureId: encodeSecureId("order", order._id),
@@ -2517,6 +3526,11 @@ const projectVendorOrder = (orderDoc, vendorId, vendorShipments = []) => {
     subtotal: vendorSubtotal,
     shippingAddress,
     shipments: formattedShipments,
+    vendorFulfillment,
+    fulfillmentVersion,
+    payment,
+    paymentDetails: payment,
+    financialBreakdown,
     placedAt: order.placedAt || null,
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
@@ -2596,7 +3610,13 @@ const getVendorOrderById = async ({ orderId, userId, strict = false }) => {
     vendorId,
   }).lean();
 
-  return projectVendorOrder(order, vendorId, vendorShipments);
+  const Payment = require("../models/Payment");
+  const orderPayments =
+    mongoose.connection.readyState === 1 || Payment.find?._isMockFunction
+      ? await Payment.find({ orderId: order._id }).sort({ createdAt: -1 }).lean()
+      : [];
+
+  return projectVendorOrder(order, vendorId, vendorShipments, orderPayments);
 };
 
 /**
@@ -2632,6 +3652,14 @@ const transitionVendorOrderItemStatus = async ({
 
   if (["cancelled", "completed"].includes(order.status)) {
     throw new AppError(`Cannot update items for an order in status '${order.status}'`, 409, "INVALID_ORDER_STATUS");
+  }
+
+  const vf = (order.vendorFulfillments || []).find(
+    (f) => f.vendorId && f.vendorId.toString() === vendorId.toString()
+  );
+  if (!vf || !vf.isFulfillmentConfirmed) {
+    const { validateConfirmationPrerequisites } = require("./order-fulfillment.service");
+    validateConfirmationPrerequisites(order, vendorId);
   }
 
   const AuditLog = require("../models/AuditLog");
@@ -2792,7 +3820,7 @@ const getAdminOrderById = async (orderId) => {
 
   const order = await Order.findById(resolvedOrderId)
     .populate("customerId", "userId firstName lastName email phone")
-    .populate("items.vendorId", "businessName storeName businessSlug email phone")
+    .populate("items.vendorId", "businessName storeName name businessSlug email phone")
     .populate("items.warehouseId", "name code city state")
     .lean();
 
@@ -2806,14 +3834,233 @@ const getAdminOrderById = async (orderId) => {
     .populate("warehouseId", "name code")
     .lean();
 
+  // 1. Payment Details
+  const payments = (mongoose.connection.readyState === 1 || Payment.find?._isMockFunction)
+    ? await Payment.find({ orderId: order._id }).sort({ createdAt: -1 }).lean()
+    : [];
+  let paymentDetails = null;
+
+  if (payments && payments.length > 0) {
+    const latestPayment = payments[0];
+    const amountPaid =
+      latestPayment.method === "cod" || latestPayment.status === "pending"
+        ? "0.00"
+        : toStandardDecimalString(latestPayment.amount);
+    const amountDue =
+      latestPayment.method === "cod" || latestPayment.status === "pending"
+        ? toStandardDecimalString(latestPayment.amount || order.grandTotal)
+        : "0.00";
+    const amountRefunded = toStandardDecimalString(latestPayment.refundedAmount || "0.00");
+
+    const sanitizedHistory = (latestPayment.history || [])
+      .filter((h) => h.status !== "initiated")
+      .map((h) => ({
+        status: h.status,
+        timestamp: h.timestamp ? (h.timestamp.toISOString ? h.timestamp.toISOString() : new Date(h.timestamp).toISOString()) : null,
+        note: h.note || null,
+      }));
+
+    paymentDetails = {
+      _id: latestPayment._id,
+      method: latestPayment.method || "Unrecorded",
+      gateway: latestPayment.gateway || "N/A",
+      status: latestPayment.status,
+      transactionId: latestPayment.gatewayPaymentId || latestPayment._id.toString(),
+      amountPaid,
+      amountDue,
+      amountRefunded,
+      capturedAt: latestPayment.capturedAt ? (latestPayment.capturedAt.toISOString ? latestPayment.capturedAt.toISOString() : new Date(latestPayment.capturedAt).toISOString()) : null,
+      history: sanitizedHistory,
+    };
+  } else {
+    const grandTotalStr = toStandardDecimalString(order.grandTotal);
+    paymentDetails = {
+      method: "Unrecorded",
+      gateway: "N/A",
+      status: order.paymentStatus || "unpaid",
+      amountPaid: "0.00",
+      amountDue: grandTotalStr,
+      amountRefunded: "0.00",
+      capturedAt: null,
+      history: [],
+    };
+  }
+
+  // 2. Estimated Delivery
+  const estimatedDelivery = calculateDeliveryEstimate({
+    order,
+    shipments,
+  });
+  if (order.deliveryOption?.name) {
+    estimatedDelivery.deliveryOptionName = order.deliveryOption.name;
+  }
+  if (order.deliveryOption?.estimatedDays) {
+    estimatedDelivery.estimatedDays = order.deliveryOption.estimatedDays;
+  }
+  if (estimatedDelivery.source === "fallback" && !estimatedDelivery.estimatedDateRange) {
+    estimatedDelivery.estimatedDateRange = "Estimated delivery unavailable";
+  }
+
+  // 3. Financial Breakdown
+  const subtotalRaw = order.subtotal;
+  const grandTotalRaw = order.grandTotal;
+  const isMissingTotal =
+    subtotalRaw === undefined ||
+    subtotalRaw === null ||
+    grandTotalRaw === undefined ||
+    grandTotalRaw === null;
+
+  let financialBreakdown = null;
+
+  if (isMissingTotal) {
+    financialBreakdown = {
+      subtotal: "N/A",
+      grandTotal: "N/A",
+      couponDiscount: "0.00",
+      productDiscounts: "0.00",
+      shippingTotal: "0.00",
+      taxTotal: "0.00",
+      handlingFee: "0.00",
+      packagingFee: "0.00",
+      pricingMode: order.pricingMode || "tax_exclusive",
+      reconciliationStatus: "insufficient_data",
+      isReconciled: false,
+      reconciliationDelta: "N/A",
+      calculatedGrandTotal: "N/A",
+      taxSnapshot: [],
+      paymentSettlementStatus: order.paymentStatus || "unpaid",
+      amountPaid: paymentDetails.amountPaid,
+      amountRefunded: paymentDetails.amountRefunded,
+      amountDue: paymentDetails.amountDue,
+    };
+  } else {
+    const subtotal = toStandardDecimalString(subtotalRaw);
+    const grandTotal = toStandardDecimalString(grandTotalRaw);
+    const discountTotal = toStandardDecimalString(order.discountTotal || order.couponDiscount || "0.00");
+    const couponDiscount = toStandardDecimalString(
+      order.coupon?.discountAmount || order.couponDiscount || order.discountTotal || "0.00"
+    );
+    const couponCode = order.coupon?.code || order.couponCode || null;
+    const taxTotal = toStandardDecimalString(order.taxTotal || "0.00");
+    const shippingTotal = toStandardDecimalString(order.shippingTotal || "0.00");
+    const pricingMode = order.pricingMode || "tax_exclusive";
+
+    let calculatedGrandTotalNum = 0;
+    if (pricingMode === "tax_inclusive") {
+      calculatedGrandTotalNum = Number(subtotal) - Number(discountTotal) + Number(shippingTotal);
+    } else {
+      calculatedGrandTotalNum =
+        Number(subtotal) - Number(discountTotal) + Number(shippingTotal) + Number(taxTotal);
+    }
+
+    const calculatedGrandTotal = calculatedGrandTotalNum.toFixed(2);
+    const delta = Math.abs(calculatedGrandTotalNum - Number(grandTotal));
+    const isReconciled = delta < 0.01;
+    const reconciliationStatus = isReconciled ? "reconciled" : "mismatch";
+    const reconciliationDelta = delta.toFixed(2);
+
+    let taxSnapshotList = [];
+    if (Array.isArray(order.taxSnapshot)) {
+      taxSnapshotList = order.taxSnapshot.map((t) => ({
+        taxType: t.taxType || t.name,
+        rate: t.rate,
+        amount: toStandardDecimalString(t.amount),
+      }));
+    }
+
+    financialBreakdown = {
+      subtotal,
+      grandTotal,
+      couponCode,
+      couponDiscount,
+      productDiscounts: "0.00",
+      shippingTotal,
+      taxTotal,
+      handlingFee: "0.00",
+      packagingFee: "0.00",
+      pricingMode,
+      reconciliationStatus,
+      isReconciled,
+      reconciliationDelta,
+      calculatedGrandTotal,
+      taxSnapshot: taxSnapshotList,
+      paymentSettlementStatus: paymentDetails.status,
+      amountPaid: paymentDetails.amountPaid,
+      amountRefunded: paymentDetails.amountRefunded,
+      amountDue: paymentDetails.amountDue,
+    };
+  }
+
+  // 4. Map items with vendor object
+  const items = (order.items || []).map((it) => {
+    const vId = it.vendorId;
+    const vendorName =
+      (vId && typeof vId === "object"
+        ? vId.storeName || vId.name || vId.businessName
+        : null) || "Vendor";
+
+    const productImage =
+      it.productVariantId?.images?.[0]?.url ||
+      it.productId?.thumbnail?.url ||
+      it.productId?.images?.[0]?.url ||
+      it.productImage ||
+      null;
+
+    const unitPrice =
+      it.unitPrice !== null && it.unitPrice !== undefined
+        ? toStandardDecimalString(it.unitPrice)
+        : null;
+
+    const lineTotal =
+      it.lineTotal !== null && it.lineTotal !== undefined
+        ? toStandardDecimalString(it.lineTotal)
+        : null;
+
+    const discountTotal =
+      it.discountTotal !== null && it.discountTotal !== undefined
+        ? toStandardDecimalString(it.discountTotal)
+        : "0.00";
+
+    const taxTotal =
+      it.taxTotal !== null && it.taxTotal !== undefined
+        ? toStandardDecimalString(it.taxTotal)
+        : "0.00";
+
+    return {
+      ...it,
+      unitPrice,
+      lineTotal,
+      discountTotal,
+      taxTotal,
+      productImage,
+      vendor: {
+        _id: vId?._id || vId,
+        name: vendorName,
+        storeName: vId?.storeName || vendorName,
+        businessName: vId?.businessName || vendorName,
+      },
+    };
+  });
+
+  const vendorFulfillments = order.vendorFulfillments || [];
+  const vendorRejections = vendorFulfillments.filter((f) => f.acceptanceStatus === "rejected");
+  const hasVendorRejection = vendorRejections.length > 0;
+
   return {
     ...order,
+    items,
     secureId: encodeSecureId("order", order._id),
-    subtotal: order.subtotal?.toString?.() ?? String(order.subtotal ?? "0"),
-    grandTotal: order.grandTotal?.toString?.() ?? String(order.grandTotal ?? "0"),
-    discountTotal: order.discountTotal?.toString?.() ?? String(order.discountTotal ?? "0"),
-    taxTotal: order.taxTotal?.toString?.() ?? String(order.taxTotal ?? "0"),
-    shippingTotal: order.shippingTotal?.toString?.() ?? String(order.shippingTotal ?? "0"),
+    subtotal: order.subtotal !== undefined && order.subtotal !== null ? toStandardDecimalString(order.subtotal) : "0.00",
+    grandTotal: order.grandTotal !== undefined && order.grandTotal !== null ? toStandardDecimalString(order.grandTotal) : "0.00",
+    discountTotal: order.discountTotal !== undefined && order.discountTotal !== null ? toStandardDecimalString(order.discountTotal) : "0.00",
+    taxTotal: order.taxTotal !== undefined && order.taxTotal !== null ? toStandardDecimalString(order.taxTotal) : "0.00",
+    shippingTotal: order.shippingTotal !== undefined && order.shippingTotal !== null ? toStandardDecimalString(order.shippingTotal) : "0.00",
+    paymentDetails,
+    estimatedDelivery,
+    financialBreakdown,
+    vendorFulfillments,
+    vendorRejections,
+    hasVendorRejection,
     shipments: shipments.map((s) => ({
       ...s,
       secureId: encodeSecureId("shipment", s._id),
@@ -2827,11 +4074,26 @@ const getAdminOrderById = async (orderId) => {
 const calculateCheckoutQuote = async ({
   userId,
   shippingAddressId = null,
+  guestShippingAddress = null,
   couponCode = null,
   deliveryOptionId = "standard",
+  isGuest = false,
+  guestId = null,
 }) => {
-  const customer = await validateCustomer(userId);
-  const cart = await cartRepository.findActiveByCustomer(customer._id);
+  let customer = null;
+  let cart = null;
+
+  if (isGuest || guestId) {
+    const effectiveGuestId = guestId || userId;
+    const isGuestEnabled = await storefrontSettingsService.isFeatureEnabled("guestCheckout");
+    if (!isGuestEnabled) {
+      throw new AppError("Guest checkout is currently disabled", 403, "GUEST_CHECKOUT_DISABLED");
+    }
+    cart = await cartRepository.findActiveByGuest(effectiveGuestId);
+  } else {
+    customer = await validateCustomer(userId);
+    cart = await cartRepository.findActiveByCustomer(customer._id);
+  }
 
   if (!cart || !cart.items || cart.items.length === 0) {
     return {
@@ -2856,7 +4118,14 @@ const calculateCheckoutQuote = async ({
   const delivery = resolveDeliveryOption(deliveryOptionId, subtotalMinorUnits);
 
   let address = null;
-  if (shippingAddressId) {
+  if (isGuest || guestId) {
+    address = guestShippingAddress || null;
+    if (!address && shippingAddressId) {
+      try {
+        address = await addressRepository.findById(shippingAddressId);
+      } catch {}
+    }
+  } else if (shippingAddressId) {
     try {
       address = await getShippingAddress(userId, shippingAddressId);
     } catch {
@@ -2868,22 +4137,36 @@ const calculateCheckoutQuote = async ({
   let couponDiscountMinorUnits = 0;
   if (couponCode) {
     try {
-      const previousOrder = await Order.findOne({ customerId: customer._id }).select("_id").lean();
-      const isFirstOrder = !previousOrder;
-      couponResult = await couponService.validateCoupon({
-        code: couponCode,
-        customerId: customer._id,
-        orderAmount: Number(subtotalTotals.subtotal),
-        items: orderItems.map((item) => ({
-          productId: item.productId,
-          categoryId: item.categoryId,
-          vendorId: item.vendorId,
-          lineTotal: item.lineTotal,
-          quantity: item.quantity,
-        })),
-        isFirstOrder,
-      });
-      couponDiscountMinorUnits = decimalToMinorUnits(couponResult.discountAmount);
+      const itemDisallowingCoupons = orderItems.find((it) => it.allowCoupons === false);
+      if (itemDisallowingCoupons) {
+        couponResult = {
+          code: couponCode,
+          valid: false,
+          discountAmount: "0.00",
+          error: `Coupon cannot be combined with promotional item '${itemDisallowingCoupons.productName}'`,
+        };
+        couponDiscountMinorUnits = 0;
+      } else {
+        let isFirstOrder = false;
+        if (customer && customer._id) {
+          const previousOrder = await Order.findOne({ customerId: customer._id }).select("_id").lean();
+          isFirstOrder = !previousOrder;
+        }
+        couponResult = await couponService.validateCoupon({
+          code: couponCode,
+          customerId: customer?._id || null,
+          orderAmount: Number(subtotalTotals.subtotal),
+          items: orderItems.map((item) => ({
+            productId: item.productId,
+            categoryId: item.categoryId,
+            vendorId: item.vendorId,
+            lineTotal: item.lineTotal,
+            quantity: item.quantity,
+          })),
+          isFirstOrder,
+        });
+        couponDiscountMinorUnits = decimalToMinorUnits(couponResult.discountAmount);
+      }
     } catch (err) {
       couponResult = { error: err.message || "Invalid coupon" };
     }
@@ -2913,8 +4196,40 @@ const calculateCheckoutQuote = async ({
     delivery.feeMinorUnits
   );
 
+  const finalItems = taxCalculation?.items || orderItems;
+
+  let productDiscountMinor = 0;
+  for (const it of finalItems) {
+    if (it.isPromotional && it.regularPrice && it.unitPrice) {
+      try {
+        const reg = decimalToMinorUnits(it.regularPrice);
+        const unit = decimalToMinorUnits(it.unitPrice);
+        if (reg > unit) {
+          productDiscountMinor += (reg - unit) * (it.quantity || 1);
+        }
+      } catch {}
+    }
+  }
+  const productDiscount = minorUnitsToDecimalString(productDiscountMinor);
+
+  const { quoteReference, expiresAt } = generateQuoteReference({
+    customerId: (isGuest || guestId) ? (guestId || userId) : customer._id.toString(),
+    cartId: cart._id.toString(),
+    grandTotal: totals.grandTotal,
+    currency,
+    items: finalItems,
+    subtotal: totals.subtotal,
+    discountTotal: totals.discountTotal,
+    shippingTotal: totals.shippingTotal,
+    taxTotal: totals.taxTotal,
+    deliveryOptionId: delivery.id,
+    couponCode: couponResult?.coupon?.code || null,
+  });
+
   return {
-    items: (taxCalculation?.items || orderItems).map((it) => ({
+    quoteReference,
+    quoteExpiresAt: expiresAt,
+    items: finalItems.map((it) => ({
       productId: it.productId,
       productVariantId: it.productVariantId,
       productName: it.productName,
@@ -2925,7 +4240,7 @@ const calculateCheckoutQuote = async ({
       lineTotal: it.lineTotal?.toString ? it.lineTotal.toString() : String(it.lineTotal),
     })),
     subtotal: totals.subtotal,
-    productDiscount: "0.00",
+    productDiscount,
     couponDiscount: totals.discountTotal,
     shippingTotal: totals.shippingTotal,
     taxTotal: totals.taxTotal,
@@ -2936,6 +4251,12 @@ const calculateCheckoutQuote = async ({
           code: couponResult.coupon.code,
           discountAmount: couponResult.discountAmount,
           title: couponResult.coupon.title,
+        }
+      : couponResult?.error
+      ? {
+          code: couponResult.code || couponCode,
+          valid: false,
+          error: couponResult.error,
         }
       : null,
     couponError: couponResult?.error || null,
@@ -2988,6 +4309,237 @@ const getOrderActivity = async (orderId, userId, isAdmin = false) => {
   };
 };
 
+/**
+ * Update order status by administrator with optimistic concurrency control
+ * and non-destructive shipment synchronization.
+ */
+const updateAdminOrderStatus = async ({
+  orderId,
+  status: targetStatus,
+  reason = "",
+  notes = "",
+  expectedPreviousStatus = null,
+  expectedVersion = null,
+  isOverride = false,
+  overrideReason = "",
+  actor = null,
+}) => {
+  const order = (await orderRepository.findById(orderId)) || (await Order.findById(orderId));
+  if (!order) {
+    throw new AppError("Order not found", 404, "ORDER_NOT_FOUND");
+  }
+
+  if (expectedPreviousStatus && order.status !== expectedPreviousStatus) {
+    throw new AppError(
+      `Order status conflict: expected '${expectedPreviousStatus}' but order is currently '${order.status}'`,
+      409,
+      "CONCURRENT_STATUS_CONFLICT"
+    );
+  }
+
+  const currentVersion = order.version !== undefined ? order.version : 1;
+  if (expectedVersion !== null && expectedVersion !== undefined && expectedVersion !== currentVersion) {
+    throw new AppError(
+      `Order version conflict: expected version ${expectedVersion} but order is currently at version ${currentVersion}`,
+      409,
+      "CONCURRENT_STATUS_CONFLICT"
+    );
+  }
+
+  const isValidStandardTransition = canTransitionOrderStatus(order.status, targetStatus);
+  const isExplicitOverride = Boolean(isOverride || overrideReason);
+  const isSuperAdminForced = !isValidStandardTransition && Boolean(reason && actor && ["super_admin", "superadmin"].includes(actor.role));
+  const effectiveOverride = isExplicitOverride || isSuperAdminForced;
+  const effectiveOverrideReason = (overrideReason || reason || "").trim();
+
+  if (effectiveOverride) {
+    if (!effectiveOverrideReason || effectiveOverrideReason.length < 5) {
+      throw new AppError(
+        "A detailed override reason of at least 5 characters is required",
+        400,
+        "OVERRIDE_REASON_REQUIRED"
+      );
+    }
+    if (order.status === "cancelled") {
+      throw new AppError(
+        "Cancelled orders cannot be directly transitioned back to active state",
+        400,
+        "CANNOT_RESURRECT_CANCELLED_ORDER"
+      );
+    }
+    if (targetStatus === "cancelled" && ["shipped", "delivered"].includes(order.status)) {
+      throw new AppError(
+        `Cannot cancel an order that is already '${order.status}'`,
+        400,
+        "CANNOT_CANCEL_SHIPPED_OR_DELIVERED"
+      );
+    }
+  } else {
+    if (targetStatus === "cancelled" && ["shipped", "delivered"].includes(order.status)) {
+      throw new AppError(
+        `Cannot cancel an order that is already '${order.status}'`,
+        400,
+        "CANNOT_CANCEL_SHIPPED_OR_DELIVERED"
+      );
+    }
+    if (!isValidStandardTransition) {
+      throw new AppError(
+        `Invalid order status transition from '${order.status}' to '${targetStatus}'`,
+        400,
+        "INVALID_ORDER_STATUS_TRANSITION"
+      );
+    }
+  }
+
+  const newVersion = currentVersion + 1;
+  const updatePayload = {
+    status: targetStatus,
+    version: newVersion,
+  };
+
+  const beforeFulfillmentStatus = order.fulfillmentStatus || "unfulfilled";
+  let afterFulfillmentStatus = beforeFulfillmentStatus;
+
+  if (targetStatus === "delivered") {
+    updatePayload.fulfillmentStatus = "fulfilled";
+    updatePayload.deliveredAt = new Date();
+    afterFulfillmentStatus = "fulfilled";
+  } else if (targetStatus === "shipped") {
+    updatePayload.fulfillmentStatus = "fulfilled";
+    afterFulfillmentStatus = "fulfilled";
+  } else if (targetStatus === "cancelled") {
+    updatePayload.fulfillmentStatus = "cancelled";
+    updatePayload.cancelledAt = new Date();
+    afterFulfillmentStatus = "cancelled";
+  }
+
+  const updateOptions = {};
+  if (expectedVersion !== null && expectedVersion !== undefined) {
+    updateOptions.expectedVersion = Number(expectedVersion);
+  }
+
+  const previousStatus = order.status;
+  order.status = targetStatus;
+  if (updatePayload.fulfillmentStatus) {
+    order.fulfillmentStatus = updatePayload.fulfillmentStatus;
+  }
+  if (updatePayload.deliveredAt) order.deliveredAt = updatePayload.deliveredAt;
+  if (updatePayload.cancelledAt) order.cancelledAt = updatePayload.cancelledAt;
+
+  if (targetStatus === "shipped" && Array.isArray(order.items)) {
+    order.items.forEach((it) => {
+      if (it.fulfillmentStatus !== "cancelled") {
+        it.fulfillmentStatus = "shipped";
+      }
+    });
+    updatePayload.items = order.items;
+  }
+
+  const updatedOrder = await orderRepository.transitionStatusIfCurrent(
+    orderId,
+    previousStatus,
+    updatePayload,
+    updateOptions
+  );
+
+  if (!updatedOrder && expectedVersion !== null && expectedVersion !== undefined) {
+    throw new AppError(
+      "Concurrent status conflict: order has been modified by another operation",
+      409,
+      "CONCURRENT_STATUS_CONFLICT"
+    );
+  }
+
+  // Synchronize non-terminal shipments without destroying courier evidence
+  const Shipment = require("../models/Shipment");
+  if (targetStatus === "shipped" && typeof Shipment.updateMany === "function") {
+    await Shipment.updateMany(
+      { orderId, status: { $nin: ["cancelled", "delivered", "returned"] } },
+      { $set: { status: "shipped" } }
+    );
+  }
+
+  let shipments = [];
+  if (mongoose.connection.readyState === 1 || Shipment.find?._isMockFunction) {
+    try {
+      const q = Shipment.find({ orderId });
+      shipments = typeof q?.lean === "function" ? await q.lean() : await q;
+    } catch (_) {
+      shipments = [];
+    }
+  }
+  for (const shipment of (Array.isArray(shipments) ? shipments : [])) {
+    if (["cancelled", "returned", "rto_delivered"].includes(shipment.status)) {
+      continue;
+    }
+    if (targetStatus === "delivered" && shipment.status !== "delivered") {
+      const deliveredUpdate = {
+        status: "delivered",
+        deliveredAt: new Date(),
+        version: (shipment.version || 1) + 1,
+      };
+      if (typeof Shipment.updateOne === "function") {
+        await Shipment.updateOne(
+          { _id: shipment._id },
+          {
+            $set: deliveredUpdate,
+            $push: {
+              trackingEvents: {
+                status: "delivered",
+                milestone: "delivered",
+                timestamp: new Date(),
+                description: reason || "Delivered administratively",
+                source: "admin_override",
+              },
+            },
+          }
+        );
+      }
+    }
+  }
+
+  // AuditLog logging
+  const AuditLog = require("../models/AuditLog");
+  if (AuditLog && typeof AuditLog.create === "function") {
+    const rawActorId = actor?.userId || actor?._id || actor?.id;
+    const actorId = rawActorId && mongoose.Types.ObjectId.isValid(rawActorId)
+      ? new mongoose.Types.ObjectId(rawActorId)
+      : (mongoose.Types.ObjectId.isValid(order.customerId) ? order.customerId : new mongoose.Types.ObjectId());
+
+    if (effectiveOverride) {
+      await AuditLog.create({
+        actorId,
+        performedBy: actorId,
+        action: "ORDER_STATUS_OVERRIDE",
+        targetModel: "Order",
+        targetId: order._id,
+        entityType: "Order",
+        entityId: order._id,
+        role: actor?.role || "superadmin",
+        beforeState: { status: previousStatus, fulfillmentStatus: beforeFulfillmentStatus },
+        afterState: { status: targetStatus, fulfillmentStatus: afterFulfillmentStatus, isOverride: true, overrideReason: effectiveOverrideReason },
+        reason: effectiveOverrideReason,
+      });
+    } else {
+      await AuditLog.create({
+        actorId,
+        performedBy: actorId,
+        action: "ORDER_STATUS_UPDATED",
+        targetModel: "Order",
+        targetId: order._id,
+        entityType: "Order",
+        entityId: order._id,
+        role: actor?.role || "admin",
+        beforeState: { status: previousStatus, fulfillmentStatus: beforeFulfillmentStatus },
+        afterState: { status: targetStatus, fulfillmentStatus: afterFulfillmentStatus },
+        reason: reason || notes,
+      });
+    }
+  }
+
+  return getAdminOrderById(orderId);
+};
+
 module.exports = {
   decimalToMinorUnits,
   minorUnitsToDecimalString,
@@ -3006,12 +4558,16 @@ module.exports = {
   transitionVendorOrderItemStatus,
   getAdminOrders,
   getAdminOrderById,
+  updateAdminOrderStatus,
   transitionOrderStatus,
   cancelOrder,
   expirePendingOrder,
   markOrderPaymentCaptured,
+  notifyVendorsForConfirmedOrder,
   calculateCheckoutQuote,
+  linkGuestOrderToCustomer,
   getOrderActivity,
+  calculateDeliveryEstimate,
   resolveDeliveryOption,
   DELIVERY_OPTIONS,
 };

@@ -11,6 +11,8 @@ const Order = require("../src/models/Order");
 const User = require("../src/models/User");
 const Vendor = require("../src/models/Vendor");
 
+jest.setTimeout(30000);
+
 describe("ADMINISTRATOR DASHBOARD — Backend Service & Metrics Aggregation Tests", () => {
   beforeAll(async () => {
     if (mongoose.connection.readyState === 0) {

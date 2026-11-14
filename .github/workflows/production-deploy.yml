@@ -15,10 +15,6 @@ jobs:
     name: Backend Lint, Test & Verification
     runs-on: ubuntu-latest
     services:
-      mongodb:
-        image: mongo:8.0
-        ports:
-          - 27017:27017
       redis:
         image: redis:7-alpine
         ports:
@@ -34,18 +30,69 @@ jobs:
           cache: 'npm'
           cache-dependency-path: backend/package-lock.json
 
+      - name: Start MongoDB Replica Set & Verify PRIMARY
+        run: |
+          echo "Starting MongoDB 8.0 single-node replica set (rs0)..."
+          docker run -d --name mongodb -p 27017:27017 mongo:8.0 mongod --replSet rs0 --bind_ip_all
+
+          echo "Waiting for MongoDB daemon to accept connections..."
+          for i in {1..30}; do
+            if docker exec mongodb mongosh --quiet --eval "db.adminCommand({ ping: 1 }).ok" | grep -q 1; then
+              echo "MongoDB is accepting connections."
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "Error: MongoDB daemon failed to accept connections within 30 seconds."
+              docker logs mongodb
+              exit 1
+            fi
+            sleep 1
+          done
+
+          echo "Initiating replica set rs0..."
+          docker exec mongodb mongosh --quiet --eval '
+            try {
+              rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "127.0.0.1:27017" }] });
+            } catch (e) {
+              if (!e.message.includes("already initialized")) throw e;
+            }
+          '
+
+          echo "Waiting for replica set member to reach PRIMARY state..."
+          for i in {1..30}; do
+            IS_PRIMARY=$(docker exec mongodb mongosh --quiet --eval "try { Boolean(db.hello().isWritablePrimary) } catch(e) { false }")
+            if [ "$IS_PRIMARY" = "true" ]; then
+              echo "Replica set rs0 successfully initiated and member is PRIMARY."
+              docker exec mongodb mongosh --quiet --eval "rs.status().members[0].stateStr"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "Error: Replica set member failed to reach PRIMARY state within 30 seconds."
+              docker exec mongodb mongosh --eval "rs.status()"
+              docker logs mongodb
+              exit 1
+            fi
+            sleep 1
+          done
+
       - name: Install Backend Dependencies
         working-directory: ./backend
         run: npm ci
+
+      - name: Create Backend Test Environment File
+        working-directory: ./backend
+        run: touch .env
 
       - name: Run Backend Unit & Integration Tests
         working-directory: ./backend
         env:
           NODE_ENV: test
-          MONGODB_URI: mongodb://127.0.0.1:27017/buybox_test
+          MONGODB_URI: mongodb://127.0.0.1:27017/buybox_test?replicaSet=rs0&directConnection=true
           REDIS_URL: redis://127.0.0.1:6379
           JWT_ACCESS_SECRET: test_jwt_access_secret_for_ci_pipeline_32char
           JWT_REFRESH_SECRET: test_jwt_refresh_secret_for_ci_pipeline_32char
+          CHECKOUT_QUOTE_SECRET: test_checkout_quote_secret_for_ci_pipeline_32char
+          GOOGLE_CLIENT_ID: mock_ci_google_client_id_for_testing_only.apps.googleusercontent.com
           RAZORPAY_KEY_ID: rzp_test_ci_mock_key
           RAZORPAY_KEY_SECRET: mock_ci_key_secret_32char
           RAZORPAY_WEBHOOK_SECRET: mock_ci_webhook_secret_32char
@@ -78,6 +125,7 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: https://api.buybox.com/api/v1
           NEXT_PUBLIC_APP_URL: https://buybox.com
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: npm run build
 
   security-audit:

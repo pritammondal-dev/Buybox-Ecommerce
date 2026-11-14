@@ -101,7 +101,7 @@ router.post(
 router.post(
   "/resource/:resourceType/:resourceId/preview",
   authenticate,
-  requirePermissions(PERMISSIONS.CMS_VIEW),
+  requirePermissions(PERMISSIONS.CMS_PUBLISH),
   validate(
     storefrontPublicationResourceParamsSchema,
     "params"

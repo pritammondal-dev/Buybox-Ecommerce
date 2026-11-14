@@ -13,6 +13,7 @@ const Inventory = require("../src/models/Inventory");
 const Warehouse = require("../src/models/Warehouse");
 const Order = require("../src/models/Order");
 const Shipment = require("../src/models/Shipment");
+const Payment = require("../src/models/Payment");
 const ReturnRequest = require("../src/models/ReturnRequest");
 const { VendorSettlement } = require("../src/models/VendorSettlement");
 const Role = require("../src/models/Role");
@@ -25,6 +26,7 @@ const { PERMISSIONS } = require("../src/constants/permissions.constants");
 const { ROLES } = require("../src/constants/auth.constants");
 const { generateAccessToken } = require("../src/services/token.service");
 const { encodeSecureId } = require("../src/utils/secure-id.util");
+const razorpayRefundProvider = require("../src/integrations/payments/razorpay-refund.provider");
 
 const TEST_MONGODB_URI = process.env.MONGODB_URI
   ? process.env.MONGODB_URI.replace("/buybox?", "/buybox_fulfillment_test?")
@@ -56,11 +58,24 @@ describe("Buybox End-to-End Vendor Fulfillment, Return & Settlement Suite", () =
   }
 
   beforeAll(async () => {
+    jest.spyOn(razorpayRefundProvider, "createRefund").mockImplementation(async ({ paymentId, amount, notes }) => {
+      return {
+        id: `rfnd_mock_${Date.now()}`,
+        entity: "refund",
+        amount,
+        currency: "INR",
+        payment_id: paymentId,
+        status: "processed",
+        notes,
+      };
+    });
+
     if (mongoose.connection.readyState !== 0) {
       await mongoose.disconnect();
     }
     await mongoose.connect(TEST_MONGODB_URI);
     try {
+      require("../src/services/storefront-settings.service").invalidateCache();
       await Promise.all([
         User.deleteMany({ $or: [{ email: /@buybox\.test$/ }, { role: ROLES.SUPER_ADMIN }] }),
         Customer.deleteMany({}),
@@ -72,6 +87,7 @@ describe("Buybox End-to-End Vendor Fulfillment, Return & Settlement Suite", () =
         ProductVariant.deleteMany({}),
         Inventory.deleteMany({}),
         Order.deleteMany({}),
+        Payment.deleteMany({}),
         Shipment.deleteMany({}),
         ReturnRequest.deleteMany({}),
         VendorSettlement.deleteMany({}),
@@ -272,6 +288,7 @@ describe("Buybox End-to-End Vendor Fulfillment, Return & Settlement Suite", () =
         ProductVariant.deleteMany({}),
         Inventory.deleteMany({}),
         Order.deleteMany({}),
+        Payment.deleteMany({}),
         Shipment.deleteMany({}),
         ReturnRequest.deleteMany({}),
         VendorSettlement.deleteMany({}),
@@ -325,6 +342,23 @@ describe("Buybox End-to-End Vendor Fulfillment, Return & Settlement Suite", () =
           currency: "INR",
           inventoryStatus: "reserved",
           fulfillmentStatus: "unfulfilled",
+          vendorAcceptance: {
+            status: "accepted",
+            acceptedAt: new Date(),
+          },
+          assignedShipmentPartner: "Delhivery",
+          expectedDeliveryDate: new Date(Date.now() + 86400000 * 3),
+        },
+      ],
+      vendorFulfillments: [
+        {
+          vendorId: vendor._id,
+          acceptanceStatus: "accepted",
+          assignedShipmentPartner: "Delhivery",
+          expectedDeliveryDate: new Date(Date.now() + 86400000 * 3),
+          isFulfillmentConfirmed: true,
+          confirmedAt: new Date(),
+          version: 1,
         },
       ],
       pricing: {
@@ -333,6 +367,17 @@ describe("Buybox End-to-End Vendor Fulfillment, Return & Settlement Suite", () =
         grandTotal: 10000,
       },
       placedAt: new Date(),
+    });
+
+    await Payment.create({
+      orderId: createdOrder._id,
+      customerId: customer._id,
+      amount: mongoose.Types.Decimal128.fromString("10000.00"),
+      currency: "INR",
+      gateway: "razorpay",
+      gatewayPaymentId: `pay_test_${Date.now()}`,
+      status: "captured",
+      capturedAt: new Date(),
     });
 
     expect(createdOrder).toBeDefined();
@@ -509,7 +554,12 @@ describe("Buybox End-to-End Vendor Fulfillment, Return & Settlement Suite", () =
     // Fast-forward order delivery date past 7 days to make remaining 1 item eligible
     await Order.updateOne(
       { _id: createdOrder._id },
-      { $set: { deliveredAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000) } }
+      {
+        $set: {
+          deliveredAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000),
+          returnWindowDaysSnapshot: 7,
+        },
+      }
     );
 
     // Vendor checks finance summary
@@ -541,7 +591,11 @@ describe("Buybox End-to-End Vendor Fulfillment, Return & Settlement Suite", () =
 
     // Verify order item has settlementId tagged
     const settledOrder = await Order.findById(createdOrder._id);
-    expect(settledOrder.items[0].settlementId.toString()).toBe(createdSettlement._id.toString());
+    const settledItem = settledOrder.items.find(
+      (it) => it.settlementId && it.settlementId.toString() === createdSettlement._id.toString()
+    ) || settledOrder.items[0];
+    expect(settledItem.settlementId).toBeDefined();
+    expect(settledItem.settlementId.toString()).toBe(createdSettlement._id.toString());
 
     // Admin records payout
     const payRes = await request(app)

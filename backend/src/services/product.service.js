@@ -1643,7 +1643,7 @@ const deleteProduct = async ({
         });
 
         throw new AppError(
-          `Cannot archive product '${product.name}' (${product.sku}): ${activeReservations.length} variant reservation(s) active across pending orders. Resolve active order commitments first.`,
+          `Cannot delete product with active inventory reservations '${product.name}' (${product.sku}): ${activeReservations.length} variant reservation(s) active across pending orders. Resolve active order commitments first.`,
           409,
           "CANNOT_DELETE_PRODUCT_WITH_RESERVATIONS",
           reservationDetails

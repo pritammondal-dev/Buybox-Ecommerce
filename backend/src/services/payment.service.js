@@ -64,6 +64,17 @@ const decimalToMinorUnits = (value) => {
   return minorUnits;
 };
 
+const sanitizeMetadata = (meta) => {
+  if (!meta) return {};
+  if (meta instanceof Map) return Object.fromEntries(meta);
+  if (typeof meta.toObject === "function") return meta.toObject();
+  const clean = { ...meta };
+  for (const k of Object.keys(clean)) {
+    if (k.startsWith("$")) delete clean[k];
+  }
+  return clean;
+};
+
 const generateReceipt = (orderNumber) => {
   const token = crypto
     .randomBytes(4)
@@ -816,7 +827,7 @@ const refundPaymentForOrder = async (
           refundReservedAmount: "0.00",
           status: isFullyRefunded ? "refunded" : "partially_refunded",
           metadata: {
-            ...payment.metadata,
+            ...sanitizeMetadata(payment.metadata),
             lastRefundId: existingRefund.gatewayRefundId || "",
             lastRefundStatus: "processed",
           },
@@ -850,7 +861,7 @@ const refundPaymentForOrder = async (
               refundReservedAmount: "0.00",
               status: isFullyRefunded ? "refunded" : "partially_refunded",
               metadata: {
-                ...payment.metadata,
+                ...sanitizeMetadata(payment.metadata),
                 lastRefundId: existingRefund.gatewayRefundId,
                 lastRefundStatus: "processed",
               },
@@ -962,7 +973,7 @@ const refundPaymentForOrder = async (
       refundReservedAmount: "0.00",
       status: isFullyRefunded ? "refunded" : "partially_refunded",
       metadata: {
-        ...payment.metadata,
+        ...sanitizeMetadata(payment.metadata),
         lastRefundId: gatewayRefundId || refund?.id || "",
         lastRefundStatus: refundStatus,
       },

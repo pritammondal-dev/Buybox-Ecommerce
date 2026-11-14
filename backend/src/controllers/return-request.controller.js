@@ -125,6 +125,21 @@ const uploadEvidence = async (req, res) => {
 };
 
 const createReturn = async (req, res) => {
+  const ReturnRequest = require("../models/ReturnRequest");
+  if (req.body?.orderId) {
+    const activeReturn = await ReturnRequest.findOne({
+      orderId: req.body.orderId,
+      status: { $in: ["requested", "approved", "pickup_scheduled"] },
+    });
+    if (activeReturn) {
+      throw new AppError(
+        "An active return request already exists for this order",
+        409,
+        "RETURN_ALREADY_IN_PROGRESS"
+      );
+    }
+  }
+
   const newReturn = await returnRequestService.createReturnRequest({
     userId: req.user.id || req.user._id,
     orderId: req.body.orderId,

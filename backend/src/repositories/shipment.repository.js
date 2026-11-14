@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Shipment = require("../models/Shipment");
 
 const create = async (data, options = {}) => {
@@ -260,6 +261,10 @@ const releaseShipmentCancellationClaim = async (shipmentId, options = {}) => {
 };
 
 const claimOrderShipmentsCancellation = async (orderId, options = {}) => {
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    return { claimed: true, shipments: [], dispatchedShipments: [] };
+  }
+
   const shipments = await Shipment.find({
     orderId,
     status: { $nin: ["cancelled", "returned", "rto_delivered"] },
