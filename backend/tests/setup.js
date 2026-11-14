@@ -36,3 +36,16 @@ mongoose.connect = async function (uri, options) {
   }
   return originalConnect(targetUri, options);
 };
+
+// Monkey-patch mongoose.createConnection to ensure any tool/script opening independent connections
+// also redirects the raw "buybox" database to "buybox_test" during automated test suites.
+const originalCreateConnection = mongoose.createConnection.bind(mongoose);
+mongoose.createConnection = function (uri, options) {
+  let targetUri = uri;
+  if (typeof targetUri === "string") {
+    targetUri = targetUri.replace(/\/buybox(?:\?|$)/, (m) =>
+      m.startsWith("/buybox?") ? "/buybox_test?" : "/buybox_test"
+    );
+  }
+  return originalCreateConnection(targetUri, options);
+};

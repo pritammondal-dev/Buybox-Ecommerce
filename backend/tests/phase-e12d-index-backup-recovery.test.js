@@ -50,11 +50,24 @@ const {
 describe("PHASE E12D — MongoDB Index Deployment, Backup & Recovery Readiness", () => {
   const testBackupsRoot = path.join(__dirname, "temp_backups");
   let testBackupDir = null;
+  const User = require("../src/models/User");
 
   beforeAll(async () => {
     fs.mkdirSync(testBackupsRoot, { recursive: true });
-    if (mongoose.connection.readyState === 0) {
-      await mongoose.connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/buybox_test?replicaSet=rs0");
+    await mongoose.connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/buybox_test?replicaSet=rs0");
+
+    // Ensure authoritative test superadmin fixture exists in the test DB for backup & restore sample validation
+    const existingSuperAdmin = await User.findOne({ role: "super_admin" });
+    if (!existingSuperAdmin) {
+      await User.create({
+        firstName: "Backup",
+        lastName: "Superadmin",
+        name: "Backup Test Superadmin",
+        email: `backup_superadmin_${Date.now()}@buybox.test`,
+        password: "Password123!",
+        role: "super_admin",
+        isActive: true,
+      });
     }
   });
 
@@ -63,6 +76,7 @@ describe("PHASE E12D — MongoDB Index Deployment, Backup & Recovery Readiness",
     if (fs.existsSync(testBackupsRoot)) {
       fs.rmSync(testBackupsRoot, { recursive: true, force: true });
     }
+    await User.deleteMany({ email: /@buybox\.test$/ }).catch(() => {});
     if (mongoose.connection.readyState !== 0) {
       await mongoose.disconnect();
     }

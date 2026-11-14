@@ -719,7 +719,7 @@ const generateEligibleSettlements = async ({
           for (const order of calc.eligibleOrders) {
             let modified = false;
             for (const item of (order.items || [])) {
-              if (item.vendorId && item.vendorId.toString() === vendor._id.toString() && !item.settlementId) {
+              if (item.vendorId && item.vendorId.toString() === vendor._id.toString()) {
                 item.settlementId = settlement._id;
                 modified = true;
               }
@@ -729,6 +729,22 @@ const generateEligibleSettlements = async ({
                 { _id: order._id },
                 { $set: { items: order.items } },
                 { session }
+              );
+              await Order.updateOne(
+                { _id: order._id },
+                {
+                  $set: {
+                    "items.$[elem].settlementId": settlement._id,
+                  },
+                },
+                {
+                  arrayFilters: [
+                    {
+                      "elem.vendorId": vendor._id,
+                    },
+                  ],
+                  session,
+                }
               );
             }
           }
